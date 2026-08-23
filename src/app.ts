@@ -192,7 +192,7 @@ fastify.post(
       console.log('--- [POST /api/menu-items] DB INSERT RESULT ---');
       console.log('insertedItem.hasVariants:', insertedItem.hasVariants);
       console.log('insertedItem.variantPrices:', insertedItem.variantPrices);
-
+      console.log('rawMaterials:', insertedItem.rawMaterials);
       // 🟢 Save selected modifier groups into junction table
       const rawGroupIds = body.modifierGroupIds ?? body.modifier_group_ids;
       if (Array.isArray(rawGroupIds) && rawGroupIds.length > 0) {
@@ -291,60 +291,64 @@ fastify.get('/api/menu-items',
 fastify.patch('/api/menu-items/:id', 
   { onRequest: [fastify.authenticate] },
   async (request, reply) => {
-  const { id } = request.params as { id: string };
-  const itemId = parseInt(id);
+    const { id } = request.params as { id: string };
+    const itemId = parseInt(id);
 
-  if (isNaN(itemId)) {
-    return reply.status(400).send({ error: 'Invalid ID format.' });
-  }
-
-  const body = request.body as Record<string, any>;
-
-  const [existing] = await db
-    .select()
-    .from(menuItems)
-    .where(eq(menuItems.id, itemId));
-
-  if (!existing) {
-    return reply.status(404).send({ error: 'Menu item not found.' });
-  }
-
-  const updateData: Record<string, any> = {};
-
-  if (body.menuName !== undefined) updateData.menuName = body.menuName;
-  if (body.invoiceName !== undefined) updateData.invoiceName = body.invoiceName;
-  if (body.kitchenName !== undefined) updateData.kitchenName = body.kitchenName;
-  if (body.priceDineIn !== undefined) updateData.priceDineIn = String(body.priceDineIn);
-  if (body.priceTakeaway !== undefined) updateData.priceTakeaway = String(body.priceTakeaway);
-  if (body.priceDelivery !== undefined) updateData.priceDelivery = String(body.priceDelivery);
-  if (body.priceWaiter !== undefined) updateData.priceWaiter = String(body.priceWaiter);
-  if (body.costPrice !== undefined) updateData.costPrice = String(body.costPrice);
-  if (body.description !== undefined) updateData.description = body.description;
-  if (body.images !== undefined) updateData.images = body.images;
-  if (body.isAvailable !== undefined) updateData.isAvailable = body.isAvailable;
-  if (body.categoryId !== undefined) updateData.categoryId = body.categoryId;
-  if (body.stationId !== undefined) updateData.stationId = body.stationId;
-
-  // Run updates & modifier sync atomically inside a transaction
-  const updatedItem = await db.transaction(async (tx) => {
-    let item = existing;
-    if (Object.keys(updateData).length > 0) {
-      [item] = await tx
-        .update(menuItems)
-        .set(updateData)
-        .where(eq(menuItems.id, itemId))
-        .returning();
+    if (isNaN(itemId)) {
+      return reply.status(400).send({ error: 'Invalid ID format.' });
     }
 
-    // 🟢 Sync modifier groups if passed in body
-    const rawGroupIds = body.modifierGroupIds ?? body.modifier_group_ids;
-    if (rawGroupIds !== undefined) {
-      // Clear old modifiers
-      await tx.delete(menuItemModifiers).where(eq(menuItemModifiers.menuItemId, itemId));
+    const body = request.body as Record<string, any>;
 
-      // Insert new modifiers
-      if (Array.isArray(rawGroupIds) && rawGroupIds.length > 0) {
-        const groupIds = rawGroupIds.map((g) => Number(g)).filter((n) => !isNaN(n));
+    const [existing] = await db
+      .select()
+      .from(menuItems)
+      .where(eq(menuItems.id, itemId));
+
+    if (!existing) {
+      return reply.status(404).send({ error: 'Menu item not found.' });
+    }
+
+    const updateData: Record<string, any> = {};
+
+    if (body.menuName !== undefined) updateData.menuName = body.menuName;
+    if (body.invoiceName !== undefined) updateData.invoiceName = body.invoiceName;
+    if (body.kitchenName !== undefined) updateData.kitchenName = body.kitchenName;
+    if (body.priceDineIn !== undefined) updateData.priceDineIn = String(body.priceDineIn);
+    if (body.priceTakeaway !== undefined) updateData.priceTakeaway = String(body.priceTakeaway);
+    if (body.priceDelivery !== undefined) updateData.priceDelivery = String(body.priceDelivery);
+    if (body.priceWaiter !== undefined) updateData.priceWaiter = String(body.priceWaiter);
+    if (body.costPrice !== undefined) updateData.costPrice = String(body.costPrice);
+    if (body.description !== undefined) updateData.description = body.description;
+    if (body.images !== undefined) updateData.images = body.images;
+    if (body.isAvailable !== undefined) updateData.isAvailable = body.isAvailable;
+    if (body.categoryId !== undefined) updateData.categoryId = body.categoryId;
+    if (body.stationId !== undefined) updateData.stationId = body.stationId;
+
+    // 🟢 Added missing variant and raw material fields: OK !!!!
+    if (body.hasVariants !== undefined) updateData.hasVariants = Boolean(body.hasVariants);
+    if (body.variantPrices !== undefined) updateData.variantPrices = body.variantPrices;
+    if (body.rawMaterials !== undefined) updateData.rawMaterials = body.rawMaterials;
+
+    // Run updates & modifier sync atomically inside a transaction
+    const updatedItem = await db.transaction(async (tx) => {
+      let item = existing;
+      
+      if (Object.keys(updateData).length > 0) {
+        [item] = await tx
+          .update(menuItems)
+          .set(updateData)
+          .where(eq(menuItems.id, itemId))
+          .returning();
+      }
+
+      // 🟢 Sync modifier groups if provided
+      const rawGroupIds = body.modifierGroupIds ?? body.modifier_group_ids;
+      if (Array.isArray(rawGroupIds)) {
+        // Clear existing modifiers first for clean replacement
+        await tx.delete(menuItemModifiers).where(eq(menuItemModifiers.menuItemId, itemId));
+
+        const groupIds = rawGroupIds.map((id) => Number(id)).filter((id) => !isNaN(id));
         if (groupIds.length > 0) {
           await tx.insert(menuItemModifiers).values(
             groupIds.map((groupId, index) => ({
@@ -355,14 +359,13 @@ fastify.patch('/api/menu-items/:id',
           );
         }
       }
-    }
 
-    return item;
-  });
+      return item;
+    });
 
-  return reply.send({ menuItem: updatedItem });
-});
-  
+    return reply.send({ menuItem: updatedItem });
+  }
+);
   // -------------------------------------------------------------
   // 5. DELETE (DELETE /api/menu-items/:id)
   // -------------------------------------------------------------
