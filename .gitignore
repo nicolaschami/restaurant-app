@@ -1,0 +1,11 @@
+# Node.js dependencies
+node_modules/
+
+# Environment variables (Secrets!)
+.env
+
+# Logs
+npm-debug.log*
+
+# OS specific
+.DS_Store
