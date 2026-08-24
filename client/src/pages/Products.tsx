@@ -24,7 +24,14 @@ import {
 
 import { api } from '../api';
 import ConfirmModal from '../components/ConfirmModal';
-
+export interface VariantPrice {
+  name?: string;
+  dineIn?: number | string;
+  takeaway?: number | string;
+  priceDineIn?: number | string;
+  priceTakeaway?: number | string;
+  [key: string]: any;
+}
 interface MenuItem {
   id: number;
   menuName: string;
@@ -41,6 +48,9 @@ interface MenuItem {
   images?: string[];
   isAvailable?: boolean;
   modifierGroupIds?: number[];
+  // 🟢 Added variant fields
+  hasVariants?: boolean;
+  variantPrices?: VariantPrice[];
   rawMaterials?: { materialId: number | string; name: string; cost: number | string; quantity: number | string }[];
 }
 
@@ -138,6 +148,9 @@ export default function Products({ onLogout }: ProductsProps) {
     { size: 'Large', dineIn: '', takeaway: '', delivery: '', waiter: '' },
   ]);
 
+
+
+
   const handleVariantPriceChange = (
     vIdx: number,
     field: 'dineIn' | 'takeaway' | 'delivery' | 'waiter',
@@ -163,6 +176,12 @@ export default function Products({ onLogout }: ProductsProps) {
     setVariants(updated);
   };
 
+const handleEdit = (item: MenuItem) => {
+  // Use whatever state updater function you already have in your component:
+  setEditingItem(item); // Or setFormData(item), setSelectedItem(item), etc.
+  setIsModalOpen(true);
+};
+  
   const [rawMaterials, setRawMaterials] = useState<
     { materialId: number | string; name: string; unitCost: number | string; quantity: number | string; totalCost: number | string }[]
   >([]);
@@ -405,7 +424,7 @@ const payload = {
   priceWaiter: parseCost(priceWaiter),
   costPrice: isManualCost ? parseCost(costPrice) : calculatedRawCost,
   description: description.trim(),
-  images: finalImages.length > 0 ? finalImages : ['https://via.placeholder.com/150'],
+  images: finalImages.length > 0 ? finalImages : ['https://placehold.co/600x400/e2e8f0/64748b?text=No+Image'],
   isAvailable: Boolean(isAvailable),
   modifierGroupIds: selectedModifierIds.map((id) => Number(id)),
   rawMaterials: rawMaterials.map((rm) => ({
@@ -755,18 +774,24 @@ fetchInitialData();
                         </div>
 
                         <div className="mt-3 space-y-1 text-xs">
-                          <div className="flex justify-between text-slate-600">
-                            <span>Dine-In:</span>
-                            <span className="font-mono font-bold text-slate-900">
-                              ${parseCost(item.priceDineIn).toFixed(2)}
-                            </span>
-                          </div>
-                          {item.priceTakeaway ? (
-                            <div className="flex justify-between text-slate-400 text-[11px]">
-                              <span>Takeaway:</span>
-                              <span className="font-mono">${parseCost(item.priceTakeaway).toFixed(2)}</span>
-                            </div>
-                          ) : null}
+                         <div className="flex justify-between">
+  <span>Dine-In:</span>
+  <span className="font-semibold">
+    ${(item.hasVariants && item.variantPrices?.[0]
+      ? Number(item.variantPrices[0].dineIn)
+      : Number(item.priceDineIn ?? 0)
+    ).toFixed(2)}
+  </span>
+</div>
+                         <div className="flex justify-between">
+  <span>Takeaway:</span>
+  <span className="font-semibold">
+    ${(item.hasVariants && Array.isArray(item.variantPrices) && item.variantPrices.length > 0
+      ? Number((item.variantPrices[0] as any)?.priceTakeaway ?? (item.variantPrices[0] as any)?.takeaway ?? 0)
+      : Number(item.priceTakeaway ?? 0)
+    ).toFixed(2)}
+  </span>
+</div>
                         </div>
                       </div>
 
