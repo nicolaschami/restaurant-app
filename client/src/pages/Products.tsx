@@ -177,9 +177,7 @@ export default function Products({ onLogout }: ProductsProps) {
   };
 
 const handleEdit = (item: MenuItem) => {
-  // Use whatever state updater function you already have in your component:
-  setEditingItem(item); // Or setFormData(item), setSelectedItem(item), etc.
-  setIsModalOpen(true);
+  handleOpenModal(item);
 };
   
   const [rawMaterials, setRawMaterials] = useState<
@@ -299,72 +297,100 @@ const handleEdit = (item: MenuItem) => {
       item.price
     );
   };
+const handleOpenModal = (item?: MenuItem) => {
+  setFormError(null);
+  setSelectedFiles([]);
 
-  const handleOpenModal = (item?: MenuItem) => {
-    setFormError(null);
-    setSelectedFiles([]);
+  if (item) {
+    setEditingItem(item);
+    setMenuName(item.menuName || '');
+    setInvoiceName(item.invoiceName || item.menuName || '');
+    setKitchenName(item.kitchenName || item.menuName || '');
+    setCategoryId(item.categoryId || null);
+    setStationId(item.stationId || null);
+    setPriceDineIn(String(item.priceDineIn ?? '0.00'));
+    setPriceTakeaway(String(item.priceTakeaway ?? '0.00'));
+    setPriceDelivery(String(item.priceDelivery ?? '0.00'));
+    setPriceWaiter(String(item.priceWaiter ?? '0.00'));
+    setCostPrice(String(item.costPrice ?? '0.00'));
+    setDescription(item.description || '');
+    setIsAvailable(item.isAvailable ?? true);
+    setImagePreviews(item.images || []);
 
-    if (item) {
-      setEditingItem(item);
-      setMenuName(item.menuName || '');
-      setInvoiceName(item.invoiceName || item.menuName || '');
-      setKitchenName(item.kitchenName || item.menuName || '');
-      setCategoryId(item.categoryId || null);
-      setStationId(item.stationId || null);
-      setPriceDineIn(String(item.priceDineIn ?? '0.00'));
-      setPriceTakeaway(String(item.priceTakeaway ?? '0.00'));
-      setPriceDelivery(String(item.priceDelivery ?? '0.00'));
-      setPriceWaiter(String(item.priceWaiter ?? '0.00'));
-      setCostPrice(String(item.costPrice ?? '0.00'));
-      setDescription(item.description || '');
-      setIsAvailable(item.isAvailable ?? true);
-      setImagePreviews(item.images || []);
+    // 🟢 1. Load the hasVariants boolean flag
+    const itemHasVariants = Boolean(item.hasVariants);
+    setHasVariants(itemHasVariants);
 
-      const existingIds =
-        item.modifierGroupIds ||
-        (item as any).modifier_group_ids ||
-        (item as any).modifiers?.map((m: any) => m.id ?? m) ||
-        [];
-
-      setSelectedModifierIds(existingIds.map((id: any) => Number(id)));
-
-      if (item.rawMaterials && Array.isArray(item.rawMaterials)) {
-        const mapped = item.rawMaterials.map((rm: any) => {
-          const uCost = parseCost(rm.cost ?? rm.unitCost ?? rm.cost_price);
-          const qty = parseCost(rm.quantity) || 1;
-          return {
-            materialId: rm.materialId,
-            name: rm.name,
-            unitCost: uCost,
-            quantity: qty,
-            totalCost: uCost * qty,
-          };
-        });
-        setRawMaterials(mapped);
-      } else {
-        setRawMaterials([]);
-      }
+    // 🟢 2. Load the variantPrices array if present
+    if (Array.isArray(item.variantPrices) && item.variantPrices.length > 0) {
+      setVariants(
+        item.variantPrices.map((v) => ({
+          size: v.size || v.name || '',
+          dineIn: String(v.dineIn ?? v.priceDineIn ?? ''),
+          takeaway: String(v.takeaway ?? v.priceTakeaway ?? ''),
+          delivery: String(v.delivery ?? v.priceDelivery ?? ''),
+          waiter: String(v.waiter ?? v.priceWaiter ?? ''),
+        }))
+      );
     } else {
-      setEditingItem(null);
-      setMenuName('');
-      setInvoiceName('');
-      setKitchenName('');
-      setCategoryId(categories.length > 0 ? categories[0].id : null);
-      setStationId(null);
-      setPriceDineIn('0.00');
-      setPriceTakeaway('0.00');
-      setPriceDelivery('0.00');
-      setPriceWaiter('0.00');
-      setCostPrice('0.00');
-      setDescription('');
-      setIsAvailable(true);
-      setImagePreviews([]);
-      setSelectedModifierIds([]);
+      setVariants([
+        { size: 'Small', dineIn: '', takeaway: '', delivery: '', waiter: '' },
+        { size: 'Medium', dineIn: '', takeaway: '', delivery: '', waiter: '' },
+        { size: 'Large', dineIn: '', takeaway: '', delivery: '', waiter: '' },
+      ]);
+    }
+
+    const existingIds =
+      item.modifierGroupIds ||
+      (item as any).modifier_group_ids ||
+      (item as any).modifiers?.map((m: any) => m.id ?? m) ||
+      [];
+
+    setSelectedModifierIds(existingIds.map((id: any) => Number(id)));
+
+    if (item.rawMaterials && Array.isArray(item.rawMaterials)) {
+      const mapped = item.rawMaterials.map((rm: any) => {
+        const uCost = parseCost(rm.cost ?? rm.unitCost ?? rm.cost_price);
+        const qty = parseCost(rm.quantity) || 1;
+        return {
+          materialId: rm.materialId,
+          name: rm.name,
+          unitCost: uCost,
+          quantity: qty,
+          totalCost: uCost * qty,
+        };
+      });
+      setRawMaterials(mapped);
+    } else {
       setRawMaterials([]);
     }
-    setIsModalOpen(true);
-  };
-
+  } else {
+    // 🟢 Reset for new item creation
+    setEditingItem(null);
+    setMenuName('');
+    setInvoiceName('');
+    setKitchenName('');
+    setCategoryId(categories.length > 0 ? categories[0].id : null);
+    setStationId(null);
+    setPriceDineIn('0.00');
+    setPriceTakeaway('0.00');
+    setPriceDelivery('0.00');
+    setPriceWaiter('0.00');
+    setCostPrice('0.00');
+    setDescription('');
+    setIsAvailable(true);
+    setImagePreviews([]);
+    setSelectedModifierIds([]);
+    setRawMaterials([]);
+    setHasVariants(false);
+    setVariants([
+      { size: 'Small', dineIn: '', takeaway: '', delivery: '', waiter: '' },
+      { size: 'Medium', dineIn: '', takeaway: '', delivery: '', waiter: '' },
+      { size: 'Large', dineIn: '', takeaway: '', delivery: '', waiter: '' },
+    ]);
+  }
+  setIsModalOpen(true);
+};
   const handleMultipleFilesChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
@@ -435,15 +461,17 @@ const payload = {
     totalCost: parseCost(rm.totalCost),
   })),
 
-  // --- Added variant fields matching db/schema.ts ---
+  // 🟢 Clean variants payload
   hasVariants: Boolean(hasVariants),
-variantPrices: variants.map((v) => ({
-  size: (v.size ?? '').trim(),
-  dineIn: parseCost(v.dineIn ?? 0),
-  takeaway: parseCost(v.takeaway ?? 0),
-  delivery: parseCost(v.delivery ?? 0),
-  waiter: parseCost(v.waiter ?? 0),
-})),
+  variantPrices: hasVariants
+    ? variants.map((v) => ({
+        size: (v.size ?? '').trim(),
+        dineIn: parseCost(v.dineIn),
+        takeaway: parseCost(v.takeaway),
+        delivery: parseCost(v.delivery),
+        waiter: parseCost(v.waiter),
+      }))
+    : [],
 };
 console.log('--- SUBMITTING PAYLOAD ---', payload);
 if (editingItem) {
