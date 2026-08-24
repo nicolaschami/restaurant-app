@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {api} from '../api';
+import ConfirmModal from '../components/ConfirmModal';
 import {
   Truck,
   Plus,
@@ -14,7 +15,7 @@ import {
   XCircle,
   X,
   CreditCard,
-  Loader2,
+  Loader2,Trash2
 } from 'lucide-react';
 
 export interface Supplier {
@@ -42,12 +43,14 @@ interface SuppliersPageProps {
   onLogout?: () => void;
 }
 
+
+
 export default function SuppliersPage({ onLogout }: SuppliersPageProps) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
+const [itemToDelete, setItemToDelete] = useState<Supplier | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -79,6 +82,20 @@ export default function SuppliersPage({ onLogout }: SuppliersPageProps) {
     const parsed = parseFloat(cleanStr);
     return isNaN(parsed) ? 0 : parsed;
   };
+
+const confirmDelete = async () => {
+  if (!itemToDelete) return;
+  try {
+    await api.delete(`/suppliers/${itemToDelete.supplierId}`);
+    setItemToDelete(null);
+    fetchSuppliers();
+  } catch (err: any) {
+    const errorDetail = err.response?.data?.error || err.response?.data?.message || 'Failed to delete supplier.';
+    setErrorMessage(errorDetail);
+  }
+};
+
+
 
   const fetchSuppliers = async () => {
     try {
@@ -230,7 +247,7 @@ export default function SuppliersPage({ onLogout }: SuppliersPageProps) {
     }
     setIsModalOpen(true);
   };
-
+//const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const totalSuppliers = suppliers.length;
   const activeSuppliers = suppliers.filter((s) => s.isActive).length;
   const totalOutstanding = suppliers.reduce((acc, s) => acc + parseNumericValue(s.openingBalance), 0);
@@ -440,6 +457,12 @@ export default function SuppliersPage({ onLogout }: SuppliersPageProps) {
                         >
                           <Edit3 className="h-4 w-4" />
                         </button>
+                         <button
+                                            onClick={() => setItemToDelete(supplier)}          
+                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                      >
+                                                        <Trash2 size={16} />
+                                                      </button>
                       </td>
                     </tr>
                   ))
@@ -681,6 +704,17 @@ export default function SuppliersPage({ onLogout }: SuppliersPageProps) {
     </div>
   </div>
 )}
+{/* Delete Supplier Confirmation */}
+<ConfirmModal
+  isOpen={Boolean(itemToDelete)}
+  title="Delete Supplier"
+  message={`Are you sure you want to delete "${itemToDelete?.supplierName}"?`}
+  confirmLabel="Delete"
+  isDanger={true}
+  onConfirm={confirmDelete}
+  onCancel={() => setItemToDelete(null)}
+/>
+
     </div>
   );
 }

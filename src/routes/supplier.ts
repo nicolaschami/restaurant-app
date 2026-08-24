@@ -154,4 +154,49 @@ const tenantId = String(restaurantId);
       }
     }
   );
+
+
+  // ==========================================
+  // 3. DELETE AN EXISTING SUPPLIER
+  // DELETE /api/suppliers/:supplierId
+  // ==========================================
+ fastify.delete('/api/suppliers/:id', 
+  { onRequest: [fastify.authenticate] },
+  async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const itemId = parseInt(id, 10);
+
+    if (isNaN(itemId)) {
+      return reply.status(400).send({ error: 'Invalid ID format.' });
+    }
+
+    try {
+      const [deletedItem] = await db
+        .delete(suppliers)
+        .where(eq(suppliers.supplierId, itemId))
+        .returning();
+
+      if (!deletedItem) {
+        return reply.status(404).send({ error: 'Supplier not found.' });
+      }
+
+      return reply.send({
+        message: 'Supplier deleted successfully.',
+        deletedItemId: itemId,
+      });
+    } catch (error: any) {
+      // Foreign key constraint violation (PostgreSQL code 23503)
+      if (error?.code === '23503') {
+        return reply.status(409).send({ 
+          error: 'Cannot delete supplier because it is linked to active inventory or purchase orders.' 
+        });
+      }
+
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Internal server error.' });
+    }
+  }
+);
+
+
 }
