@@ -7,6 +7,7 @@ import MenuItems from './pages/Products';
 import Modifiers from './pages/Modifiers';
 import RawMaterials from './pages/RawMaterials';
 import SuppliersPage from './pages/Suppliers';
+import PosScreen from './pages/PosScreen';
 export default function App() {
   const [token, setToken] = useState<string | null>(
     localStorage.getItem('token')
@@ -633,6 +634,9 @@ export default function App() {
       )}
 
       {/* PRODUCT MANAGEMENT */}
+
+
+
       {activeTab === 'categories' && (
         <Categories onLogout={handleLogout} />
       )}
@@ -669,6 +673,11 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+
+       {activeTab === 'pos' && (
+        <PosScreen  />
       )}
     </SidebarLayout>
   );
