@@ -85,14 +85,14 @@ const parseCost = (val: any): number => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
-// Palette for modifier group accent colors
+// "Spice rack" palette for modifier group accent colors
 const GROUP_PALETTES = [
-  { bg: 'bg-violet-50', border: 'border-violet-200', activeBorder: 'border-violet-400', ring: 'ring-violet-400/30', dot: 'bg-violet-500', text: 'text-violet-700', pillBg: 'bg-violet-100', pillText: 'text-violet-700', checkBg: 'bg-violet-500' },
-  { bg: 'bg-sky-50', border: 'border-sky-200', activeBorder: 'border-sky-400', ring: 'ring-sky-400/30', dot: 'bg-sky-500', text: 'text-sky-700', pillBg: 'bg-sky-100', pillText: 'text-sky-700', checkBg: 'bg-sky-500' },
-  { bg: 'bg-emerald-50', border: 'border-emerald-200', activeBorder: 'border-emerald-400', ring: 'ring-emerald-400/30', dot: 'bg-emerald-500', text: 'text-emerald-700', pillBg: 'bg-emerald-100', pillText: 'text-emerald-700', checkBg: 'bg-emerald-500' },
-  { bg: 'bg-rose-50', border: 'border-rose-200', activeBorder: 'border-rose-400', ring: 'ring-rose-400/30', dot: 'bg-rose-500', text: 'text-rose-700', pillBg: 'bg-rose-100', pillText: 'text-rose-700', checkBg: 'bg-rose-500' },
   { bg: 'bg-amber-50', border: 'border-amber-200', activeBorder: 'border-amber-400', ring: 'ring-amber-400/30', dot: 'bg-amber-500', text: 'text-amber-700', pillBg: 'bg-amber-100', pillText: 'text-amber-700', checkBg: 'bg-amber-500' },
-  { bg: 'bg-fuchsia-50', border: 'border-fuchsia-200', activeBorder: 'border-fuchsia-400', ring: 'ring-fuchsia-400/30', dot: 'bg-fuchsia-500', text: 'text-fuchsia-700', pillBg: 'bg-fuchsia-100', pillText: 'text-fuchsia-700', checkBg: 'bg-fuchsia-500' },
+  { bg: 'bg-red-50', border: 'border-red-200', activeBorder: 'border-red-400', ring: 'ring-red-400/30', dot: 'bg-red-500', text: 'text-red-700', pillBg: 'bg-red-100', pillText: 'text-red-700', checkBg: 'bg-red-500' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', activeBorder: 'border-emerald-400', ring: 'ring-emerald-400/30', dot: 'bg-emerald-500', text: 'text-emerald-700', pillBg: 'bg-emerald-100', pillText: 'text-emerald-700', checkBg: 'bg-emerald-500' },
+  { bg: 'bg-cyan-50', border: 'border-cyan-200', activeBorder: 'border-cyan-400', ring: 'ring-cyan-400/30', dot: 'bg-cyan-500', text: 'text-cyan-700', pillBg: 'bg-cyan-100', pillText: 'text-cyan-700', checkBg: 'bg-cyan-500' },
+  { bg: 'bg-purple-50', border: 'border-purple-200', activeBorder: 'border-purple-400', ring: 'ring-purple-400/30', dot: 'bg-purple-500', text: 'text-purple-700', pillBg: 'bg-purple-100', pillText: 'text-purple-700', checkBg: 'bg-purple-500' },
+  { bg: 'bg-lime-50', border: 'border-lime-200', activeBorder: 'border-lime-400', ring: 'ring-lime-400/30', dot: 'bg-lime-500', text: 'text-lime-700', pillBg: 'bg-lime-100', pillText: 'text-lime-700', checkBg: 'bg-lime-500' },
 ];
 
 function ModifierGroupCard({
@@ -157,12 +157,12 @@ function ModifierGroupCard({
             {(group.minSelection != null || group.maxSelection != null) && (
               <div className="flex items-center gap-0.5">
                 {group.minSelection != null && group.minSelection > 0 && (
-                  <span className="text-[9px] font-bold bg-orange-100 text-orange-600 px-1 py-0.5 rounded">
+                  <span className="text-[9px] font-bold bg-[#fdece1] text-[#8a3f16] px-1 py-0.5 rounded">
                     min {group.minSelection}
                   </span>
                 )}
                 {group.maxSelection != null && group.maxSelection > 0 && (
-                  <span className="text-[9px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">
+                  <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1 py-0.5 rounded">
                     max {group.maxSelection}
                   </span>
                 )}
@@ -201,7 +201,7 @@ function ModifierGroupCard({
               >
                 {opt.name}
                 {(opt.price || opt.price_delta || opt.additionalPrice) && (
-                  <span className={`font-bold ${isChecked ? palette.text : 'text-slate-400'}`}>
+                  <span className={`price-font font-bold ${isChecked ? palette.text : 'text-slate-400'}`}>
                     +${parseCost(opt.price ?? opt.price_delta ?? opt.additionalPrice).toFixed(2)}
                   </span>
                 )}
@@ -507,20 +507,37 @@ export default function Products({ onLogout }: ProductsProps) {
 
   return (
     <div className="max-w-6xl mx-auto pb-12">
+      {/* Signature type system + ticket-tear motif — scoped to this screen */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
+        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+        .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        .ticket-tear {
+          height: 8px;
+          background-image: radial-gradient(circle at 6px 0px, transparent 4px, inherit 4.2px);
+          background-size: 12px 8px;
+          background-repeat: repeat-x;
+        }
+        .ticket-tear-line {
+          background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
+          height: 1px;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 ring-1 ring-inset ring-orange-500/20">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1c1917] text-[#e8ceb8] shadow-sm shrink-0">
             <UtensilsCrossed className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Menu Items</h1>
-            <p className="text-xs text-slate-500">Manage product listings, pricing tiers, modifiers, and photos ({filteredItems.length} total).</p>
+            <h1 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Menu Items</h1>
+            <p className="text-xs text-slate-500 mt-1">Manage product listings, pricing tiers, modifiers, and photos &middot; <span className="price-font font-semibold text-[#8a3f16]">{filteredItems.length}</span> total</p>
           </div>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95 active:scale-98"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95 active:scale-98"
         >
           <Plus className="h-4 w-4" />
           Add Menu Item
@@ -537,7 +554,7 @@ export default function Products({ onLogout }: ProductsProps) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search products by menu name..."
-              className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm"
+              className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/40 focus:border-[#c2621f] shadow-sm"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded-lg">
@@ -552,15 +569,18 @@ export default function Products({ onLogout }: ProductsProps) {
               value={selectedCategoryFilter === 'all' ? { value: 'all', label: 'All Categories' } : { value: selectedCategoryFilter, label: safeCategories.find((c) => c.id === selectedCategoryFilter)?.name || 'Category' }}
               onChange={(option: any) => setSelectedCategoryFilter(option ? option.value : 'all')}
               options={[{ value: 'all', label: 'All Categories' }, ...safeCategories.map((c) => ({ value: c.id, label: c.name }))]}
-              styles={{ control: (base) => ({ ...base, borderRadius: '0.75rem', borderColor: '#e2e8f0', padding: '1px', boxShadow: 'none' }) }}
+              styles={{
+                control: (base, state) => ({ ...base, borderRadius: '0.75rem', borderColor: state.isFocused ? '#c2621f' : '#e2e8f0', padding: '1px', boxShadow: state.isFocused ? '0 0 0 2px rgba(194,98,31,0.15)' : 'none' }),
+                option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff', color: state.isFocused ? '#ffffff' : state.isSelected ? '#8a3f16' : '#334155' }),
+              }}
             />
           </div>
         </div>
         <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0 self-start sm:self-auto">
-          <button onClick={() => setViewMode('cards')} title="Card View" className={`p-2 rounded-lg transition ${viewMode === 'cards' ? 'bg-white text-orange-600 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}>
+          <button onClick={() => setViewMode('cards')} title="Card View" className={`p-2 rounded-lg transition ${viewMode === 'cards' ? 'bg-white text-[#b5541f] shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}>
             <LayoutGrid size={18} />
           </button>
-          <button onClick={() => setViewMode('table')} title="Table View" className={`p-2 rounded-lg transition ${viewMode === 'table' ? 'bg-white text-orange-600 shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}>
+          <button onClick={() => setViewMode('table')} title="Table View" className={`p-2 rounded-lg transition ${viewMode === 'table' ? 'bg-white text-[#b5541f] shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'}`}>
             <List size={18} />
           </button>
         </div>
@@ -585,7 +605,7 @@ export default function Products({ onLogout }: ProductsProps) {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr className="bg-slate-50/70 border-b border-slate-100 text-xs font-semibold uppercase text-slate-400 tracking-wider">
+                    <tr className="bg-[#1c1917] text-[11px] font-semibold uppercase text-[#d8c6b0] tracking-wider">
                       <th className="px-4 py-3 text-center">Images</th>
                       <th className="px-6 py-3">Menu Name</th>
                       <th className="px-4 py-3">Category</th>
@@ -602,7 +622,7 @@ export default function Products({ onLogout }: ProductsProps) {
                       const hasImages = item.images && item.images.length > 0;
                       const modifierCount = item.modifierGroupIds?.length || 0;
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                        <tr key={item.id} className="hover:bg-[#faf3ea] transition-colors">
                           <td className="px-4 py-4">
                             <div className="flex items-center justify-center">
                               <div className="relative inline-block">
@@ -612,7 +632,7 @@ export default function Products({ onLogout }: ProductsProps) {
                                   <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border border-slate-200"><ImageIcon size={18} /></div>
                                 )}
                                 {hasImages && item.images!.length > 1 && (
-                                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white ring-2 ring-white">+{item.images!.length - 1}</span>
+                                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#b5541f] text-[10px] font-bold text-white ring-2 ring-white">+{item.images!.length - 1}</span>
                                 )}
                               </div>
                             </div>
@@ -624,24 +644,24 @@ export default function Products({ onLogout }: ProductsProps) {
                           <td className="px-4 py-4">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600"><Tag size={12} />{catName}</span>
                           </td>
-                          <td className="px-4 py-4 font-mono font-medium text-slate-700">${parseCost(item.priceDineIn).toFixed(2)}</td>
-                          <td className="px-4 py-4 font-mono font-medium text-slate-700">${parseCost(item.priceTakeaway).toFixed(2)}</td>
+                          <td className="px-4 py-4 price-font font-semibold text-[#1c1917]">${parseCost(item.priceDineIn).toFixed(2)}</td>
+                          <td className="px-4 py-4 price-font font-semibold text-[#1c1917]">${parseCost(item.priceTakeaway).toFixed(2)}</td>
                           <td className="px-4 py-4">
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
-                              <Layers size={12} className="text-indigo-600" />
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-[#8a3f16] bg-[#fdece1] border border-[#f0c9a6] px-2 py-0.5 rounded-md">
+                              <Layers size={12} className="text-[#b5541f]" />
                               {modifierCount} Group{modifierCount !== 1 ? 's' : ''}
                             </span>
                           </td>
                           <td className="px-4 py-4">
                             {item.isAvailable ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md"><CheckCircle2 size={13} /> Active</span>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md"><CheckCircle2 size={13} /> On Menu</span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md"><XCircle size={13} /> Unavailable</span>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-md"><XCircle size={13} /> 86'd</span>
                             )}
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button onClick={() => handleOpenModal(item)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"><Edit2 size={16} /></button>
+                              <button onClick={() => handleOpenModal(item)} className="p-2 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"><Edit2 size={16} /></button>
                               <button onClick={() => setItemToDelete(item)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"><Trash2 size={16} /></button>
                             </div>
                           </td>
@@ -654,21 +674,22 @@ export default function Products({ onLogout }: ProductsProps) {
             )}
 
             {viewMode === 'cards' && (
-              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 bg-slate-50/50">
+              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 bg-[#faf8f4]">
                 {paginatedItems.map((item) => {
                   const hasImages = item.images && item.images.length > 0;
                   const catName = safeCategories.find((c) => c.id === item.categoryId)?.name || 'Unassigned';
                   const modifierCount = item.modifierGroupIds?.length || 0;
                   return (
-                    <div key={item.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between relative group">
-                      <div>
+                    <div key={item.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between relative group overflow-hidden">
+                      <div className="h-1 w-full bg-gradient-to-r from-[#8a3f16] to-[#c2621f]" />
+                      <div className="p-4">
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div>
                             <h4 className="font-bold text-slate-800 text-sm leading-snug line-clamp-2">{item.menuName}</h4>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400"><Tag size={10} />{catName}</span>
                               {modifierCount > 0 && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded"><Layers size={10} />{modifierCount}</span>
+                                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#8a3f16] bg-[#fdece1] px-1.5 py-0.5 rounded"><Layers size={10} />{modifierCount}</span>
                               )}
                             </div>
                           </div>
@@ -679,29 +700,30 @@ export default function Products({ onLogout }: ProductsProps) {
                               <div className="w-14 h-14 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center border border-slate-100"><ImageIcon size={20} /></div>
                             )}
                             {hasImages && item.images!.length > 1 && (
-                              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[9px] font-bold text-white ring-2 ring-white">+{item.images!.length - 1}</span>
+                              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#b5541f] text-[9px] font-bold text-white ring-2 ring-white">+{item.images!.length - 1}</span>
                             )}
                           </div>
                         </div>
-                        <div className="mt-3 space-y-1 text-xs">
+                        <div className="mt-3 space-y-1 text-xs price-font">
                           <div className="flex justify-between">
-                            <span>Dine-In:</span>
-                            <span className="font-semibold">${(item.hasVariants && item.variantPrices?.[0] ? Number(item.variantPrices[0].dineIn) : Number(item.priceDineIn ?? 0)).toFixed(2)}</span>
+                            <span className="text-slate-500 font-sans">Dine-In:</span>
+                            <span className="font-semibold text-[#1c1917]">${(item.hasVariants && item.variantPrices?.[0] ? Number(item.variantPrices[0].dineIn) : Number(item.priceDineIn ?? 0)).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Takeaway:</span>
-                            <span className="font-semibold">${(item.hasVariants && Array.isArray(item.variantPrices) && item.variantPrices.length > 0 ? Number((item.variantPrices[0] as any)?.priceTakeaway ?? (item.variantPrices[0] as any)?.takeaway ?? 0) : Number(item.priceTakeaway ?? 0)).toFixed(2)}</span>
+                            <span className="text-slate-500 font-sans">Takeaway:</span>
+                            <span className="font-semibold text-[#1c1917]">${(item.hasVariants && Array.isArray(item.variantPrices) && item.variantPrices.length > 0 ? Number((item.variantPrices[0] as any)?.priceTakeaway ?? (item.variantPrices[0] as any)?.takeaway ?? 0) : Number(item.priceTakeaway ?? 0)).toFixed(2)}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <div className="ticket-tear-line mx-4" />
+                      <div className="px-4 py-3 flex items-center justify-between">
                         {item.isAvailable ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md"><CheckCircle2 size={12} /> Active</span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md"><CheckCircle2 size={12} /> On Menu</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md"><XCircle size={12} /> Unavailable</span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-md"><XCircle size={12} /> 86'd</span>
                         )}
                         <div className="flex items-center gap-1">
-                          <button onClick={() => handleOpenModal(item)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Edit"><Edit2 size={14} /></button>
+                          <button onClick={() => handleOpenModal(item)} className="p-1.5 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition" title="Edit"><Edit2 size={14} /></button>
                           <button onClick={() => setItemToDelete(item)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete"><Trash2 size={14} /></button>
                         </div>
                       </div>
@@ -716,9 +738,9 @@ export default function Products({ onLogout }: ProductsProps) {
               <div>Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} items</div>
               {totalPages > 1 && (
                 <div className="flex items-center gap-2">
-                  <button disabled={currentPage === 1} onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))} className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"><ChevronLeft size={16} /></button>
-                  <span className="text-xs font-semibold px-2">Page {currentPage} of {totalPages}</span>
-                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))} className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"><ChevronRight size={16} /></button>
+                  <button disabled={currentPage === 1} onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))} className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-[#fdece1] hover:text-[#b5541f] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 transition"><ChevronLeft size={16} /></button>
+                  <span className="text-xs font-semibold px-2 price-font">Page {currentPage} of {totalPages}</span>
+                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))} className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-[#fdece1] hover:text-[#b5541f] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 transition"><ChevronRight size={16} /></button>
                 </div>
               )}
             </div>
@@ -730,12 +752,15 @@ export default function Products({ onLogout }: ProductsProps) {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[88vh] flex flex-col overflow-hidden border border-slate-100">
-            <div className="px-6 py-3.5 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-indigo-600"></div>
-                <h3 className="text-base font-bold text-slate-800">{editingItem ? 'Edit Menu Item' : 'Create Menu Item'}</h3>
+            <div className="px-6 py-4 bg-[#1c1917] flex items-center justify-between shrink-0 border-b-2 border-[#c2621f]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-1.5 h-7 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2621f] leading-none mb-1">Menu Item</p>
+                  <h3 className="ticket-font uppercase text-xl leading-none text-white">{editingItem ? 'Edit Item' : 'New Item'}</h3>
+                </div>
               </div>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/50 transition"><X size={18} /></button>
+              <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"><X size={18} /></button>
             </div>
 
             <form onSubmit={handleSave} className="flex flex-col flex-1 min-h-0">
@@ -749,46 +774,46 @@ export default function Products({ onLogout }: ProductsProps) {
                   )}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Menu Name *</label>
-                    <input type="text" value={menuName} onChange={(e) => { setMenuName(e.target.value); if (!editingItem) { setInvoiceName(e.target.value); setKitchenName(e.target.value); } }} placeholder="e.g. Pepperoni Pizza" className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition" autoFocus />
+                    <input type="text" value={menuName} onChange={(e) => { setMenuName(e.target.value); if (!editingItem) { setInvoiceName(e.target.value); setKitchenName(e.target.value); } }} placeholder="e.g. Pepperoni Pizza" className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] outline-none transition" autoFocus />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Invoice Name</label>
-                      <input type="text" value={invoiceName} onChange={(e) => setInvoiceName(e.target.value)} placeholder="Receipt Name" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-500" />
+                      <input type="text" value={invoiceName} onChange={(e) => setInvoiceName(e.target.value)} placeholder="Receipt Name" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-[#c2621f]" />
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kitchen Name</label>
-                      <input type="text" value={kitchenName} onChange={(e) => setKitchenName(e.target.value)} placeholder="Ticket Name" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-500" />
+                      <input type="text" value={kitchenName} onChange={(e) => setKitchenName(e.target.value)} placeholder="Ticket Name" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-[#c2621f]" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Category</label>
-                      <Select isSearchable placeholder="Category..." value={categoryId ? { value: categoryId, label: safeCategories.find((c) => c.id === categoryId)?.name || '' } : null} onChange={(opt: any) => setCategoryId(opt ? opt.value : null)} options={safeCategories.map((c) => ({ value: c.id, label: c.name }))} styles={{ control: (base) => ({ ...base, borderRadius: '0.5rem', borderColor: '#e2e8f0', minHeight: '34px', fontSize: '0.75rem' }) }} />
+                      <Select isSearchable placeholder="Category..." value={categoryId ? { value: categoryId, label: safeCategories.find((c) => c.id === categoryId)?.name || '' } : null} onChange={(opt: any) => setCategoryId(opt ? opt.value : null)} options={safeCategories.map((c) => ({ value: c.id, label: c.name }))} styles={{ control: (base, state) => ({ ...base, borderRadius: '0.5rem', borderColor: state.isFocused ? '#c2621f' : '#e2e8f0', minHeight: '34px', fontSize: '0.75rem' }), option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff', color: state.isFocused ? '#ffffff' : '#334155' }) }} />
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kitchen Station</label>
-                      <Select isClearable isSearchable placeholder="Station..." value={stationId ? { value: stationId, label: safeStations.find((s) => s.id === stationId)?.name || '' } : null} onChange={(opt: any) => setStationId(opt ? opt.value : null)} options={safeStations.map((s) => ({ value: s.id, label: s.name }))} styles={{ control: (base) => ({ ...base, borderRadius: '0.5rem', borderColor: '#e2e8f0', minHeight: '34px', fontSize: '0.75rem' }) }} />
+                      <Select isClearable isSearchable placeholder="Station..." value={stationId ? { value: stationId, label: safeStations.find((s) => s.id === stationId)?.name || '' } : null} onChange={(opt: any) => setStationId(opt ? opt.value : null)} options={safeStations.map((s) => ({ value: s.id, label: s.name }))} styles={{ control: (base, state) => ({ ...base, borderRadius: '0.5rem', borderColor: state.isFocused ? '#c2621f' : '#e2e8f0', minHeight: '34px', fontSize: '0.75rem' }), option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff', color: state.isFocused ? '#ffffff' : '#334155' }) }} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Country Tax (%)</label>
-                      <input type="number" step="0.01" value={countryTax} onChange={(e) => setCountryTax(e.target.value)} placeholder="e.g. 15.00" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-indigo-500" />
+                      <input type="number" step="0.01" value={countryTax} onChange={(e) => setCountryTax(e.target.value)} placeholder="e.g. 15.00" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs price-font outline-none focus:border-[#c2621f]" />
                     </div>
                     <div className="flex flex-col justify-end">
                       <label htmlFor="is_inventory_tracked" className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 py-2">
-                        <input type="checkbox" id="is_inventory_tracked" checked={isInventoryTracked} onChange={(e) => setIsInventoryTracked(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
+                        <input type="checkbox" id="is_inventory_tracked" checked={isInventoryTracked} onChange={(e) => setIsInventoryTracked(e.target.checked)} className="w-4 h-4 text-[#c2621f] rounded border-slate-300 focus:ring-[#c2621f] cursor-pointer" />
                         Countable
                       </label>
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Description (Public)</label>
-                    <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description shown to customers..." className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none transition" />
+                    <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description shown to customers..." className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] outline-none resize-none transition" />
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <input type="checkbox" id="is_available" checked={isAvailable} onChange={(e) => setIsAvailable(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
+                    <input type="checkbox" id="is_available" checked={isAvailable} onChange={(e) => setIsAvailable(e.target.checked)} className="w-4 h-4 text-[#c2621f] rounded border-slate-300 focus:ring-[#c2621f] cursor-pointer" />
                     <label htmlFor="is_available" className="text-xs font-semibold text-slate-700 cursor-pointer">Available for ordering</label>
                   </div>
                   <div className="pt-2 border-t border-slate-100">
@@ -803,7 +828,7 @@ export default function Products({ onLogout }: ProductsProps) {
                           <button type="button" onClick={(e) => { e.stopPropagation(); removeImage(idx); }} className="absolute -top-1 -right-1 z-10 bg-rose-500 text-white rounded-full p-0.5 shadow transition hover:scale-110"><X size={10} /></button>
                         </div>
                       ))}
-                      <label className="cursor-pointer flex items-center justify-center w-11 h-11 rounded-lg border border-dashed border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/50 text-slate-400 hover:text-indigo-600 transition">
+                      <label className="cursor-pointer flex items-center justify-center w-11 h-11 rounded-lg border border-dashed border-slate-300 hover:border-[#c2621f] hover:bg-[#fdece1]/50 text-slate-400 hover:text-[#b5541f] transition">
                         <Upload size={16} />
                         <input type="file" accept="image/*" multiple onChange={handleMultipleFilesChange} className="hidden" />
                       </label>
@@ -817,10 +842,10 @@ export default function Products({ onLogout }: ProductsProps) {
                   <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                        <Box size={13} className="text-indigo-600" />
+                        <Box size={13} className="text-[#b5541f]" />
                         Raw Materials / Ingredients
                       </span>
-                      <button type="button" onClick={() => setRawMaterials([...rawMaterials, { materialId: '', name: '', unitCost: 0, quantity: 1, totalCost: 0 }])} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800">+ Add Material</button>
+                      <button type="button" onClick={() => setRawMaterials([...rawMaterials, { materialId: '', name: '', unitCost: 0, quantity: 1, totalCost: 0 }])} className="text-[11px] font-semibold text-[#b5541f] hover:text-[#8a3f16]">+ Add Material</button>
                     </div>
                     {rawMaterials.length === 0 ? (
                       <p className="text-[11px] text-slate-400 italic py-1">No raw materials added yet.</p>
@@ -857,26 +882,26 @@ export default function Products({ onLogout }: ProductsProps) {
                                 menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                                 maxMenuHeight={280}
                                 styles={{
-                                  control: (base, state) => ({ ...base, borderRadius: "0.375rem", borderColor: state.isFocused ? "#6366f1" : "#e2e8f0", minHeight: "30px", fontSize: "0.75rem", boxShadow: state.isFocused ? "0 0 0 1px #6366f1" : "none" }),
+                                  control: (base, state) => ({ ...base, borderRadius: "0.375rem", borderColor: state.isFocused ? "#c2621f" : "#e2e8f0", minHeight: "30px", fontSize: "0.75rem", boxShadow: state.isFocused ? "0 0 0 1px #c2621f" : "none" }),
                                   valueContainer: (base) => ({ ...base, padding: "0 6px" }),
                                   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
                                   menu: (base) => ({ ...base, zIndex: 9999, borderRadius: "0.5rem", overflow: "hidden", border: "1px solid #e2e8f0", boxShadow: "0 10px 25px rgba(0,0,0,0.12)" }),
                                   menuList: (base) => ({ ...base, padding: "4px", maxHeight: "280px" }),
-                                  option: (base, state) => ({ ...base, fontSize: "0.75rem", padding: "8px 10px", borderRadius: "0.375rem", cursor: "pointer", backgroundColor: state.isFocused ? "#4f46e5" : state.isSelected ? "#eef2ff" : "#ffffff", color: state.isFocused ? "#ffffff" : state.isSelected ? "#3730a3" : "#334155", fontWeight: state.isFocused || state.isSelected ? 600 : 400 }),
+                                  option: (base, state) => ({ ...base, fontSize: "0.75rem", padding: "8px 10px", borderRadius: "0.375rem", cursor: "pointer", backgroundColor: state.isFocused ? "#b5541f" : state.isSelected ? "#fdece1" : "#ffffff", color: state.isFocused ? "#ffffff" : state.isSelected ? "#8a3f16" : "#334155", fontWeight: state.isFocused || state.isSelected ? 600 : 400 }),
                                 }}
                               />
                             </div>
                             <div className="col-span-2 flex items-center justify-center">
                               <div className="relative w-full max-w-[80px]">
-                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono pointer-events-none">$</span>
-                                <input type="number" step="0.01" min="0" value={mat.unitCost ?? ''} onChange={(e) => { const newUnitCost = parseFloat(e.target.value) || 0; const qty = parseFloat(String((mat as any).quantity ?? 0)) || 0; mat.unitCost = e.target.value; mat.totalCost = (newUnitCost * qty).toFixed(2); setRawMaterials([...rawMaterials]); }} placeholder="0.00" className="w-full pl-4 pr-1 py-0.5 text-xs font-mono font-medium text-slate-700 bg-white border border-slate-200 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-right" />
+                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 price-font pointer-events-none">$</span>
+                                <input type="number" step="0.01" min="0" value={mat.unitCost ?? ''} onChange={(e) => { const newUnitCost = parseFloat(e.target.value) || 0; const qty = parseFloat(String((mat as any).quantity ?? 0)) || 0; mat.unitCost = e.target.value; mat.totalCost = (newUnitCost * qty).toFixed(2); setRawMaterials([...rawMaterials]); }} placeholder="0.00" className="w-full pl-4 pr-1 py-0.5 text-xs price-font font-medium text-slate-700 bg-white border border-slate-200 rounded focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f] outline-none text-right" />
                               </div>
                             </div>
                             <div className="col-span-2">
-                              <input type="number" step="0.01" min="0" value={mat.quantity} onChange={(e) => { const qty = parseCost(e.target.value); const unitCost = parseCost(mat.unitCost); const updated = [...rawMaterials]; updated[mIdx].quantity = e.target.value; updated[mIdx].totalCost = unitCost * qty; setRawMaterials(updated); if (!isManualCost) setCostPrice(updated.reduce((sum, item) => sum + (parseCost(item.totalCost) || 0), 0).toFixed(2)); }} placeholder="Qty" className="w-full border border-slate-200 rounded px-1 py-1 text-xs font-mono text-center outline-none focus:border-indigo-500" />
+                              <input type="number" step="0.01" min="0" value={mat.quantity} onChange={(e) => { const qty = parseCost(e.target.value); const unitCost = parseCost(mat.unitCost); const updated = [...rawMaterials]; updated[mIdx].quantity = e.target.value; updated[mIdx].totalCost = unitCost * qty; setRawMaterials(updated); if (!isManualCost) setCostPrice(updated.reduce((sum, item) => sum + (parseCost(item.totalCost) || 0), 0).toFixed(2)); }} placeholder="Qty" className="w-full border border-slate-200 rounded px-1 py-1 text-xs price-font text-center outline-none focus:border-[#c2621f]" />
                             </div>
                             <div className="col-span-2 text-center">
-                              <span className="text-xs font-mono font-bold text-slate-800">${parseCost(mat.totalCost).toFixed(2)}</span>
+                              <span className="text-xs price-font font-bold text-[#1c1917]">${parseCost(mat.totalCost).toFixed(2)}</span>
                             </div>
                             <div className="col-span-1 text-center">
                               <button type="button" onClick={() => { const updated = rawMaterials.filter((_, i) => i !== mIdx); setRawMaterials(updated); if (!isManualCost) setCostPrice(updated.reduce((sum, item) => sum + (parseCost(item.totalCost) || 0), 0).toFixed(2)); }} className="text-slate-300 hover:text-rose-500 p-1 rounded transition"><X size={14} /></button>
@@ -888,10 +913,10 @@ export default function Products({ onLogout }: ProductsProps) {
                     <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-slate-600">Total Material Cost:</span>
-                        <span className="text-xs font-mono font-bold text-slate-800">${calculatedRawCost.toFixed(2)}</span>
+                        <span className="text-xs price-font font-bold text-[#1c1917]">${calculatedRawCost.toFixed(2)}</span>
                       </div>
                       <label htmlFor="manual_cost_toggle" className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-500">
-                        <input type="checkbox" id="manual_cost_toggle" checked={isManualCost} onChange={(e) => { const checked = e.target.checked; setIsManualCost(checked); if (!checked) setCostPrice(calculatedRawCost.toFixed(2)); }} className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 cursor-pointer" />
+                        <input type="checkbox" id="manual_cost_toggle" checked={isManualCost} onChange={(e) => { const checked = e.target.checked; setIsManualCost(checked); if (!checked) setCostPrice(calculatedRawCost.toFixed(2)); }} className="w-3.5 h-3.5 text-[#c2621f] rounded border-slate-300 cursor-pointer" />
                         Manual Cost Override
                       </label>
                     </div>
@@ -901,8 +926,8 @@ export default function Products({ onLogout }: ProductsProps) {
                   <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pricing &amp; Sizes</span>
-                      <label htmlFor="has_variants" className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-indigo-600">
-                        <input type="checkbox" id="has_variants" checked={hasVariants} onChange={(e) => setHasVariants(e.target.checked)} className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer" />
+                      <label htmlFor="has_variants" className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-[#b5541f]">
+                        <input type="checkbox" id="has_variants" checked={hasVariants} onChange={(e) => setHasVariants(e.target.checked)} className="w-3.5 h-3.5 text-[#c2621f] rounded border-slate-300 focus:ring-[#c2621f] cursor-pointer" />
                         Has Sizes (e.g. Pizza Sizes)
                       </label>
                     </div>
@@ -910,7 +935,7 @@ export default function Products({ onLogout }: ProductsProps) {
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="text-[10px] text-slate-400 font-medium">Set price tiers per size. Typing Dine-In auto-fills empty tiers.</span>
-                          <button type="button" onClick={() => setVariants([...variants, { size: '', dineIn: '', takeaway: '', delivery: '', waiter: '' }])} className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800">+ Add Size</button>
+                          <button type="button" onClick={() => setVariants([...variants, { size: '', dineIn: '', takeaway: '', delivery: '', waiter: '' }])} className="text-[11px] font-semibold text-[#b5541f] hover:text-[#8a3f16]">+ Add Size</button>
                         </div>
                         <div className="grid grid-cols-12 gap-1.5 px-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                           <span className="col-span-3">Size</span>
@@ -924,12 +949,12 @@ export default function Products({ onLogout }: ProductsProps) {
                           {variants.map((variant, vIdx) => (
                             <div key={vIdx} className="grid grid-cols-12 gap-1.5 items-center bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm">
                               <div className="col-span-3">
-                                <input type="text" value={variant.size} onChange={(e) => { const updated = [...variants]; updated[vIdx].size = e.target.value; setVariants(updated); }} placeholder="e.g. Small" className="w-full border border-slate-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500" />
+                                <input type="text" value={variant.size} onChange={(e) => { const updated = [...variants]; updated[vIdx].size = e.target.value; setVariants(updated); }} placeholder="e.g. Small" className="w-full border border-slate-200 rounded px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-[#c2621f]" />
                               </div>
-                              <div className="col-span-2"><input type="number" step="0.01" value={variant.dineIn} onChange={(e) => handleVariantPriceChange(vIdx, 'dineIn', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs font-mono font-semibold text-indigo-950 focus:border-indigo-500 bg-indigo-50/20 outline-none text-center" /></div>
-                              <div className="col-span-2"><input type="number" step="0.01" value={variant.takeaway} onChange={(e) => handleVariantPriceChange(vIdx, 'takeaway', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-slate-700 focus:border-indigo-500 outline-none text-center" /></div>
-                              <div className="col-span-2"><input type="number" step="0.01" value={variant.delivery} onChange={(e) => handleVariantPriceChange(vIdx, 'delivery', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-slate-700 focus:border-indigo-500 outline-none text-center" /></div>
-                              <div className="col-span-2"><input type="number" step="0.01" value={variant.waiter} onChange={(e) => handleVariantPriceChange(vIdx, 'waiter', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs font-mono text-slate-700 focus:border-indigo-500 outline-none text-center" /></div>
+                              <div className="col-span-2"><input type="number" step="0.01" value={variant.dineIn} onChange={(e) => handleVariantPriceChange(vIdx, 'dineIn', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs price-font font-semibold text-[#5c2a0c] focus:border-[#c2621f] bg-[#fdece1]/40 outline-none text-center" /></div>
+                              <div className="col-span-2"><input type="number" step="0.01" value={variant.takeaway} onChange={(e) => handleVariantPriceChange(vIdx, 'takeaway', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs price-font text-slate-700 focus:border-[#c2621f] outline-none text-center" /></div>
+                              <div className="col-span-2"><input type="number" step="0.01" value={variant.delivery} onChange={(e) => handleVariantPriceChange(vIdx, 'delivery', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs price-font text-slate-700 focus:border-[#c2621f] outline-none text-center" /></div>
+                              <div className="col-span-2"><input type="number" step="0.01" value={variant.waiter} onChange={(e) => handleVariantPriceChange(vIdx, 'waiter', e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded px-1.5 py-1 text-xs price-font text-slate-700 focus:border-[#c2621f] outline-none text-center" /></div>
                               <div className="col-span-1 text-center"><button type="button" onClick={() => setVariants(variants.filter((_, i) => i !== vIdx))} className="text-slate-300 hover:text-rose-500 p-1 rounded transition"><X size={14} /></button></div>
                             </div>
                           ))}
@@ -945,12 +970,12 @@ export default function Products({ onLogout }: ProductsProps) {
                         ].map(({ label, value, setter }) => (
                           <div key={label}>
                             <label className="block text-[10px] font-medium text-slate-500 mb-0.5">{label}</label>
-                            <input type="number" step="0.01" value={value} onChange={(e) => setter(e.target.value)} className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs font-mono font-medium focus:border-indigo-500 bg-white outline-none" />
+                            <input type="number" step="0.01" value={value} onChange={(e) => setter(e.target.value)} className="w-full border border-slate-200 rounded-md px-2 py-1 text-xs price-font font-medium focus:border-[#c2621f] bg-white outline-none" />
                           </div>
                         ))}
                         <div>
                           <label className="block text-[10px] font-medium text-slate-500 mb-0.5">Cost Price</label>
-                          <input type="number" step="0.01" disabled={!isManualCost} value={isManualCost ? costPrice : calculatedRawCost.toFixed(2)} onChange={(e) => setCostPrice(e.target.value)} className={`w-full border rounded-md px-2 py-1 text-xs font-mono outline-none ${isManualCost ? 'border-slate-200 bg-white text-slate-800' : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'}`} />
+                          <input type="number" step="0.01" disabled={!isManualCost} value={isManualCost ? costPrice : calculatedRawCost.toFixed(2)} onChange={(e) => setCostPrice(e.target.value)} className={`w-full border rounded-md px-2 py-1 text-xs price-font outline-none ${isManualCost ? 'border-slate-200 bg-white text-slate-800' : 'border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed'}`} />
                         </div>
                       </div>
                     )}
@@ -959,10 +984,10 @@ export default function Products({ onLogout }: ProductsProps) {
                   {/* === FANCY ATTACHED MODIFIER GROUPS === */}
                   <div className="rounded-xl border border-slate-200 overflow-hidden">
                     {/* Section Header */}
-                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-slate-800 to-slate-700">
+                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-[#1c1917] to-[#33291f]">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
-                          <Sliders size={13} className="text-white" />
+                        <div className="w-6 h-6 rounded-lg bg-[#c2621f]/20 flex items-center justify-center">
+                          <Sliders size={13} className="text-[#e8ceb8]" />
                         </div>
                         <div>
                           <span className="text-xs font-bold text-white">Modifier Groups</span>
@@ -996,7 +1021,7 @@ export default function Products({ onLogout }: ProductsProps) {
                           <input
                             type="text"
                             placeholder="Search modifier groups..."
-                            className="w-full pl-7 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/20"
+                            className="w-full pl-7 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]/20"
                           />
                         </div>
                       </div>
@@ -1081,7 +1106,7 @@ export default function Products({ onLogout }: ProductsProps) {
               {/* Footer */}
               <div className="flex items-center justify-end gap-2.5 px-6 py-3 bg-slate-50 border-t border-slate-100 shrink-0">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
-                <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95">
+                <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95">
                   <Plus className="h-4 w-4" />
                   Save Item
                 </button>
