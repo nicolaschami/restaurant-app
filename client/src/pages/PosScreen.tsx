@@ -17,6 +17,8 @@ import {
   Moon,
   UtensilsCrossed,
   X,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -72,7 +74,7 @@ export interface Item {
   id: number;
   catId: number;
   name: string;
-  price: number; // resolved for the current orderType (min variant price if hasVariants)
+  price: number;
   description?: string;
   image?: string;
   hasVariants: boolean;
@@ -83,7 +85,7 @@ export interface BasketItem {
   cartItemId: string;
   item: Item;
   quantity: number;
-  variantSize?: string; // set when the item was added from a variant
+  variantSize?: string;
 }
 
 interface Category {
@@ -116,11 +118,10 @@ const variantKeyByOrderType: Record<OrderType, keyof VariantPrice> = {
 
 const flatKeyByOrderType: Record<OrderType, 'priceDineIn' | 'priceTakeaway' | 'priceDelivery'> = {
   'Dine-In': 'priceDineIn',
-  'Take Away': 'priceTakeaway',
-  'Delivery': 'priceDelivery',
+  'Take Away': 'takeaway',
+  'Delivery': 'delivery',
 };
 
-/** Lowest available price for the given order type — used for the card display. */
 const resolveMinPrice = (raw: ApiMenuItem, orderType: OrderType): number => {
   if (raw.hasVariants && raw.variantPrices?.length) {
     const key = variantKeyByOrderType[orderType];
@@ -132,7 +133,6 @@ const resolveMinPrice = (raw: ApiMenuItem, orderType: OrderType): number => {
   return Number(raw[flatKeyByOrderType[orderType]]) || 0;
 };
 
-/** Price for one specific variant size at the given order type. */
 const resolveVariantPrice = (variant: VariantPrice, orderType: OrderType): number => {
   const key = variantKeyByOrderType[orderType];
   return Number(variant[key]) || 0;
@@ -204,8 +204,6 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
     fetchAll();
   }, [onLogout]);
 
-  /* ---------- DERIVED DISPLAY ITEMS (re-priced whenever orderType changes) ---------- */
-
   const displayItems: Item[] = useMemo(
     () =>
       rawMenuItems.map((raw) => ({
@@ -229,8 +227,6 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
 
   const activeCategory = categories.find((c) => c.id === activeCat);
 
-  /* ---------- BASKET ---------- */
-
   const handleItemClick = (item: Item) => {
     if (item.hasVariants) {
       const raw = rawMenuItems.find((r) => r.id === item.id);
@@ -243,7 +239,6 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
   const addToBasket = (item: Item, variant?: VariantPrice) => {
     const price = variant ? resolveVariantPrice(variant, orderType) : item.price;
     const variantSize = variant?.size;
-    // Same format on both sides of the comparison: id + variant size (empty string when none).
     const matchKey = `${item.id}-${variantSize ?? ''}`;
 
     setBasket((prev) => {
@@ -283,6 +278,10 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
     );
   };
 
+  const removeItem = (cartItemId: string) => {
+    setBasket((prev) => prev.filter((b) => b.cartItemId !== cartItemId));
+  };
+
   const subtotal = basket.reduce((acc, b) => acc + b.item.price * b.quantity, 0);
   const tax = subtotal * 0.1;
   const total = subtotal + tax;
@@ -294,7 +293,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
   return (
     <div className="pos-root" data-theme={theme}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
         .pos-root {
           font-family: 'Inter', sans-serif;
@@ -315,7 +314,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           --panel: #1b2620;
           --panel-2: #212e26;
           --card: #24322a;
-          --card-hover: #2b3b31;
+          --card-hover: #2c3e34;
           --hairline: #34453a;
           --brass: #c9a24b;
           --brass-soft: #e0c887;
@@ -326,7 +325,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           --muted: #93a094;
           --muted-2: #6f7d70;
           --toggle-icon: #e0c887;
-          --overlay: rgba(6, 10, 8, 0.6);
+          --overlay: rgba(6, 10, 8, 0.65);
           background: var(--bg);
           color: var(--text-primary);
         }
@@ -349,12 +348,13 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           --muted: #6e6045;
           --muted-2: #8f7f5c;
           --toggle-icon: #916b28;
-          --overlay: rgba(43, 33, 21, 0.35);
+          --overlay: rgba(43, 33, 21, 0.4);
           background: var(--bg);
           color: var(--text-primary);
         }
+
         .pos-root[data-theme='light'] .item-card {
-          box-shadow: 0 1px 2px rgba(43,33,21,0.06);
+          box-shadow: 0 4px 12px rgba(43,33,21,0.05);
         }
         .pos-root[data-theme='light'] .brand-mark,
         .pos-root[data-theme='light'] .btn-pay {
@@ -381,6 +381,8 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           justify-content: space-between;
           padding: 0 28px;
           transition: background 0.25s ease, border-color 0.25s ease;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          z-index: 10;
         }
         .brand {
           display: flex;
@@ -388,23 +390,23 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           gap: 14px;
         }
         .brand-mark {
-          width: 38px;
-          height: 38px;
-          border-radius: 3px;
-          background: linear-gradient(150deg, var(--brass-soft), var(--brass-dim));
+          width: 40px;
+          height: 40px;
+          border-radius: 8px;
+          background: linear-gradient(135deg, var(--brass-soft), var(--brass-dim));
           display: flex;
           align-items: center;
           justify-content: center;
           color: #201a0c;
           font-family: 'Fraunces', serif;
           font-weight: 700;
-          font-size: 17px;
-          box-shadow: 0 2px 10px rgba(201,162,75,0.25);
+          font-size: 18px;
+          box-shadow: 0 3px 12px rgba(201,162,75,0.25);
         }
         .brand-text h1 {
           font-family: 'Fraunces', serif;
           font-weight: 600;
-          font-size: 17px;
+          font-size: 18px;
           letter-spacing: 0.02em;
           color: var(--text-heading);
           margin: 0;
@@ -434,39 +436,40 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           justify-content: center;
           cursor: pointer;
           color: var(--toggle-icon);
-          transition: all 0.18s ease;
+          transition: all 0.2s ease;
           flex-shrink: 0;
         }
         .theme-toggle:hover {
           background: var(--card-hover);
           border-color: var(--brass-dim);
+          transform: scale(1.05);
         }
 
         .order-switch {
           display: flex;
-          gap: 2px;
+          gap: 4px;
           background: var(--bg);
           border: 1px solid var(--hairline);
-          border-radius: 8px;
-          padding: 3px;
+          border-radius: 10px;
+          padding: 4px;
         }
         .order-switch button {
           font-family: 'Inter', sans-serif;
           font-size: 11.5px;
           font-weight: 600;
           letter-spacing: 0.02em;
-          padding: 7px 16px;
-          border-radius: 6px;
+          padding: 8px 18px;
+          border-radius: 7px;
           border: none;
           background: transparent;
           color: var(--muted);
           cursor: pointer;
-          transition: all 0.18s ease;
+          transition: all 0.2s ease;
         }
         .order-switch button.active {
           background: var(--brass);
           color: #201a0c;
-          box-shadow: 0 2px 8px rgba(201,162,75,0.3);
+          box-shadow: 0 2px 10px rgba(201,162,75,0.3);
         }
         .order-switch button:not(.active):hover {
           color: var(--text-heading);
@@ -476,7 +479,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         .pos-body {
           flex: 1;
           display: grid;
-          grid-template-columns: 220px 1fr 350px;
+          grid-template-columns: 230px 1fr 380px;
           overflow: hidden;
         }
 
@@ -488,42 +491,50 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 3px;
+          gap: 6px;
           transition: background 0.25s ease, border-color 0.25s ease;
         }
         .cat-label {
           font-size: 10px;
-          font-weight: 600;
+          font-weight: 700;
           letter-spacing: 0.16em;
           text-transform: uppercase;
           color: var(--muted-2);
-          padding: 0 8px 12px;
+          padding: 0 10px 10px;
         }
         .cat-btn {
           display: flex;
           align-items: center;
-          gap: 11px;
+          gap: 12px;
           width: 100%;
-          padding: 10px 10px;
-          border-radius: 7px;
-          border: none;
+          padding: 12px;
+          border-radius: 9px;
+          border: 1px solid transparent;
           background: transparent;
           cursor: pointer;
           text-align: left;
-          transition: background 0.15s ease;
+          transition: all 0.2s ease;
           position: relative;
         }
-        .cat-btn:hover { background: var(--panel-2); }
-        .cat-btn.active { background: var(--panel-2); }
+        .cat-btn:hover {
+          background: var(--panel-2);
+          transform: translateX(2px);
+        }
+        .cat-btn.active {
+          background: var(--panel-2);
+          border-color: var(--hairline);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
         .cat-btn.active::before {
           content: '';
           position: absolute;
           left: -12px;
-          top: 8px;
-          bottom: 8px;
-          width: 3px;
+          top: 10px;
+          bottom: 10px;
+          width: 4px;
           background: var(--brass);
-          border-radius: 0 3px 3px 0;
+          border-radius: 0 4px 4px 0;
+          box-shadow: 0 0 10px var(--brass);
         }
         .cat-no {
           font-family: 'IBM Plex Mono', monospace;
@@ -532,20 +543,26 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           width: 16px;
           flex-shrink: 0;
         }
-        .cat-btn.active .cat-no { color: var(--brass); }
+        .cat-btn.active .cat-no { color: var(--brass); font-weight: 600; }
         .cat-icon-wrap {
-          width: 26px;
-          height: 26px;
-          border-radius: 6px;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
           background: var(--panel);
+          border: 1px solid var(--hairline);
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
+          transition: all 0.2s ease;
         }
-        .cat-btn.active .cat-icon-wrap { background: var(--brass); }
+        .cat-btn.active .cat-icon-wrap {
+          background: var(--brass);
+          border-color: var(--brass);
+          box-shadow: 0 2px 8px rgba(201,162,75,0.3);
+        }
         .cat-btn span.label {
-          font-size: 12.5px;
+          font-size: 13px;
           font-weight: 500;
           color: var(--muted);
           white-space: nowrap;
@@ -557,7 +574,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         /* ---------- MENU / PRODUCTS ---------- */
         .menu-col {
           background: var(--bg);
-          padding: 24px 26px;
+          padding: 24px 28px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
@@ -566,30 +583,30 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           display: flex;
           align-items: baseline;
           justify-content: space-between;
-          margin-bottom: 16px;
+          margin-bottom: 18px;
         }
         .menu-heading h2 {
           font-family: 'Fraunces', serif;
           font-style: italic;
           font-weight: 500;
-          font-size: 22px;
+          font-size: 24px;
           color: var(--text-heading);
           margin: 0;
         }
         .menu-heading span {
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 10.5px;
+          font-size: 11px;
           color: var(--muted-2);
         }
 
         .search-wrap {
           position: relative;
-          margin-bottom: 20px;
+          margin-bottom: 22px;
           flex-shrink: 0;
         }
         .search-wrap svg {
           position: absolute;
-          left: 13px;
+          left: 14px;
           top: 50%;
           transform: translateY(-50%);
           color: var(--muted-2);
@@ -598,17 +615,18 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           width: 100%;
           background: var(--panel);
           border: 1px solid var(--hairline);
-          border-radius: 8px;
-          padding: 10px 14px 10px 38px;
-          font-size: 12px;
+          border-radius: 10px;
+          padding: 12px 16px 12px 42px;
+          font-size: 13px;
           font-family: 'Inter', sans-serif;
           color: var(--text-primary);
+          transition: all 0.2s ease;
         }
         .search-wrap input::placeholder { color: var(--muted-2); }
         .search-wrap input:focus {
           outline: none;
           border-color: var(--brass-dim);
-          box-shadow: 0 0 0 3px rgba(201,162,75,0.12);
+          box-shadow: 0 0 0 3px rgba(201,162,75,0.15);
         }
 
         .items-scroll {
@@ -618,76 +636,131 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         }
         .items-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-          gap: 13px;
+          grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+          gap: 16px;
         }
 
         .item-card {
           background: var(--card);
           border: 1px solid var(--hairline);
-          border-radius: 10px;
-          padding: 15px;
+          border-radius: 12px;
+          overflow: hidden;
           cursor: pointer;
-          transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          min-height: 122px;
           position: relative;
         }
         .item-card:hover {
           background: var(--card-hover);
           border-color: var(--brass-dim);
-          transform: translateY(-2px);
+          transform: translateY(-3px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.2);
         }
         .item-card:active { transform: translateY(0) scale(0.98); }
 
+        .item-img-wrap {
+          width: 100%;
+          height: 110px;
+          background: var(--panel-2);
+          position: relative;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .item-img-wrap img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          transition: transform 0.3s ease;
+        }
+        .item-card:hover .item-img-wrap img {
+          transform: scale(1.05);
+        }
+        .item-placeholder-icon {
+          color: var(--muted-2);
+          opacity: 0.6;
+        }
+
+        .variant-badge {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: var(--bg-deep);
+          border: 1px solid var(--hairline);
+          color: var(--brass-soft);
+          font-size: 9.5px;
+          font-weight: 600;
+          padding: 3px 7px;
+          border-radius: 6px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          backdrop-filter: blur(4px);
+        }
+
+        .item-content {
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          justify-content: space-between;
+        }
         .item-name {
           font-family: 'Fraunces', serif;
           font-weight: 500;
-          font-size: 14.5px;
+          font-size: 15px;
           color: var(--text-heading);
+          line-height: 1.3;
         }
         .item-desc {
           font-size: 11px;
           color: var(--muted);
-          margin-top: 4px;
+          margin-top: 5px;
           line-height: 1.4;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
+
         .item-footer {
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           justify-content: space-between;
-          margin-top: 12px;
+          margin-top: 14px;
           padding-top: 10px;
           border-top: 1px dashed var(--hairline);
         }
         .item-price {
           font-family: 'IBM Plex Mono', monospace;
-          font-weight: 500;
-          font-size: 13.5px;
+          font-weight: 600;
+          font-size: 14px;
           color: var(--brass-soft);
         }
         .item-price .from {
-          font-size: 9.5px;
+          font-size: 10px;
           text-transform: uppercase;
           letter-spacing: 0.06em;
           color: var(--muted-2);
-          margin-right: 3px;
+          margin-right: 4px;
         }
         .item-add {
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
           background: var(--panel-2);
+          border: 1px solid var(--hairline);
           color: var(--muted);
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
         .item-card:hover .item-add {
           background: var(--brass);
+          border-color: var(--brass);
           color: #201a0c;
         }
 
@@ -698,10 +771,10 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           text-align: center;
         }
         .items-state-msg {
-          font-size: 13px;
+          font-size: 14px;
           color: var(--muted-2);
           text-align: center;
-          padding: 40px 0;
+          padding: 60px 0;
           font-family: 'Fraunces', serif;
           font-style: italic;
         }
@@ -714,9 +787,10 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           flex-direction: column;
           overflow: hidden;
           transition: background 0.25s ease, border-color 0.25s ease;
+          box-shadow: -4px 0 15px rgba(0,0,0,0.05);
         }
         .ticket-head {
-          padding: 20px 20px 16px;
+          padding: 22px 22px 18px;
           border-bottom: 1px dashed var(--hairline);
           flex-shrink: 0;
         }
@@ -724,12 +798,12 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
         }
         .ticket-head-top h2 {
           font-family: 'Fraunces', serif;
           font-style: italic;
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 500;
           color: var(--text-heading);
           margin: 0;
@@ -737,14 +811,15 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         .ticket-no {
           font-family: 'IBM Plex Mono', monospace;
           font-size: 11px;
+          font-weight: 600;
           color: var(--brass);
-          background: rgba(201,162,75,0.1);
+          background: rgba(201,162,75,0.12);
           border: 1px solid rgba(201,162,75,0.3);
-          padding: 3px 8px;
-          border-radius: 4px;
+          padding: 4px 10px;
+          border-radius: 6px;
         }
         .ticket-meta {
-          font-size: 11px;
+          font-size: 11.5px;
           color: var(--muted-2);
           display: flex;
           gap: 10px;
@@ -753,7 +828,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         .ticket-body {
           flex: 1;
           overflow-y: auto;
-          padding: 6px 20px;
+          padding: 10px 22px;
         }
         .ticket-empty {
           height: 100%;
@@ -761,53 +836,62 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 10px;
+          gap: 12px;
           color: var(--muted-2);
         }
-        .ticket-empty span { font-size: 12px; font-family: 'Fraunces', serif; font-style: italic; }
+        .ticket-empty span { font-size: 13px; font-family: 'Fraunces', serif; font-style: italic; }
 
         .ticket-line {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 10px;
-          padding: 12px 0;
+          gap: 12px;
+          padding: 14px 0;
           border-bottom: 1px dotted var(--hairline);
+          transition: background 0.15s ease;
         }
         .ticket-line:last-child { border-bottom: none; }
+        .ticket-line-details { flex: 1; }
         .ticket-line-name {
           font-family: 'Fraunces', serif;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 500;
           color: var(--text-primary);
+          display: flex;
+          align-items: center;
         }
         .ticket-line-name .size-tag {
           font-family: 'Inter', sans-serif;
-          font-size: 10px;
-          font-weight: 600;
+          font-size: 9.5px;
+          font-weight: 700;
           color: var(--brass);
-          margin-left: 6px;
+          background: var(--panel);
+          border: 1px solid var(--hairline);
+          padding: 1px 6px;
+          border-radius: 4px;
+          margin-left: 8px;
+          text-transform: uppercase;
         }
         .ticket-line-price {
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 11px;
-          color: var(--muted);
-          margin-top: 2px;
+          font-size: 12px;
+          color: var(--brass-soft);
+          margin-top: 4px;
         }
         .qty-stepper {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
           background: var(--panel);
           border: 1px solid var(--hairline);
-          border-radius: 7px;
-          padding: 3px 4px;
+          border-radius: 8px;
+          padding: 4px;
           flex-shrink: 0;
         }
         .qty-stepper button {
-          width: 20px;
-          height: 20px;
-          border-radius: 5px;
+          width: 22px;
+          height: 22px;
+          border-radius: 6px;
           border: none;
           background: transparent;
           color: var(--muted);
@@ -815,16 +899,27 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           align-items: center;
           justify-content: center;
           cursor: pointer;
+          transition: all 0.15s ease;
         }
         .qty-stepper button:hover { background: var(--card-hover); color: var(--text-heading); }
         .qty-stepper span {
           font-family: 'IBM Plex Mono', monospace;
           font-size: 12px;
-          font-weight: 500;
+          font-weight: 600;
           color: var(--text-heading);
-          width: 14px;
+          width: 16px;
           text-align: center;
         }
+        .btn-remove-line {
+          border: none;
+          background: transparent;
+          color: var(--muted-2);
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          transition: color 0.15s ease;
+        }
+        .btn-remove-line:hover { color: var(--rust); }
 
         .tear {
           position: relative;
@@ -843,125 +938,135 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         }
 
         .ticket-summary {
-          padding: 16px 20px 20px;
+          padding: 18px 22px 22px;
           flex-shrink: 0;
+          background: var(--panel);
+          border-top: 1px solid var(--hairline);
         }
         .sum-row {
           display: flex;
           justify-content: space-between;
-          font-size: 12px;
+          font-size: 12.5px;
           color: var(--muted);
-          padding: 3px 0;
+          padding: 4px 0;
         }
         .sum-row .mono { color: var(--text-primary); }
         .sum-total {
           display: flex;
           justify-content: space-between;
           align-items: baseline;
-          margin-top: 8px;
-          padding-top: 12px;
-          border-top: 1px solid var(--hairline);
+          margin-top: 10px;
+          padding-top: 14px;
+          border-top: 1px dashed var(--hairline);
         }
         .sum-total-label {
           font-family: 'Fraunces', serif;
           font-style: italic;
-          font-size: 14px;
+          font-size: 15px;
           color: var(--text-heading);
         }
         .sum-total-value {
           font-family: 'IBM Plex Mono', monospace;
-          font-weight: 500;
-          font-size: 19px;
+          font-weight: 600;
+          font-size: 22px;
           color: var(--brass-soft);
         }
 
         .action-row {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 8px;
-          margin-top: 16px;
+          gap: 10px;
+          margin-top: 18px;
         }
         .btn-ghost {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 7px;
-          padding: 10px;
-          border-radius: 8px;
-          font-size: 11.5px;
+          gap: 8px;
+          padding: 11px;
+          border-radius: 9px;
+          font-size: 12px;
           font-weight: 600;
           cursor: pointer;
           border: 1px solid var(--hairline);
           background: transparent;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
           color: var(--muted);
         }
         .btn-ghost.clear { color: var(--rust); border-color: rgba(177,87,58,0.35); }
-        .btn-ghost.clear:hover { background: rgba(177,87,58,0.1); }
+        .btn-ghost.clear:hover { background: rgba(177,87,58,0.12); }
         .btn-ghost.hold:hover { background: var(--panel-2); color: var(--text-heading); }
 
         .btn-pay {
           grid-column: 1 / -1;
-          margin-top: 8px;
+          margin-top: 4px;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 9px;
-          padding: 14px;
-          border-radius: 9px;
+          gap: 10px;
+          padding: 15px;
+          border-radius: 10px;
           border: none;
           background: linear-gradient(135deg, var(--brass-soft), var(--brass-dim));
           color: #201a0c;
           font-weight: 700;
-          font-size: 12.5px;
+          font-size: 13.5px;
           letter-spacing: 0.02em;
           cursor: pointer;
-          box-shadow: 0 6px 18px rgba(201,162,75,0.25);
-          transition: transform 0.12s ease, box-shadow 0.12s ease;
+          box-shadow: 0 6px 20px rgba(201,162,75,0.25);
+          transition: all 0.2s ease;
         }
-        .btn-pay:hover { box-shadow: 0 8px 22px rgba(201,162,75,0.35); }
-        .btn-pay:active { transform: scale(0.98); }
-        .btn-pay:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-pay:hover:not(:disabled) {
+          box-shadow: 0 8px 25px rgba(201,162,75,0.38);
+          transform: translateY(-1px);
+        }
+        .btn-pay:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+        .btn-pay:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
         /* ---------- VARIANT MODAL ---------- */
         .modal-overlay {
-          position: absolute;
+          position: fixed;
           inset: 0;
           background: var(--overlay);
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 50;
-          backdrop-filter: blur(2px);
+          z-index: 100;
+          backdrop-filter: blur(4px);
         }
         .modal-card {
-          width: 340px;
+          width: 360px;
           max-width: 90%;
           background: var(--panel);
           border: 1px solid var(--hairline);
-          border-radius: 14px;
-          padding: 20px;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+          border-radius: 16px;
+          padding: 24px;
+          box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+          animation: modalIn 0.2s ease-out;
+        }
+        @keyframes modalIn {
+          from { opacity: 0; transform: scale(0.95) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
         }
         .modal-head {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
         }
         .modal-head h3 {
           font-family: 'Fraunces', serif;
           font-style: italic;
-          font-size: 17px;
+          font-size: 19px;
           font-weight: 500;
           color: var(--text-heading);
           margin: 0;
         }
         .modal-close {
-          width: 26px;
-          height: 26px;
-          border-radius: 6px;
-          border: none;
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          border: 1px solid var(--hairline);
           background: var(--panel-2);
           color: var(--muted);
           display: flex;
@@ -969,49 +1074,51 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           justify-content: center;
           cursor: pointer;
           flex-shrink: 0;
+          transition: all 0.15s ease;
         }
         .modal-close:hover { background: var(--card-hover); color: var(--text-heading); }
         .modal-sub {
-          font-size: 11px;
+          font-size: 12px;
           color: var(--muted-2);
-          margin-bottom: 16px;
+          margin-bottom: 20px;
         }
         .variant-list {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 10px;
         }
         .variant-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 12px 14px;
-          border-radius: 9px;
+          padding: 14px 16px;
+          border-radius: 10px;
           border: 1px solid var(--hairline);
           background: var(--card);
           cursor: pointer;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
         .variant-row:hover {
           border-color: var(--brass-dim);
           background: var(--card-hover);
-          transform: translateY(-1px);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .variant-row .size {
           font-family: 'Fraunces', serif;
-          font-size: 13.5px;
+          font-size: 14px;
           color: var(--text-heading);
         }
         .variant-row .price {
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 13px;
+          font-size: 14px;
           color: var(--brass-soft);
-          font-weight: 500;
+          font-weight: 600;
         }
 
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 8px; }
+        ::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 6px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); }
       `}</style>
 
@@ -1050,7 +1157,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
       <div className="pos-body">
         {/* CATEGORY RAIL */}
         <aside className="cat-rail">
-          <span className="cat-label">Menu</span>
+          <span className="cat-label">Categories</span>
 
           {isLoadingCategories && <div className="cat-state-msg">Loading categories…</div>}
           {error && <div className="cat-state-msg" style={{ color: 'var(--rust)' }}>{error}</div>}
@@ -1067,7 +1174,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
                 <span className="cat-no mono">{cat.no}</span>
                 <span className="cat-icon-wrap">
                   <Icon
-                    className="w-3.5 h-3.5"
+                    className="w-4 h-4"
                     color={isActive ? iconColor : undefined}
                     style={!isActive ? { color: inactiveIconColor } : undefined}
                   />
@@ -1082,14 +1189,14 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         <main className="menu-col">
           <div className="menu-heading">
             <h2>{activeCategory?.label || 'All Items'}</h2>
-            <span className="mono">{String(filteredItems.length).padStart(2, '0')} items</span>
+            <span className="mono">{String(filteredItems.length).padStart(2, '0')} items available</span>
           </div>
 
           <div className="search-wrap">
             <Search className="w-4 h-4" />
             <input
               type="text"
-              placeholder="Search the menu…"
+              placeholder="Search items by name or keywords…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -1099,23 +1206,33 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
             {isLoadingItems ? (
               <div className="items-state-msg">Loading the menu…</div>
             ) : filteredItems.length === 0 ? (
-              <div className="items-state-msg">No items match here</div>
+              <div className="items-state-msg">No items found matching your search</div>
             ) : (
               <div className="items-grid">
                 {filteredItems.map((item) => (
                   <div key={item.id} className="item-card" onClick={() => handleItemClick(item)}>
-                    <div>
-                      <div className="item-name">{item.name}</div>
-                      {item.description && <div className="item-desc">{item.description}</div>}
+                    <div className="item-img-wrap">
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} loading="lazy" />
+                      ) : (
+                        <Sparkles className="w-6 h-6 item-placeholder-icon" />
+                      )}
+                      {item.hasVariants && <span className="variant-badge">Options</span>}
                     </div>
-                    <div className="item-footer">
-                      <span className="item-price">
-                        {item.hasVariants && <span className="from">From</span>}
-                        ${item.price.toFixed(2)}
-                      </span>
-                      <span className="item-add">
-                        <Plus className="w-3 h-3" />
-                      </span>
+                    <div className="item-content">
+                      <div>
+                        <div className="item-name">{item.name}</div>
+                        {item.description && <div className="item-desc">{item.description}</div>}
+                      </div>
+                      <div className="item-footer">
+                        <span className="item-price">
+                          {item.hasVariants && <span className="from">From</span>}
+                          ${item.price.toFixed(2)}
+                        </span>
+                        <span className="item-add">
+                          <Plus className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1128,7 +1245,7 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
         <aside className="ticket-col">
           <div className="ticket-head">
             <div className="ticket-head-top">
-              <h2>Order Ticket</h2>
+              <h2>Current Order</h2>
               <span className="ticket-no">#{ticketNo}</span>
             </div>
             <div className="ticket-meta">
@@ -1141,13 +1258,13 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
           <div className="ticket-body">
             {basket.length === 0 ? (
               <div className="ticket-empty">
-                <ShoppingBag className="w-7 h-7" strokeWidth={1.5} />
-                <span>The ticket is blank — tap a dish to begin</span>
+                <ShoppingBag className="w-8 h-8" strokeWidth={1.25} />
+                <span>Ticket is empty — select items from menu</span>
               </div>
             ) : (
               basket.map((b) => (
                 <div key={b.cartItemId} className="ticket-line">
-                  <div>
+                  <div className="ticket-line-details">
                     <div className="ticket-line-name">
                       {b.item.name}
                       {b.variantSize && <span className="size-tag">{b.variantSize}</span>}
@@ -1165,6 +1282,13 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
                       <Plus className="w-3 h-3" />
                     </button>
                   </div>
+                  <button
+                    className="btn-remove-line"
+                    onClick={() => removeItem(b.cartItemId)}
+                    title="Remove item"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))
             )}

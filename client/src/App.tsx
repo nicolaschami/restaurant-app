@@ -1,22 +1,417 @@
-import { useState } from 'react';
+import { useState, useRef, FC } from 'react';
+
+// ==========================================
+// IMPORTS (Page & Component Dependencies)
+// ==========================================
 import Login from './pages/Login';
 import SidebarLayout from './components/SidebarLayout';
-
 import Categories from './pages/Categories';
 import MenuItems from './pages/Products';
 import Modifiers from './pages/Modifiers';
 import RawMaterials from './pages/RawMaterials';
 import SuppliersPage from './pages/Suppliers';
 import PosScreen from './pages/PosScreen';
-export default function App() {
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem('token')
-  );
 
+// ==========================================
+// TYPES & MOCK DATA
+// ==========================================
+interface Ticket {
+  id: string;
+  label: string;
+  type: 'Dine-In' | 'Takeaway' | 'Delivery';
+  mins: number;
+  items: number;
+  total: string;
+}
+
+interface Metric {
+  label: string;
+  value: string;
+  change?: string;
+  detail?: string;
+  icon: string;
+  alert?: boolean;
+}
+
+const DASHBOARD_METRICS: Metric[] = [
+  { label: "Today's Sales", value: "$1,240.50", change: "+12.5%", icon: "💰" },
+  { label: "Active Orders", value: "18", detail: "8 kitchen · 10 ready", icon: "🧾" },
+  { label: "Menu Items", value: "48", detail: "4 active categories", icon: "🍔" },
+  { label: "Stock Alerts", value: "3", detail: "Action required", icon: "⚠️", alert: true },
+];
+
+const TICKETS: Ticket[] = [
+  { id: 'ORD-1042', label: 'Table 4', type: 'Dine-In', mins: 4, items: 3, total: '42.00' },
+  { id: 'ORD-1041', label: 'Takeaway', type: 'Takeaway', mins: 9, items: 2, total: '18.50' },
+  { id: 'ORD-1039', label: 'Table 7', type: 'Dine-In', mins: 14, items: 5, total: '76.20' },
+  { id: 'ORD-1037', label: 'Delivery #22', type: 'Delivery', mins: 24, items: 4, total: '54.00' },
+  { id: 'ORD-1035', label: 'Table 2', type: 'Dine-In', mins: 31, items: 2, total: '29.00' },
+  { id: 'ORD-1033', label: 'Table 9', type: 'Dine-In', mins: 6, items: 3, total: '38.75' },
+];
+
+const SALES_BARS = [
+  { day: 'Mon', value: 42, revenue: '$1,260' },
+  { day: 'Tue', value: 58, revenue: '$1,740' },
+  { day: 'Wed', value: 48, revenue: '$1,440' },
+  { day: 'Thu', value: 75, revenue: '$2,250' },
+  { day: 'Fri', value: 65, revenue: '$1,950' },
+  { day: 'Sat', value: 92, revenue: '$2,760', active: true },
+  { day: 'Sun', value: 72, revenue: '$2,160' },
+];
+
+const STOCK_ALERTS = [
+  { name: 'Mozzarella Cheese', remaining: '1.2 kg left', progress: 18, color: 'bg-red-500', bg: 'bg-red-50', icon: '🧀' },
+  { name: 'Chicken Breast', remaining: '3.5 kg left', progress: 35, color: 'bg-amber-500', bg: 'bg-amber-50', icon: '🍗' },
+  { name: 'Cooking Oil', remaining: '4.2 liters left', progress: 42, color: 'bg-amber-500', bg: 'bg-amber-50', icon: '🫗' },
+];
+
+// ==========================================
+// SHARED STYLE INJECTION (fonts + ticket motif)
+// ==========================================
+const DashboardStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
+    .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+    .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .ticket-tear-line {
+      background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
+      height: 1px;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .counter-texture {
+      background-color: #f4f2ee;
+      background-image: radial-gradient(#e2ddd3 1px, transparent 1px);
+      background-size: 18px 18px;
+    }
+    .ticket-stub {
+      clip-path: polygon(0% 0%, 100% 0%, 100% 91%, 94% 100%, 88% 91%, 82% 100%, 76% 91%, 70% 100%, 64% 91%, 58% 100%, 52% 91%, 46% 100%, 40% 91%, 34% 100%, 28% 91%, 22% 100%, 16% 91%, 10% 100%, 4% 91%, 0% 100%);
+    }
+    @keyframes steamRise {
+      0% { transform: translateY(0) scale(1); opacity: 0; }
+      20% { opacity: 0.55; }
+      100% { transform: translateY(-16px) scale(1.6); opacity: 0; }
+    }
+    .steam-wisp {
+      position: absolute;
+      bottom: 100%;
+      width: 5px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.6);
+      filter: blur(2px);
+      animation: steamRise 2.6s ease-in infinite;
+    }
+  `}</style>
+);
+
+// ==========================================
+// SUB-COMPONENT: DASHBOARD VIEW
+// ==========================================
+interface DashboardViewProps {
+  restaurantName: string;
+  onNavigate: (tab: string) => void;
+}
+
+const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate }) => {
+  const railRef = useRef<HTMLDivElement>(null);
+  const scrollRail = (dir: 'left' | 'right') => {
+    railRef.current?.scrollBy({ left: dir === 'left' ? -190 : 190, behavior: 'smooth' });
+  };
+
+  return (
+    /* h-full + overflow-y-auto so this view scrolls on its own even if
+       SidebarLayout gives it a fixed-height container */
+    <div className="h-full overflow-y-auto counter-texture px-4 sm:px-6 lg:px-8 py-6 pb-20 space-y-6">
+      <DashboardStyles />
+
+      {/* 1. HERO HEADER */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#1c1917] via-[#241d17] to-[#2b2118] p-6 sm:p-8 text-white shadow-xl">
+        <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-[#c2621f]/15 blur-3xl pointer-events-none" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-6 w-6 items-center justify-center rounded-md bg-[#c2621f]/25 text-xs">
+                🍽️
+                <span className="steam-wisp" style={{ left: '5px', animationDelay: '0s' }} />
+                <span className="steam-wisp" style={{ left: '14px', animationDelay: '1.1s' }} />
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-[#e8ceb8]">Tasty Bistro</span>
+            </div>
+            <h1 className="ticket-font uppercase text-2xl sm:text-3xl lg:text-4xl text-white">
+              Good afternoon 👋
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400">
+              Here is what is happening at <span className="font-semibold text-white">{restaurantName}</span> today.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onNavigate('pos')}
+              className="rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-[#8a3f16]/30 transition hover:opacity-95 hover:scale-[1.02] active:scale-95"
+            >
+              Open POS
+            </button>
+            <button
+              onClick={() => onNavigate('raw-materials')}
+              className="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-xs font-semibold text-slate-200 backdrop-blur transition hover:bg-white/10"
+            >
+              Inventory
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. KPI METRICS GRID */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        {DASHBOARD_METRICS.map((metric) => (
+          <div
+            key={metric.label}
+            className={`ticket-stub relative overflow-hidden border p-5 pb-8 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
+              metric.alert
+                ? 'border-[#f0c9a6] bg-gradient-to-br from-[#fdece1]/80 to-white'
+                : 'border-slate-200/80 bg-white'
+            }`}
+          >
+            {!metric.alert && (
+              <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#8a3f16] to-[#c2621f]" />
+            )}
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{metric.label}</p>
+                <h2 className="mt-2 text-3xl font-black price-font tracking-tight text-[#1c1917]">{metric.value}</h2>
+
+                {metric.change && (
+                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                    ↗ {metric.change} <span className="font-normal text-slate-400">vs yesterday</span>
+                  </span>
+                )}
+                {metric.detail && (
+                  <p className="mt-2 text-xs font-medium text-slate-500">{metric.detail}</p>
+                )}
+              </div>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-2xl shadow-inner ${metric.alert ? 'bg-[#f0c9a6]/50' : 'bg-slate-100'}`}>
+                {metric.icon}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 3. MAIN SECTION GRID */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        
+        {/* Live Kitchen Rail */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm xl:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="ticket-font uppercase text-lg text-[#1c1917]">Live Kitchen Rail</h2>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fdece1] px-2.5 py-0.5 text-xs font-bold text-[#8a3f16] ring-1 ring-inset ring-[#f0c9a6]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#c2621f] animate-ping" />
+                  {TICKETS.length} Pending
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">Oldest tickets flagged in red</p>
+            </div>
+            <button
+              onClick={() => onNavigate('pos')}
+              className="text-xs font-semibold text-[#b5541f] hover:text-[#8a3f16]"
+            >
+              View All →
+            </button>
+          </div>
+
+          <div className="relative">
+            <div className="absolute left-9 right-9 top-0 h-[3px] bg-[#1c1917] rounded-full" />
+
+            {/* Floating carousel arrows */}
+            <button
+              onClick={() => scrollRail('left')}
+              aria-label="Scroll rail left"
+              className="absolute left-0 top-1/2 mt-1.5 -translate-y-1/2 z-20 h-9 w-9 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-md text-slate-500 text-lg leading-none hover:bg-gradient-to-r hover:from-[#8a3f16] hover:to-[#c2621f] hover:text-white hover:border-transparent hover:scale-105 active:scale-95 transition-all"
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => scrollRail('right')}
+              aria-label="Scroll rail right"
+              className="absolute right-0 top-1/2 mt-1.5 -translate-y-1/2 z-20 h-9 w-9 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-md text-slate-500 text-lg leading-none hover:bg-gradient-to-r hover:from-[#8a3f16] hover:to-[#c2621f] hover:text-white hover:border-transparent hover:scale-105 active:scale-95 transition-all"
+            >
+              ›
+            </button>
+
+            <div
+              ref={railRef}
+              className="flex gap-4 overflow-x-auto no-scrollbar px-11 pb-2 pt-[9px] snap-x scroll-smooth"
+            >
+              {TICKETS.map((t) => {
+                const isOverdue = t.mins >= 20;
+                const isAging = t.mins >= 10;
+                const dotColor = isOverdue ? 'bg-red-500' : isAging ? 'bg-amber-500' : 'bg-emerald-500';
+                const badgeClass = isOverdue
+                  ? 'bg-red-100 text-red-700 border-red-200'
+                  : isAging
+                  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                  : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+
+                return (
+                  <div key={t.id} className="relative shrink-0 w-44 snap-start">
+                    <div className={`absolute left-1/2 -top-[3px] -translate-x-1/2 h-3 w-3 rounded-full ${dotColor} ring-4 ring-white z-10`} />
+                    <div
+                      className={`mt-2.5 rounded-2xl border p-4 transition-all hover:shadow-md ${
+                        isOverdue ? 'border-red-200 bg-red-50/30' : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="price-font text-xs font-bold text-[#1c1917]">{t.id}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border price-font ${badgeClass}`}>
+                          {t.mins}m{isOverdue ? ' !' : ''}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-bold text-slate-800">{t.label}</p>
+                      <p className="text-xs text-slate-400">{t.type} · {t.items} items</p>
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2">
+                        <span className="text-xs text-slate-400">Total</span>
+                        <span className="price-font text-sm font-bold text-[#1c1917]">${t.total}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Navigation Panel */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+          <h2 className="ticket-font uppercase text-lg text-[#1c1917]">Quick Actions</h2>
+          <p className="mt-1 text-xs text-slate-400">Manage operations quickly</p>
+
+          <div className="mt-4 space-y-2">
+            {[
+              { tab: 'categories', label: 'Categories', desc: 'Organize menu structure', icon: '🗂️' },
+              { tab: 'menu-items', label: 'Menu Items', desc: 'Add or edit products', icon: '🍔' },
+              { tab: 'modifiers', label: 'Modifiers', desc: 'Manage options & add-ons', icon: '✨' },
+              { tab: 'raw-materials', label: 'Inventory', desc: 'Track raw materials', icon: '📦' },
+            ].map((item) => (
+              <button
+                key={item.tab}
+                onClick={() => onNavigate(item.tab)}
+                className="group flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left transition hover:border-[#f0c9a6] hover:bg-[#fdece1]/50"
+              >
+                <span className="text-2xl">{item.icon}</span>
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-slate-800 group-hover:text-[#b5541f] transition">
+                    {item.label}
+                  </p>
+                  <p className="text-[10px] text-slate-400">{item.desc}</p>
+                </div>
+                <span className="text-xs text-slate-300 group-hover:text-[#b5541f] transition">→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. BOTTOM CHARTS & INVENTORY ALERTS */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        
+        {/* Analytics Bar Chart */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm lg:col-span-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="ticket-font uppercase text-lg text-[#1c1917]">Sales Analytics</h2>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 ring-1 ring-inset ring-emerald-200">
+                  +12.5% vs last week
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">Revenue overview over the past 7 days</p>
+            </div>
+            
+            <select className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none transition hover:bg-slate-100 focus:ring-2 focus:ring-[#c2621f]/20">
+              <option>Last 7 days</option>
+              <option>Last 30 days</option>
+            </select>
+          </div>
+
+          <div className="relative mt-8 flex h-48 items-end gap-3 sm:gap-6 pt-6">
+            {SALES_BARS.map((bar) => (
+              <div key={bar.day} className="group relative flex h-full flex-1 flex-col justify-end items-center">
+                <div className="absolute -top-6 hidden flex-col items-center group-hover:flex">
+                  <span className="rounded-md bg-[#1c1917] px-2 py-1 text-[10px] price-font font-medium text-white shadow-md">
+                    {bar.revenue}
+                  </span>
+                </div>
+                <div
+                  className={`w-full max-w-[32px] rounded-t-lg transition-all duration-300 ${
+                    bar.active
+                      ? 'bg-gradient-to-t from-[#8a3f16] via-[#c2621f] to-[#e0925a] shadow-md shadow-[#8a3f16]/20'
+                      : 'bg-slate-800 group-hover:bg-gradient-to-t group-hover:from-[#8a3f16] group-hover:to-[#c2621f]'
+                  }`}
+                  style={{ height: `${bar.value * 1.3}px` }}
+                />
+                <p className={`mt-2 text-xs font-semibold ${bar.active ? 'text-[#b5541f]' : 'text-slate-400'}`}>
+                  {bar.day}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Inventory Stock Alerts */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="ticket-font uppercase text-lg text-[#1c1917]">Stock Alerts</h2>
+                <p className="mt-1 text-xs text-slate-400">Items requiring restock</p>
+              </div>
+              <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-bold text-red-600">
+                3 ALERTS
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {STOCK_ALERTS.map((alert) => (
+                <div key={alert.name} className={`rounded-xl p-3 ${alert.bg}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{alert.name}</p>
+                      <p className="mt-0.5 text-[10px] price-font font-semibold text-slate-500">{alert.remaining}</p>
+                    </div>
+                    <span className="text-xl">{alert.icon}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-black/5">
+                    <div className={`h-full rounded-full ${alert.color}`} style={{ width: `${alert.progress}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigate('raw-materials')}
+            className="w-full rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] py-2.5 text-xs font-bold uppercase tracking-wider text-white transition hover:opacity-95"
+          >
+            Manage Inventory
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// MAIN APP COMPONENT
+// ==========================================
+export default function App() {
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [restaurantName, setRestaurantName] = useState<string>(
     localStorage.getItem('restaurantName') || 'My Restaurant'
   );
-
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const handleLogout = () => {
@@ -36,6 +431,37 @@ export default function App() {
     );
   }
 
+  const renderActiveView = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <DashboardView restaurantName={restaurantName} onNavigate={setActiveTab} />;
+      case 'categories':
+        return <Categories onLogout={handleLogout} />;
+      case 'menu-items':
+        return <MenuItems onLogout={handleLogout} />;
+      case 'modifiers':
+        return <Modifiers onLogout={handleLogout} />;
+      case 'raw-materials':
+        return <RawMaterials onLogout={handleLogout} />;
+      case 'partners':
+      case 'suppliers':
+        return <SuppliersPage />;
+      case 'pos':
+        return <PosScreen onLogout={handleLogout} />;
+      case 'settings':
+        return (
+          <div className="min-h-full bg-slate-50 p-8">
+            <div className="mx-auto max-w-[1600px] rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+              <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
+              <p className="mt-2 text-sm text-slate-500">Configure your system settings.</p>
+            </div>
+          </div>
+        );
+      default:
+        return <DashboardView restaurantName={restaurantName} onNavigate={setActiveTab} />;
+    }
+  };
+
   return (
     <SidebarLayout
       activeTab={activeTab}
@@ -43,642 +469,7 @@ export default function App() {
       restaurantName={restaurantName}
       onLogout={handleLogout}
     >
-      {/* ================= DASHBOARD ================= */}
-      {activeTab === 'dashboard' && (
-        
-<div className="min-h-full bg-slate-50 px-4 sm:px-6 lg:px-8 pt-2 sm:pt-3 lg:pt-4 pb-4 sm:pb-6 lg:pb-8">
-  <div className="mx-auto w-full max-w-[1600px] flex-1 space-y-6 flex flex-col justify-between">
-
-            {/* HERO HEADER */}
-           {/* COMPACT HERO */}
-<div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-stone-800 px-6 py-5 shadow-lg">
-  <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500 text-sm">
-          🍽️
-        </span>
-
-        <span className="text-xs font-semibold uppercase tracking-wider text-orange-300">
-          Tasty Bistro
-        </span>
-      </div>
-
-      <h1 className="mt-2 text-xl font-bold text-white sm:text-2xl">
-        Good afternoon 👋
-      </h1>
-
-      <p className="mt-1 text-xs text-slate-300 sm:text-sm">
-        Here's what's happening at{' '}
-        <span className="font-semibold text-white">
-          {restaurantName}
-        </span>{' '}
-        today.
-      </p>
-    </div>
-
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => setActiveTab('menu-items')}
-        className="rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-orange-400"
-      >
-        + Add Menu Item
-      </button>
-
-      <button
-        onClick={() => setActiveTab('raw-materials')}
-        className="rounded-lg border border-white/10 bg-white/10 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:bg-white/15"
-      >
-        Inventory
-      </button>
-    </div>
-  </div>
-
-  {/* subtle decorative glow */}
-  <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-orange-500/10 blur-2xl" />
-</div>
-
-
-            {/* STAT CARDS */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
-              {/* Sales */}
-              <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Today's Sales
-                    </p>
-
-                    <h2 className="mt-2 text-3xl font-extrabold text-slate-900">
-                      $1,240.50
-                    </h2>
-
-                    <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                      <span>↗</span>
-                      <span>12.5%</span>
-                      <span className="font-normal text-slate-400">
-                        vs yesterday
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-xl">
-                    💰
-                  </div>
-                </div>
-
-                <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full w-[72%] rounded-full bg-emerald-500" />
-                </div>
-              </div>
-
-              {/* Orders */}
-              <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Active Orders
-                    </p>
-
-                    <h2 className="mt-2 text-3xl font-extrabold text-slate-900">
-                      18
-                    </h2>
-
-                    <p className="mt-2 text-xs text-slate-400">
-                      <span className="font-semibold text-indigo-600">
-                        8
-                      </span>{' '}
-                      in kitchen ·{' '}
-                      <span className="font-semibold text-emerald-600">
-                        10
-                      </span>{' '}
-                      ready
-                    </p>
-                  </div>
-
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-xl">
-                    🧾
-                  </div>
-                </div>
-
-                <div className="mt-4 flex gap-1">
-                  {[...Array(8)].map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-1.5 flex-1 rounded-full ${
-                        i < 5 ? 'bg-indigo-500' : 'bg-slate-100'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Menu */}
-              <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Menu Items
-                    </p>
-
-                    <h2 className="mt-2 text-3xl font-extrabold text-slate-900">
-                      48
-                    </h2>
-
-                    <p className="mt-2 text-xs text-slate-400">
-                      Across{' '}
-                      <span className="font-semibold text-slate-700">
-                        4 categories
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-xl">
-                    🍔
-                  </div>
-                </div>
-
-                <div className="mt-4 flex -space-x-1">
-                  <div className="h-5 w-5 rounded-full bg-orange-400 ring-2 ring-white" />
-                  <div className="h-5 w-5 rounded-full bg-emerald-400 ring-2 ring-white" />
-                  <div className="h-5 w-5 rounded-full bg-indigo-400 ring-2 ring-white" />
-                  <div className="h-5 w-5 rounded-full bg-violet-400 ring-2 ring-white" />
-                  <div className="ml-2 text-[10px] text-slate-400">
-                    Categories
-                  </div>
-                </div>
-              </div>
-
-              {/* Stock */}
-              <div className="group rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-amber-600">
-                      Stock Alerts
-                    </p>
-
-                    <h2 className="mt-2 text-3xl font-extrabold text-slate-900">
-                      3
-                    </h2>
-
-                    <p className="mt-2 text-xs text-amber-700">
-                      Items need attention
-                    </p>
-                  </div>
-
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-xl">
-                    ⚠️
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setActiveTab('raw-materials')}
-                  className="mt-4 text-xs font-bold text-amber-700 hover:text-amber-900"
-                >
-                  Review inventory →
-                </button>
-              </div>
-            </div>
-
-            {/* MAIN GRID */}
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-
-            {/* SALES OVERVIEW */}
-<div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm xl:col-span-2">
-  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-      <div className="flex items-center gap-2">
-        <h2 className="font-bold text-slate-900">Sales Overview</h2>
-        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 ring-1 ring-inset ring-emerald-500/20">
-          +12.5% vs last week
-        </span>
-      </div>
-      <p className="mt-1 text-xs text-slate-400">
-        Revenue performance over the last 7 days
-      </p>
-    </div>
-
-    <select className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500/20">
-      <option>Last 7 days</option>
-      <option>Last 30 days</option>
-      <option>This year</option>
-    </select>
-  </div>
-
-  {/* Interactive Chart */}
-  <div className="relative mt-8">
-    {/* Subtle Background Grid Lines */}
-    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8">
-      <div className="border-b border-dashed border-slate-100 w-full" />
-      <div className="border-b border-dashed border-slate-100 w-full" />
-      <div className="border-b border-dashed border-slate-100 w-full" />
-    </div>
-
-    <div className="relative z-10 flex h-60 items-end gap-3 sm:gap-6 pt-6">
-      {[
-        { day: 'Mon', value: 42, revenue: '$1,260' },
-        { day: 'Tue', value: 58, revenue: '$1,740' },
-        { day: 'Wed', value: 48, revenue: '$1,440' },
-        { day: 'Thu', value: 75, revenue: '$2,250' },
-        { day: 'Fri', value: 65, revenue: '$1,950' },
-        { day: 'Sat', value: 92, revenue: '$2,760', active: true },
-        { day: 'Sun', value: 72, revenue: '$2,160' },
-      ].map((item) => (
-        <div
-          key={item.day}
-          className="group relative flex h-full flex-1 flex-col justify-end items-center"
-        >
-          {/* Tooltip on Hover */}
-          <div className="absolute -top-3 z-20 hidden flex-col items-center group-hover:flex transition-all">
-            <span className="whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow-md">
-              {item.revenue}
-            </span>
-            <div className="h-1 w-2 border-x-4 border-t-4 border-x-transparent border-t-slate-900" />
-          </div>
-
-          {/* Bar Wrapper */}
-          <div className="relative w-full max-w-[36px] flex justify-center">
-            <div
-              className={`w-full rounded-t-xl transition-all duration-300 ease-out group-hover:scale-y-[1.03] origin-bottom ${
-                item.active
-                  ? 'bg-gradient-to-t from-orange-600 via-amber-500 to-amber-400 shadow-md shadow-orange-500/20'
-                  : 'bg-gradient-to-t from-slate-800 to-slate-600 group-hover:from-orange-500 group-hover:to-amber-400'
-              }`}
-              style={{
-                height: `${item.value * 1.8}px`,
-              }}
-            />
-          </div>
-
-          {/* Day Label */}
-          <p className={`mt-3 text-center text-xs font-semibold ${item.active ? 'text-orange-600' : 'text-slate-400 group-hover:text-slate-700'}`}>
-            {item.day}
-          </p>
-        </div>
-      ))}
-    </div>
-  </div>
-</div>
-
-              {/* QUICK ACTIONS */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="mb-5">
-                  <h2 className="font-bold text-slate-900">
-                    Quick Actions
-                  </h2>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    Manage your restaurant quickly
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-
-                  <button
-                    onClick={() => setActiveTab('categories')}
-                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-100 p-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 text-lg">
-                      🗂️
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800 group-hover:text-indigo-600">
-                        Categories
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Organize your menu
-                      </p>
-                    </div>
-
-                    <span className="text-slate-300 group-hover:text-indigo-500">
-                      →
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('menu-items')}
-                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-100 p-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-lg">
-                      🍔
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800 group-hover:text-emerald-600">
-                        Menu Items
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Add or edit products
-                      </p>
-                    </div>
-
-                    <span className="text-slate-300 group-hover:text-emerald-500">
-                      →
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('modifiers')}
-                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-100 p-3 text-left transition hover:border-violet-200 hover:bg-violet-50"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-lg">
-                      ✨
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800 group-hover:text-violet-600">
-                        Modifiers
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Manage add-ons
-                      </p>
-                    </div>
-
-                    <span className="text-slate-300 group-hover:text-violet-500">
-                      →
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('raw-materials')}
-                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-100 p-3 text-left transition hover:border-amber-200 hover:bg-amber-50"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-lg">
-                      📦
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800 group-hover:text-amber-600">
-                        Inventory
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Track raw materials
-                      </p>
-                    </div>
-
-                    <span className="text-slate-300 group-hover:text-amber-500">
-                      →
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* BOTTOM GRID */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
-              {/* RECENT ORDERS */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-                <div className="mb-5 flex items-center justify-between">
-                  <div>
-                    <h2 className="font-bold text-slate-900">
-                      Recent Orders
-                    </h2>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      Latest restaurant activity
-                    </p>
-                  </div>
-
-                  <button className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
-                    View all →
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[600px] text-left">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400">
-                        <th className="pb-3 font-semibold">Order</th>
-                        <th className="pb-3 font-semibold">Type</th>
-                        <th className="pb-3 font-semibold">Status</th>
-                        <th className="pb-3 text-right font-semibold">
-                          Amount
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y divide-slate-100">
-                      <tr className="group">
-                        <td className="py-4">
-                          <p className="text-sm font-bold text-slate-900">
-                            #ORD-1042
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            2 min ago
-                          </p>
-                        </td>
-
-                        <td className="py-4 text-xs text-slate-600">
-                          Dine-In · Table 4
-                        </td>
-
-                        <td className="py-4">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                            In Kitchen
-                          </span>
-                        </td>
-
-                        <td className="py-4 text-right text-sm font-bold text-slate-900">
-                          $42.00
-                        </td>
-                      </tr>
-
-                      <tr className="group">
-                        <td className="py-4">
-                          <p className="text-sm font-bold text-slate-900">
-                            #ORD-1041
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            8 min ago
-                          </p>
-                        </td>
-
-                        <td className="py-4 text-xs text-slate-600">
-                          Takeaway
-                        </td>
-
-                        <td className="py-4">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Ready
-                          </span>
-                        </td>
-
-                        <td className="py-4 text-right text-sm font-bold text-slate-900">
-                          $18.50
-                        </td>
-                      </tr>
-
-                      <tr className="group">
-                        <td className="py-4">
-                          <p className="text-sm font-bold text-slate-900">
-                            #ORD-1040
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            15 min ago
-                          </p>
-                        </td>
-
-                        <td className="py-4 text-xs text-slate-600">
-                          Delivery
-                        </td>
-
-                        <td className="py-4">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold text-indigo-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                            Completed
-                          </span>
-                        </td>
-
-                        <td className="py-4 text-right text-sm font-bold text-slate-900">
-                          $65.00
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* LOW STOCK */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="mb-5 flex items-center justify-between">
-                  <div>
-                    <h2 className="font-bold text-slate-900">
-                      Low Stock
-                    </h2>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      Items that need attention
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-bold text-red-600">
-                    3 ALERTS
-                  </span>
-                </div>
-
-                <div className="space-y-4">
-
-                  <div className="rounded-xl bg-red-50 p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          Mozzarella Cheese
-                        </p>
-                        <p className="mt-1 text-[10px] text-red-600">
-                          Only 1.2 kg remaining
-                        </p>
-                      </div>
-
-                      <span className="text-lg">🧀</span>
-                    </div>
-
-                    <div className="mt-3 h-1.5 rounded-full bg-red-100">
-                      <div className="h-full w-[18%] rounded-full bg-red-500" />
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl bg-amber-50 p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          Chicken Breast
-                        </p>
-                        <p className="mt-1 text-[10px] text-amber-600">
-                          3.5 kg remaining
-                        </p>
-                      </div>
-
-                      <span className="text-lg">🍗</span>
-                    </div>
-
-                    <div className="mt-3 h-1.5 rounded-full bg-amber-100">
-                      <div className="h-full w-[35%] rounded-full bg-amber-500" />
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl bg-amber-50 p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          Cooking Oil
-                        </p>
-                        <p className="mt-1 text-[10px] text-amber-600">
-                          4.2 liters remaining
-                        </p>
-                      </div>
-
-                      <span className="text-lg">🫗</span>
-                    </div>
-
-                    <div className="mt-3 h-1.5 rounded-full bg-amber-100">
-                      <div className="h-full w-[42%] rounded-full bg-amber-500" />
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setActiveTab('raw-materials')}
-                  className="mt-5 w-full rounded-xl bg-slate-900 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
-                >
-                  Manage Inventory
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PRODUCT MANAGEMENT */}
-
-
-
-      {activeTab === 'categories' && (
-        <Categories onLogout={handleLogout} />
-      )}
-
-      {activeTab === 'menu-items' && (
-        <MenuItems onLogout={handleLogout} />
-      )}
-
-      {activeTab === 'modifiers' && (
-        <Modifiers onLogout={handleLogout} />
-      )}
-
-      {activeTab === 'raw-materials' && (
-        <RawMaterials onLogout={handleLogout} />
-      )}
-
-     {/* PARTNERS */}
-{(activeTab === 'partners' || activeTab === 'suppliers') && (
-  <SuppliersPage />
-)}
-
-      {/* SETTINGS */}
-      {activeTab === 'settings' && (
-        <div className="min-h-full bg-slate-50 p-8">
-          <div className="mx-auto max-w-[1600px]">
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-              <h1 className="text-2xl font-bold text-slate-900">
-                Settings
-              </h1>
-
-              <p className="mt-2 text-sm text-slate-500">
-                Configure your system settings.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-       {activeTab === 'pos' && (
-        <PosScreen  />
-      )}
+      {renderActiveView()}
     </SidebarLayout>
   );
 }

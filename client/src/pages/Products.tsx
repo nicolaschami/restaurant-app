@@ -85,6 +85,25 @@ const parseCost = (val: any): number => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
+// Common React Select Custom Styles to maintain visual consistency
+const customSelectStyles = {
+  control: (base: any, state: any) => ({
+    ...base,
+    borderRadius: '0.5rem',
+    borderColor: state.isFocused ? '#c2621f' : '#e2e8f0',
+    minHeight: '34px',
+    fontSize: '0.75rem',
+    boxShadow: state.isFocused ? '0 0 0 1px #c2621f' : 'none',
+  }),
+  option: (base: any, state: any) => ({
+    ...base,
+    fontSize: '0.75rem',
+    backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff',
+    color: state.isFocused ? '#ffffff' : state.isSelected ? '#8a3f16' : '#334155',
+    cursor: 'pointer',
+  }),
+};
+
 // "Spice rack" palette for modifier group accent colors
 const GROUP_PALETTES = [
   { bg: 'bg-amber-50', border: 'border-amber-200', activeBorder: 'border-amber-400', ring: 'ring-amber-400/30', dot: 'bg-amber-500', text: 'text-amber-700', pillBg: 'bg-amber-100', pillText: 'text-amber-700', checkBg: 'bg-amber-500' },
@@ -122,14 +141,11 @@ function ModifierGroupCard({
       `}
       onClick={() => onToggle(!isChecked)}
     >
-      {/* Selection indicator strip */}
       <div className={`absolute top-0 left-0 w-1 h-full transition-all duration-200 ${isChecked ? palette.dot : 'bg-transparent'}`} />
 
       <div className="pl-3 pr-2.5 pt-2.5 pb-2">
-        {/* Header Row */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {/* Custom checkbox */}
             <div
               className={`
                 shrink-0 w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center transition-all duration-200
@@ -146,14 +162,12 @@ function ModifierGroupCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Option count badge */}
             {optionsList.length > 0 && (
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${isChecked ? `${palette.pillBg} ${palette.pillText}` : 'bg-slate-100 text-slate-500'}`}>
                 {optionsList.length} opt
               </span>
             )}
 
-            {/* Min/Max badges */}
             {(group.minSelection != null || group.maxSelection != null) && (
               <div className="flex items-center gap-0.5">
                 {group.minSelection != null && group.minSelection > 0 && (
@@ -169,7 +183,6 @@ function ModifierGroupCard({
               </div>
             )}
 
-            {/* Expand toggle */}
             {optionsList.length > 0 && (
               <button
                 type="button"
@@ -185,7 +198,6 @@ function ModifierGroupCard({
           </div>
         </div>
 
-        {/* Options Pills */}
         {optionsList.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
             {visibleOptions.map((opt) => (
@@ -238,6 +250,7 @@ export default function Products({ onLogout }: ProductsProps) {
 
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
   const [searchQuery, setSearchQuery] = useState('');
+  const [modifierSearchQuery, setModifierSearchQuery] = useState(''); // Added active state for search
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -366,6 +379,7 @@ export default function Products({ onLogout }: ProductsProps) {
   const handleOpenModal = (item?: MenuItem) => {
     setFormError(null);
     setSelectedFiles([]);
+    setModifierSearchQuery('');
     if (item) {
       setEditingItem(item);
       setMenuName(item.menuName || '');
@@ -502,12 +516,15 @@ export default function Products({ onLogout }: ProductsProps) {
     return nameMatch && categoryMatch;
   });
 
+  const filteredModifierGroups = safeModifierGroups.filter((group) =>
+    group.name.toLowerCase().includes(modifierSearchQuery.toLowerCase().trim())
+  );
+
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
   const paginatedItems = filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="max-w-6xl mx-auto pb-12">
-      {/* Signature type system + ticket-tear motif — scoped to this screen */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
         .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
@@ -570,8 +587,8 @@ export default function Products({ onLogout }: ProductsProps) {
               onChange={(option: any) => setSelectedCategoryFilter(option ? option.value : 'all')}
               options={[{ value: 'all', label: 'All Categories' }, ...safeCategories.map((c) => ({ value: c.id, label: c.name }))]}
               styles={{
+                ...customSelectStyles,
                 control: (base, state) => ({ ...base, borderRadius: '0.75rem', borderColor: state.isFocused ? '#c2621f' : '#e2e8f0', padding: '1px', boxShadow: state.isFocused ? '0 0 0 2px rgba(194,98,31,0.15)' : 'none' }),
-                option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff', color: state.isFocused ? '#ffffff' : state.isSelected ? '#8a3f16' : '#334155' }),
               }}
             />
           </div>
@@ -789,11 +806,11 @@ export default function Products({ onLogout }: ProductsProps) {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Category</label>
-                      <Select isSearchable placeholder="Category..." value={categoryId ? { value: categoryId, label: safeCategories.find((c) => c.id === categoryId)?.name || '' } : null} onChange={(opt: any) => setCategoryId(opt ? opt.value : null)} options={safeCategories.map((c) => ({ value: c.id, label: c.name }))} styles={{ control: (base, state) => ({ ...base, borderRadius: '0.5rem', borderColor: state.isFocused ? '#c2621f' : '#e2e8f0', minHeight: '34px', fontSize: '0.75rem' }), option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff', color: state.isFocused ? '#ffffff' : '#334155' }) }} />
+                      <Select isSearchable placeholder="Category..." value={categoryId ? { value: categoryId, label: safeCategories.find((c) => c.id === categoryId)?.name || '' } : null} onChange={(opt: any) => setCategoryId(opt ? opt.value : null)} options={safeCategories.map((c) => ({ value: c.id, label: c.name }))} styles={customSelectStyles} />
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kitchen Station</label>
-                      <Select isClearable isSearchable placeholder="Station..." value={stationId ? { value: stationId, label: safeStations.find((s) => s.id === stationId)?.name || '' } : null} onChange={(opt: any) => setStationId(opt ? opt.value : null)} options={safeStations.map((s) => ({ value: s.id, label: s.name }))} styles={{ control: (base, state) => ({ ...base, borderRadius: '0.5rem', borderColor: state.isFocused ? '#c2621f' : '#e2e8f0', minHeight: '34px', fontSize: '0.75rem' }), option: (base, state) => ({ ...base, backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff', color: state.isFocused ? '#ffffff' : '#334155' }) }} />
+                      <Select isClearable isSearchable placeholder="Station..." value={stationId ? { value: stationId, label: safeStations.find((s) => s.id === stationId)?.name || '' } : null} onChange={(opt: any) => setStationId(opt ? opt.value : null)} options={safeStations.map((s) => ({ value: s.id, label: s.name }))} styles={customSelectStyles} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -882,12 +899,11 @@ export default function Products({ onLogout }: ProductsProps) {
                                 menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                                 maxMenuHeight={280}
                                 styles={{
-                                  control: (base, state) => ({ ...base, borderRadius: "0.375rem", borderColor: state.isFocused ? "#c2621f" : "#e2e8f0", minHeight: "30px", fontSize: "0.75rem", boxShadow: state.isFocused ? "0 0 0 1px #c2621f" : "none" }),
+                                  ...customSelectStyles,
                                   valueContainer: (base) => ({ ...base, padding: "0 6px" }),
                                   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
                                   menu: (base) => ({ ...base, zIndex: 9999, borderRadius: "0.5rem", overflow: "hidden", border: "1px solid #e2e8f0", boxShadow: "0 10px 25px rgba(0,0,0,0.12)" }),
                                   menuList: (base) => ({ ...base, padding: "4px", maxHeight: "280px" }),
-                                  option: (base, state) => ({ ...base, fontSize: "0.75rem", padding: "8px 10px", borderRadius: "0.375rem", cursor: "pointer", backgroundColor: state.isFocused ? "#b5541f" : state.isSelected ? "#fdece1" : "#ffffff", color: state.isFocused ? "#ffffff" : state.isSelected ? "#8a3f16" : "#334155", fontWeight: state.isFocused || state.isSelected ? 600 : 400 }),
                                 }}
                               />
                             </div>
@@ -981,9 +997,8 @@ export default function Products({ onLogout }: ProductsProps) {
                     )}
                   </div>
 
-                  {/* === FANCY ATTACHED MODIFIER GROUPS === */}
+                  {/* MODIFIER GROUPS SECTION */}
                   <div className="rounded-xl border border-slate-200 overflow-hidden">
-                    {/* Section Header */}
                     <div className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-[#1c1917] to-[#33291f]">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-lg bg-[#c2621f]/20 flex items-center justify-center">
@@ -1013,31 +1028,41 @@ export default function Products({ onLogout }: ProductsProps) {
                       </div>
                     </div>
 
-                    {/* Search bar for modifier groups */}
+                    {/* Functional Search Bar for Modifier Groups */}
                     {safeModifierGroups.length > 4 && (
                       <div className="px-3 pt-2.5 pb-1 bg-slate-50 border-b border-slate-200">
                         <div className="relative">
                           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                           <input
                             type="text"
+                            value={modifierSearchQuery}
+                            onChange={(e) => setModifierSearchQuery(e.target.value)}
                             placeholder="Search modifier groups..."
-                            className="w-full pl-7 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]/20"
+                            className="w-full pl-7 pr-7 py-1.5 text-xs border border-slate-200 rounded-lg bg-white outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]/20"
                           />
+                          {modifierSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setModifierSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
 
-                    {safeModifierGroups.length === 0 ? (
+                    {filteredModifierGroups.length === 0 ? (
                       <div className="px-4 py-6 text-center bg-slate-50">
                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2">
                           <Layers size={18} className="text-slate-300" />
                         </div>
-                        <p className="text-xs text-slate-400 font-medium">No modifier groups created yet</p>
-                        <p className="text-[11px] text-slate-300 mt-0.5">Create modifier groups in the Modifiers section</p>
+                        <p className="text-xs text-slate-400 font-medium">No modifier groups found</p>
                       </div>
                     ) : (
                       <div className="p-3 bg-slate-50/60 max-h-64 overflow-y-auto">
-                        {/* Selected groups strip at top */}
+                        {/* Selected Groups Strip */}
                         {selectedModifierIds.length > 0 && (
                           <div className="mb-2.5 flex flex-wrap gap-1.5">
                             {selectedModifierIds.map((id) => {
@@ -1065,9 +1090,9 @@ export default function Products({ onLogout }: ProductsProps) {
                           </div>
                         )}
 
-                        {/* All groups as fancy cards */}
+                        {/* Filtered Modifier Cards */}
                         <div className="grid grid-cols-1 gap-2">
-                          {safeModifierGroups.map((group, gIdx) => {
+                          {filteredModifierGroups.map((group, gIdx) => {
                             const palette = GROUP_PALETTES[gIdx % GROUP_PALETTES.length];
                             const isChecked = selectedModifierIds.includes(group.id);
                             return (
@@ -1087,7 +1112,6 @@ export default function Products({ onLogout }: ProductsProps) {
                       </div>
                     )}
 
-                    {/* Footer summary */}
                     {safeModifierGroups.length > 0 && (
                       <div className="px-3.5 py-2 bg-slate-100/70 border-t border-slate-200 flex items-center justify-between">
                         <span className="text-[10px] text-slate-400">
@@ -1099,7 +1123,6 @@ export default function Products({ onLogout }: ProductsProps) {
                       </div>
                     )}
                   </div>
-                  {/* === END FANCY MODIFIER GROUPS === */}
                 </div>
               </div>
 
@@ -1116,16 +1139,16 @@ export default function Products({ onLogout }: ProductsProps) {
         </div>
       )}
 
-      {/* Lightbox */}
+      {/* Lightbox with Responsive Overlay Navigation */}
       {isLightboxOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <button type="button" onClick={() => setIsLightboxOpen(false)} className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition"><X size={24} /></button>
-          <div className="relative max-w-4xl max-h-[85vh] flex items-center justify-center">
+          <button type="button" onClick={() => setIsLightboxOpen(false)} className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition z-10"><X size={24} /></button>
+          <div className="relative max-w-4xl max-h-[85vh] w-full flex items-center justify-center">
             <img src={lightboxImages[activeImageIdx]} alt={`View ${activeImageIdx + 1}`} className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
             {lightboxImages.length > 1 && (
               <>
-                <button type="button" onClick={() => setActiveImageIdx((prev) => (prev === 0 ? lightboxImages.length - 1 : prev - 1))} className="absolute left-[-50px] p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition"><ChevronLeft size={28} /></button>
-                <button type="button" onClick={() => setActiveImageIdx((prev) => (prev === lightboxImages.length - 1 ? 0 : prev + 1))} className="absolute right-[-50px] p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition"><ChevronRight size={28} /></button>
+                <button type="button" onClick={() => setActiveImageIdx((prev) => (prev === 0 ? lightboxImages.length - 1 : prev - 1))} className="absolute left-2 sm:left-4 p-2 text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full transition"><ChevronLeft size={28} /></button>
+                <button type="button" onClick={() => setActiveImageIdx((prev) => (prev === lightboxImages.length - 1 ? 0 : prev + 1))} className="absolute right-2 sm:right-4 p-2 text-white/80 hover:text-white bg-black/40 hover:bg-black/60 rounded-full transition"><ChevronRight size={28} /></button>
               </>
             )}
           </div>
