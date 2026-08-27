@@ -164,17 +164,27 @@ export default function Categories({ onLogout }: CategoriesProps) {
 
   return (
     <div className="max-w-4xl mx-auto">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600&display=swap');
+        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+        .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        .ticket-tear-line {
+          background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
+          height: 1px;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Categories</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Categories</h2>
+          <p className="text-sm text-slate-500 mt-2">
             Organize menu categories and assign target route printers from your local machine.
           </p>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
           >
           <Plus size={18} />
           <span>Add Category</span>
@@ -189,7 +199,7 @@ export default function Categories({ onLogout }: CategoriesProps) {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search categories..."
-          className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition"
+          className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/40 focus:border-[#c2621f] shadow-sm transition"
         />
         {searchQuery && (
           <button
@@ -221,28 +231,29 @@ export default function Categories({ onLogout }: CategoriesProps) {
             {searchQuery ? (
               <button
                 onClick={() => setSearchQuery('')}
-                className="text-indigo-600 font-semibold text-sm hover:underline"
+                className="text-[#b5541f] font-semibold text-sm hover:underline"
               >
                 Clear search filter
               </button>
             ) : (
               <button
                 onClick={() => handleOpenModal()}
-                className="text-indigo-600 font-semibold hover:underline text-sm"
+                className="text-[#b5541f] font-semibold hover:underline text-sm"
               >
                 Create your first category
               </button>
             )}
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            <div className="bg-slate-50/50 px-6 py-3 grid grid-cols-12 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <div>
+            <div className="bg-[#1c1917] px-6 py-3 grid grid-cols-12 text-[11px] font-semibold uppercase tracking-wider text-[#d8c6b0] sticky top-0 z-10">
               <span className="col-span-2 text-center">Order</span>
               <span className="col-span-4">Category Name</span>
               <span className="col-span-4">Assigned Printer</span>
               <span className="col-span-2 text-right">Actions</span>
             </div>
 
+            <div className="divide-y divide-slate-100 max-h-[min(60vh,520px)] overflow-y-auto">
             {filteredCategories.map((category) => {
               const originalIndex = categories.findIndex((c) => c.id === category.id);
               const isFiltered = Boolean(searchQuery.trim());
@@ -250,33 +261,38 @@ export default function Categories({ onLogout }: CategoriesProps) {
               return (
                 <div
                   key={category.id}
-                  className="px-6 py-4 grid grid-cols-12 items-center hover:bg-slate-50/80 transition-colors"
+                  className="px-6 py-4 grid grid-cols-12 items-center hover:bg-[#faf3ea] transition-colors"
                 >
-                  <div className="col-span-2 flex items-center justify-center gap-1">
-                    <button
-                      disabled={isFiltered || originalIndex === 0}
-                      onClick={() => handleMove(originalIndex, 'up')}
-                      title={isFiltered ? 'Clear filter to reorder' : 'Move Up'}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 disabled:opacity-20 transition"
-                    >
-                      <ArrowUp size={16} />
-                    </button>
-                    <button
-                      disabled={isFiltered || originalIndex === categories.length - 1}
-                      onClick={() => handleMove(originalIndex, 'down')}
-                      title={isFiltered ? 'Clear filter to reorder' : 'Move Down'}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 disabled:opacity-20 transition"
-                    >
-                      <ArrowDown size={16} />
-                    </button>
+                  <div className="col-span-2 flex items-center justify-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <button
+                        disabled={isFiltered || originalIndex === 0}
+                        onClick={() => handleMove(originalIndex, 'up')}
+                        title={isFiltered ? 'Clear filter to reorder' : 'Move Up'}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition"
+                      >
+                        <ArrowUp size={16} />
+                      </button>
+                      <button
+                        disabled={isFiltered || originalIndex === categories.length - 1}
+                        onClick={() => handleMove(originalIndex, 'down')}
+                        title={isFiltered ? 'Clear filter to reorder' : 'Move Down'}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition"
+                      >
+                        <ArrowDown size={16} />
+                      </button>
+                    </div>
+                    <span className="price-font text-[10px] font-bold text-slate-300 w-4 text-right shrink-0">
+                      {String(originalIndex + 1).padStart(2, '0')}
+                    </span>
                   </div>
 
                   <div className="col-span-4 font-semibold text-slate-800">{category.name}</div>
 
                   <div className="col-span-4">
                     {category.printername ? (
-                      <span className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-mono">
-                        <Printer size={13} className="text-indigo-600" />
+                      <span className="inline-flex items-center gap-1.5 bg-[#fdece1] border border-[#f0c9a6] text-[#8a3f16] px-2.5 py-1 rounded-lg text-xs price-font">
+                        <Printer size={13} className="text-[#b5541f]" />
                         {category.printername}
                       </span>
                     ) : (
@@ -287,7 +303,7 @@ export default function Categories({ onLogout }: CategoriesProps) {
                   <div className="col-span-2 flex items-center justify-end gap-2">
                     <button
                       onClick={() => handleOpenModal(category)}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                      className="p-2 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
                     >
                       <Edit2 size={16} />
                     </button>
@@ -301,6 +317,16 @@ export default function Categories({ onLogout }: CategoriesProps) {
                 </div>
               );
             })}
+            </div>
+
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 text-sm text-slate-500">
+              {searchQuery ? (
+                <>Showing <span className="price-font font-semibold text-[#1c1917]">{filteredCategories.length}</span> of{' '}
+                <span className="price-font font-semibold text-[#1c1917]">{categories.length}</span> categories</>
+              ) : (
+                <><span className="price-font font-semibold text-[#1c1917]">{categories.length}</span> categories total</>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -308,106 +334,123 @@ export default function Categories({ onLogout }: CategoriesProps) {
       {/* Edit / Add Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">
-              {editingCategory ? 'Edit Category' : 'Create Category'}
-            </h3>
-
-            {formError && (
-              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-600 text-xs font-medium">
-                <AlertCircle size={16} className="shrink-0" />
-                <span>{formError}</span>
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+            <div className="px-6 py-4 bg-[#1c1917] border-b-2 border-[#c2621f]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-1.5 h-7 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2621f] leading-none mb-1">Category</p>
+                  <h3 className="ticket-font uppercase text-xl leading-none text-white">
+                    {editingCategory ? 'Edit Category' : 'New Category'}
+                  </h3>
+                </div>
               </div>
-            )}
+            </div>
 
-            <form onSubmit={handleSave} className="space-y-4 mt-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Category Name *
-                </label>
-                <input
-                  type="text"
-                  value={categoryName}
-                  onChange={(e) => {
-                    setCategoryName(e.target.value);
-                    if (formError) setFormError(null);
-                  }}
-                  placeholder="e.g. Beverages & Drinks"
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  autoFocus
-                />
-              </div>
+            <div className="p-6">
+              {formError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-600 text-xs font-medium">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
-              {/* Searchable Printer Selector */}
-            <div className="space-y-1.5">
-  <div className="flex items-center justify-between">
-    <label className="block text-xs font-semibold text-slate-700">Assigned Printer</label>
-    <button
-      type="button"
-      onClick={fetchSystemPrinters}
-      disabled={loadingPrinters}
-      className="flex items-center gap-1 text-[11px] text-indigo-600 hover:underline disabled:opacity-50"
-    >
-      <RefreshCw size={11} className={loadingPrinters ? 'animate-spin' : ''} />
-      <span>Refresh</span>
-    </button>
-  </div>
+              <form onSubmit={handleSave} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Category Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={categoryName}
+                    onChange={(e) => {
+                      setCategoryName(e.target.value);
+                      if (formError) setFormError(null);
+                    }}
+                    placeholder="e.g. Beverages & Drinks"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
+                    autoFocus
+                  />
+                </div>
 
-  <Select
-    isClearable
-    isSearchable
-    isLoading={loadingPrinters}
-    placeholder="Type to search or select printer..."
-    value={
-      selectedPrinter
-        ? { value: selectedPrinter, label: selectedPrinter }
-        : null
-    }
-    onChange={(selectedOption) => {
-      setSelectedPrinter(selectedOption ? selectedOption.value : '');
-    }}
-    options={availablePrinters.map((printer) => ({
-      value: printer,
-      label: printer,
-    }))}
-    styles={{
-      control: (base, state) => ({
-        ...base,
-        borderRadius: '0.75rem',
-        borderColor: state.isFocused ? '#6366f1' : '#e2e8f0',
-        padding: '2px',
-        boxShadow: state.isFocused ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
-        '&:hover': {
-          borderColor: state.isFocused ? '#6366f1' : '#cbd5e1',
-        },
-      }),
-      menu: (base) => ({
-        ...base,
-        borderRadius: '0.75rem',
-        overflow: 'hidden',
-        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-        zIndex: 60,
-      }),
-    }}
-  />
-</div>
+                {/* Searchable Printer Selector */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-700">Assigned Printer</label>
+                    <button
+                      type="button"
+                      onClick={fetchSystemPrinters}
+                      disabled={loadingPrinters}
+                      className="flex items-center gap-1 text-[11px] text-[#b5541f] hover:underline disabled:opacity-50"
+                    >
+                      <RefreshCw size={11} className={loadingPrinters ? 'animate-spin' : ''} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
-          >
-                  Save
-                </button>
-              </div>
-            </form>
+                  <Select
+                    isClearable
+                    isSearchable
+                    isLoading={loadingPrinters}
+                    placeholder="Type to search or select printer..."
+                    value={
+                      selectedPrinter
+                        ? { value: selectedPrinter, label: selectedPrinter }
+                        : null
+                    }
+                    onChange={(selectedOption) => {
+                      setSelectedPrinter(selectedOption ? selectedOption.value : '');
+                    }}
+                    options={availablePrinters.map((printer) => ({
+                      value: printer,
+                      label: printer,
+                    }))}
+                    styles={{
+                      control: (base, state) => ({
+                        ...base,
+                        borderRadius: '0.75rem',
+                        borderColor: state.isFocused ? '#c2621f' : '#e2e8f0',
+                        padding: '2px',
+                        boxShadow: state.isFocused ? '0 0 0 2px rgba(194, 98, 31, 0.2)' : 'none',
+                        '&:hover': {
+                          borderColor: state.isFocused ? '#c2621f' : '#cbd5e1',
+                        },
+                      }),
+                      menu: (base) => ({
+                        ...base,
+                        borderRadius: '0.75rem',
+                        overflow: 'hidden',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                        zIndex: 60,
+                      }),
+                      option: (base, state) => ({
+                        ...base,
+                        backgroundColor: state.isFocused ? '#c2621f' : state.isSelected ? '#fdece1' : '#ffffff',
+                        color: state.isFocused ? '#ffffff' : state.isSelected ? '#8a3f16' : '#334155',
+                      }),
+                    }}
+                  />
+                </div>
+
+                <div className="ticket-tear-line" />
+
+                <div className="flex items-center justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
