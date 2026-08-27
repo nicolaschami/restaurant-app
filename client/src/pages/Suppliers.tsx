@@ -274,23 +274,32 @@ const confirmDelete = async () => {
 
   return (
     <div className="min-h-full bg-slate-50/60 p-4 sm:p-6 lg:p-8">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
+        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+        .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        .ticket-tear-line {
+          background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
+          height: 1px;
+        }
+      `}</style>
       <div className="mx-auto max-w-7xl space-y-6">
         
         {/* HEADER */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 ring-1 ring-inset ring-orange-500/20">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1c1917] text-[#e8ceb8] shadow-sm shrink-0">
               <Truck className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Suppliers & Vendors</h1>
-              <p className="text-xs text-slate-500">Manage vendor accounts and commercial terms.</p>
+              <h1 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Suppliers &amp; Vendors</h1>
+              <p className="text-xs text-slate-500 mt-1">Manage vendor accounts and commercial terms.</p>
             </div>
           </div>
 
           <button
             onClick={() => handleOpenModal()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
           >
             <Plus className="h-4 w-4" />
             Add New Supplier
@@ -306,36 +315,39 @@ const confirmDelete = async () => {
 
         {/* STAT METRICS */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm overflow-hidden relative">
+            <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#8a3f16] to-[#c2621f]" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-500">Total Partners</span>
               <Building2 className="h-4 w-4 text-slate-400" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{totalSuppliers}</p>
+            <p className="mt-2 text-2xl price-font font-bold text-[#1c1917]">{totalSuppliers}</p>
             <span className="mt-1 inline-block text-[11px] font-medium text-emerald-600">
               {activeSuppliers} Active Vendors
             </span>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm overflow-hidden relative">
+            <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#8a3f16] to-[#c2621f]" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-500">Total Outstanding</span>
-              <DollarSign className="h-4 w-4 text-amber-500" />
+              <DollarSign className="h-4 w-4 text-[#b5541f]" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
+            <p className="mt-2 text-2xl price-font font-bold text-[#1c1917]">
               ${totalOutstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
-            <span className="mt-1 inline-block text-[11px] font-medium text-amber-600">
+            <span className="mt-1 inline-block text-[11px] font-medium text-[#b5541f]">
               Accounts Payable Balance
             </span>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm overflow-hidden relative">
+            <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#8a3f16] to-[#c2621f]" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-500">Compliance Rate</span>
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             </div>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
+            <p className="mt-2 text-2xl price-font font-bold text-[#1c1917]">
               {Math.round((activeSuppliers / (totalSuppliers || 1)) * 100)}%
             </p>
             <span className="mt-1 inline-block text-[11px] font-medium text-slate-400">
@@ -353,7 +365,7 @@ const confirmDelete = async () => {
               placeholder="Search by vendor, code or contact..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2 text-xs font-medium text-slate-800 outline-none focus:border-amber-500 focus:bg-white"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2 text-xs font-medium text-slate-800 outline-none focus:border-[#c2621f] focus:bg-white focus:ring-1 focus:ring-[#c2621f]/30"
             />
           </div>
 
@@ -365,7 +377,7 @@ const confirmDelete = async () => {
                 onClick={() => setStatusFilter(status)}
                 className={`rounded-xl px-3 py-1.5 text-xs font-semibold capitalize transition ${
                   statusFilter === status
-                    ? 'bg-slate-900 text-white'
+                    ? 'bg-[#1c1917] text-white'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -379,11 +391,11 @@ const confirmDelete = async () => {
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-100 bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <thead className="bg-[#1c1917] text-[11px] font-bold uppercase tracking-wider text-[#d8c6b0]">
                 <tr>
                   <th className="px-5 py-3.5">Vendor</th>
                   <th className="px-5 py-3.5">Contact Person</th>
-                  <th className="px-5 py-3.5">Terms & Credit</th>
+                  <th className="px-5 py-3.5">Terms &amp; Credit</th>
                   <th className="px-5 py-3.5">Outstanding Balance</th>
                   <th className="px-5 py-3.5">Status</th>
                   <th className="px-5 py-3.5 text-right">Actions</th>
@@ -393,21 +405,21 @@ const confirmDelete = async () => {
                 {isLoading ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-slate-400">
-                      <Loader2 className="mx-auto h-6 w-6 animate-spin text-amber-500" />
+                      <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#c2621f]" />
                       <p className="mt-2 text-xs">Loading suppliers from server...</p>
                     </td>
                   </tr>
                 ) : filteredSuppliers.length > 0 ? (
                   filteredSuppliers.map((supplier) => (
-                    <tr key={supplier.supplierId} className="group hover:bg-amber-50/30">
+                    <tr key={supplier.supplierId} className="group hover:bg-[#faf3ea] transition-colors">
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-700 group-hover:bg-orange-500 group-hover:text-white transition">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-700 group-hover:bg-[#c2621f] group-hover:text-white transition">
                             {supplier.supplierName?.charAt(0) || 'V'}
                           </div>
                           <div>
                             <p className="font-bold text-slate-900">{supplier.supplierName}</p>
-                            <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-500">
+                            <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] price-font text-slate-500">
                               {supplier.supplierCode || 'N/A'}
                             </span>
                           </div>
@@ -423,17 +435,17 @@ const confirmDelete = async () => {
                       </td>
 
                       <td className="px-5 py-4">
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                          <CreditCard className="h-3 w-3 text-slate-400" />
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-[#fdece1] border border-[#f0c9a6] px-2 py-1 text-[11px] font-semibold text-[#8a3f16]">
+                          <CreditCard className="h-3 w-3 text-[#b5541f]" />
                           {supplier.paymentTerms || 'N/A'}
                         </span>
-                        <p className="mt-1 text-[11px] text-slate-400">
+                        <p className="mt-1 text-[11px] price-font text-slate-400">
                           Limit: ${parseNumericValue(supplier.creditLimit).toLocaleString()}
                         </p>
                       </td>
 
                       <td className="px-5 py-4">
-                        <p className={`font-bold ${parseNumericValue(supplier.openingBalance) > 0 ? 'text-orange-600' : 'text-slate-900'}`}>
+                        <p className={`price-font font-bold ${parseNumericValue(supplier.openingBalance) > 0 ? 'text-[#b5541f]' : 'text-slate-900'}`}>
                           ${parseNumericValue(supplier.openingBalance).toFixed(2)}
                         </p>
                       </td>
@@ -451,18 +463,20 @@ const confirmDelete = async () => {
                       </td>
 
                       <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => handleOpenModal(supplier)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                         <button
-                                            onClick={() => setItemToDelete(supplier)}          
-                                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                                                      >
-                                                        <Trash2 size={16} />
-                                                      </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleOpenModal(supplier)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-[#fdece1] hover:text-[#b5541f] transition"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setItemToDelete(supplier)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -477,6 +491,16 @@ const confirmDelete = async () => {
               </tbody>
             </table>
           </div>
+          {!isLoading && (
+            <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500">
+              {searchQuery || statusFilter !== 'all' ? (
+                <>Showing <span className="price-font font-semibold text-[#1c1917]">{filteredSuppliers.length}</span> of{' '}
+                <span className="price-font font-semibold text-[#1c1917]">{totalSuppliers}</span> suppliers</>
+              ) : (
+                <><span className="price-font font-semibold text-[#1c1917]">{totalSuppliers}</span> suppliers total</>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -489,16 +513,20 @@ const confirmDelete = async () => {
     <div className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl transition-all">
       
       {/* 1. FIXED HEADER */}
-      <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-        <div>
-          <h2 className="text-base font-bold text-slate-900">
-            {editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}
-          </h2>
-          <p className="text-xs text-slate-500">Update vendor details and payment arrangements.</p>
+      <div className="flex items-center justify-between bg-[#1c1917] border-b-2 border-[#c2621f] px-6 py-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-1.5 h-8 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2621f] leading-none mb-1">Vendor Account</p>
+            <h2 className="ticket-font uppercase text-xl leading-none text-white">
+              {editingSupplier ? 'Edit Supplier' : 'New Supplier'}
+            </h2>
+            <p className="text-[11px] text-slate-400 mt-1.5">Update vendor details and payment arrangements.</p>
+          </div>
         </div>
         <button
           onClick={() => setIsModalOpen(false)}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+          className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white transition shrink-0"
         >
           <X className="h-5 w-5" />
         </button>
@@ -513,7 +541,7 @@ const confirmDelete = async () => {
             required
             value={formData.supplierName || ''}
             onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
           />
         </div>
 
@@ -524,7 +552,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.supplierCode || ''}
               onChange={(e) => setFormData({ ...formData, supplierCode: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 price-font outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
           <div>
@@ -533,7 +561,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.contactPerson || ''}
               onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
         </div>
@@ -545,7 +573,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.phone || ''}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
           <div>
@@ -554,7 +582,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.phone2 || ''}
               onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
         </div>
@@ -566,7 +594,7 @@ const confirmDelete = async () => {
               type="email"
               value={formData.email || ''}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
           <div>
@@ -575,7 +603,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.taxNumber || ''}
               onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 price-font outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
         </div>
@@ -587,7 +615,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.city || ''}
               onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
           <div>
@@ -596,7 +624,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.country || 'US'}
               onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
         </div>
@@ -607,7 +635,7 @@ const confirmDelete = async () => {
             type="text"
             value={formData.address || ''}
             onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
           />
         </div>
 
@@ -617,7 +645,7 @@ const confirmDelete = async () => {
             <select
               value={formData.paymentTerms || 'NET 15'}
               onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             >
               <option value="COD">COD</option>
               <option value="NET 15">NET 15</option>
@@ -631,7 +659,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.currencyCode || 'USD'}
               onChange={(e) => setFormData({ ...formData, currencyCode: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 price-font outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
         </div>
@@ -643,7 +671,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.creditLimit ?? ''}
               onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 price-font outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
           <div>
@@ -652,7 +680,7 @@ const confirmDelete = async () => {
               type="text"
               value={formData.openingBalance ?? ''}
               onChange={(e) => setFormData({ ...formData, openingBalance: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 price-font outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
             />
           </div>
         </div>
@@ -663,9 +691,11 @@ const confirmDelete = async () => {
             rows={2}
             value={formData.notes || ''}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f]"
           />
         </div>
+
+        <div className="ticket-tear-line" />
 
         <div className="flex items-center gap-2 pt-2 pb-1">
           <input
@@ -673,7 +703,7 @@ const confirmDelete = async () => {
             id="isActiveToggle"
             checked={Boolean(formData.isActive)}
             onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-            className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-amber-500"
+            className="h-4 w-4 rounded border-slate-300 text-[#c2621f] focus:ring-[#c2621f]"
           />
           <label htmlFor="isActiveToggle" className="font-semibold text-slate-700 cursor-pointer">
             Mark as Active Supplier
@@ -694,7 +724,7 @@ const confirmDelete = async () => {
           type="submit"
           form="supplier-form"
           disabled={isSubmitting}
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-6 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95 active:scale-98 disabled:opacity-50"
+          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95 active:scale-98 disabled:opacity-50"
         >
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
           Save Supplier

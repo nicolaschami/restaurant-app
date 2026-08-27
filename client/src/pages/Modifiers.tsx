@@ -225,17 +225,28 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
 
   return (
     <div className="max-w-6xl mx-auto pb-12">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
+        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+        .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        .ticket-tear-line {
+          background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
+          height: 1px;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Modifier Groups</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Configure extra options, add-ons, and choices for your menu items ({filteredGroups.length} total).
+          <h2 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Modifier Groups</h2>
+          <p className="text-sm text-slate-500 mt-2">
+            Configure extra options, add-ons, and choices for your menu items &middot;{' '}
+            <span className="price-font font-semibold text-[#8a3f16]">{filteredGroups.length}</span> total
           </p>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
                   >
                  
           <Plus size={18} />
@@ -252,7 +263,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search modifier groups by name..."
-            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/40 focus:border-[#c2621f] shadow-sm"
           />
           {searchQuery && (
             <button
@@ -270,7 +281,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
             title="Card View"
             className={`p-2 rounded-lg transition ${
               viewMode === 'cards'
-                ? 'bg-white text-indigo-600 shadow-sm font-semibold'
+                ? 'bg-white text-[#b5541f] shadow-sm font-semibold'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -281,7 +292,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
             title="Table View"
             className={`p-2 rounded-lg transition ${
               viewMode === 'table'
-                ? 'bg-white text-indigo-600 shadow-sm font-semibold'
+                ? 'bg-white text-[#b5541f] shadow-sm font-semibold'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -307,28 +318,29 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
           <>
             {/* CARD VIEW */}
             {viewMode === 'cards' && (
-              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 bg-slate-50/50">
+              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 bg-[#faf8f4]">
                 {paginatedGroups.map((group) => (
                   <div
                     key={group.id}
-                    className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                    className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden"
                   >
-                    <div>
+                    <div className="h-1 w-full bg-gradient-to-r from-[#8a3f16] to-[#c2621f]" />
+                    <div className="p-5">
                       <div className="flex items-start justify-between gap-2 mb-3">
                         <div className="flex items-center gap-2">
-                          <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                          <div className="p-2 bg-[#fdece1] text-[#b5541f] rounded-xl">
                             <Layers size={18} />
                           </div>
                           <div>
                             <h4 className="font-bold text-slate-800 text-base">{group.name}</h4>
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs price-font text-slate-400">
                               Min: {group.minSelection} | Max: {group.maxSelection}
                             </span>
                           </div>
                         </div>
 
                         {group.isRequired ? (
-                          <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-50 text-amber-600 border border-amber-200/60 px-2 py-0.5 rounded-md">
+                          <span className="text-[10px] uppercase tracking-wider font-bold bg-[#fdece1] text-[#8a3f16] border border-[#f0c9a6] px-2 py-0.5 rounded-md">
                             Required
                           </span>
                         ) : (
@@ -346,7 +358,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                               className="flex items-center justify-between text-xs py-1.5 px-3 bg-slate-50 rounded-lg border border-slate-100 text-slate-700"
                             >
                               <span className="font-medium">{opt.name}</span>
-                              <span className="font-mono text-slate-500">
+                              <span className="price-font text-slate-500">
                                 {Number(opt.price) > 0 ? `+$${Number(opt.price).toFixed(2)}` : 'Free'}
                               </span>
                             </div>
@@ -357,19 +369,20 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                       </div>
                     </div>
 
-                    <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                      <span>{group.options?.length || 0} Options</span>
+                    <div className="ticket-tear-line mx-5" />
+                    <div className="px-5 py-3 flex items-center justify-between text-xs text-slate-400">
+                      <span className="price-font">{group.options?.length || 0} Options</span>
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleOpenModal(group)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
                           title="Edit Group"
                         >
                           <Edit2 size={15} />
                         </button>
                         <button
                           onClick={() => setGroupToDelete(group)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                           title="Delete Group"
                         >
                           <Trash2 size={15} />
@@ -386,7 +399,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr className="bg-slate-50/70 border-b border-slate-100 text-xs font-semibold uppercase text-slate-400 tracking-wider">
+                    <tr className="bg-[#1c1917] text-[11px] font-semibold uppercase text-[#d8c6b0] tracking-wider">
                       <th className="px-6 py-3">Group Name</th>
                       <th className="px-4 py-3">Selection Rules</th>
                       <th className="px-4 py-3">Requirement</th>
@@ -396,19 +409,19 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {paginatedGroups.map((group) => (
-                      <tr key={group.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={group.id} className="hover:bg-[#faf3ea] transition-colors">
                         <td className="px-6 py-4 font-semibold text-slate-800">
                           <div className="flex items-center gap-2">
-                            <Layers size={16} className="text-indigo-500" />
+                            <Layers size={16} className="text-[#b5541f]" />
                             <span>{group.name}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-xs text-slate-600 font-mono">
+                        <td className="px-4 py-4 text-xs text-slate-600 price-font">
                           Min: {group.minSelection} / Max: {group.maxSelection}
                         </td>
                         <td className="px-4 py-4">
                           {group.isRequired ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-md border border-amber-200/50">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-[#8a3f16] bg-[#fdece1] px-2.5 py-0.5 rounded-md border border-[#f0c9a6]">
                               <CheckCircle2 size={12} /> Mandatory
                             </span>
                           ) : (
@@ -425,7 +438,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                                 className="inline-block bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 rounded border border-slate-200"
                               >
                                 {opt.name}{' '}
-                                <strong className="text-slate-900 font-mono">
+                                <strong className="text-[#1c1917] price-font">
                                   {Number(opt.price) > 0 ? `(+$${Number(opt.price).toFixed(2)})` : ''}
                                 </strong>
                               </span>
@@ -436,13 +449,13 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleOpenModal(group)}
-                              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                              className="p-2 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
                             >
                               <Edit2 size={16} />
                             </button>
                             <button
                               onClick={() => setGroupToDelete(group)}
-                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -458,8 +471,9 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
             {/* Pagination Footer */}
             <div className="mt-auto flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50 gap-3 text-sm text-slate-500">
               <div>
-                Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredGroups.length)} to{' '}
-                {Math.min(currentPage * itemsPerPage, filteredGroups.length)} of {filteredGroups.length} groups
+                Showing <span className="price-font font-semibold text-[#1c1917]">{Math.min((currentPage - 1) * itemsPerPage + 1, filteredGroups.length)}</span> to{' '}
+                <span className="price-font font-semibold text-[#1c1917]">{Math.min(currentPage * itemsPerPage, filteredGroups.length)}</span> of{' '}
+                <span className="price-font font-semibold text-[#1c1917]">{filteredGroups.length}</span> groups
               </div>
 
               {totalPages > 1 && (
@@ -467,17 +481,17 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                   <button
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-[#fdece1] hover:text-[#b5541f] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 transition"
                   >
                     <ChevronLeft size={16} />
                   </button>
-                  <span className="text-xs font-semibold px-2">
+                  <span className="text-xs font-semibold px-2 price-font">
                     Page {currentPage} of {totalPages}
                   </span>
                   <button
                     disabled={currentPage === totalPages}
                     onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    className="p-2 border border-slate-200 bg-white rounded-lg text-slate-600 hover:bg-[#fdece1] hover:text-[#b5541f] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 transition"
                   >
                     <ChevronRight size={16} />
                   </button>
@@ -491,139 +505,151 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
       {/* Modal Form */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-slate-900 mb-1">
-              {editingGroup ? 'Edit Modifier Group' : 'Create Modifier Group'}
-            </h3>
-
-            {formError && (
-              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-600 text-xs font-medium">
-                <AlertCircle size={16} className="shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSave} className="space-y-4 mt-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Group Name *</label>
-                <input
-                  type="text"
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                  placeholder="e.g. Choice of Cheese, Pizza Toppings, Cooking Temp"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 bg-[#1c1917] border-b-2 border-[#c2621f] shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-1.5 h-7 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Min Selection</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={minSelection}
-                    onChange={(e) => setMinSelection(parseInt(e.target.value) || 0)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Max Selection</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={maxSelection}
-                    onChange={(e) => setMaxSelection(parseInt(e.target.value) || 1)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2621f] leading-none mb-1">Modifier Group</p>
+                  <h3 className="ticket-font uppercase text-xl leading-none text-white">
+                    {editingGroup ? 'Edit Group' : 'New Group'}
+                  </h3>
                 </div>
               </div>
-<div className="flex items-center gap-2 pt-2">
-  <input
-    type="checkbox"
-    id="isRequired"
-    checked={isRequired}
-    onChange={(e) => setIsRequired(e.target.checked)}
-    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-  />
-  <label htmlFor="isRequired" className="text-xs font-semibold text-slate-700 cursor-pointer">
-    Required Field (Customer must select at least one option)
-  </label>
-</div>
-              <div className="pt-2 border-t border-slate-100">
-                <label className="block text-xs font-bold text-slate-800 mb-2 uppercase tracking-wider">
-                  Modifier Options / Items
-                </label>
+            </div>
 
-                <div className="space-y-2 mb-3 max-h-48 overflow-y-auto pr-1">
-                  {options.map((opt, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
-                    >
-                      <span className="font-medium text-slate-800">{opt.name}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-xs text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
-                          +${Number(opt.price).toFixed(2)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveOption(idx)}
-                          className="text-slate-400 hover:text-rose-600 transition"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            <div className="p-6 overflow-y-auto">
+              {formError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-600 text-xs font-medium">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{formError}</span>
                 </div>
+              )}
 
-                <div className="flex items-center gap-2">
+              <form onSubmit={handleSave} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Group Name *</label>
                   <input
                     type="text"
-                    placeholder="Option name (e.g. Extra Cheddar)"
-                    value={newOptionName}
-                    onChange={(e) => setNewOptionName(e.target.value)}
-                    className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="e.g. Choice of Cheese, Pizza Toppings, Cooking Temp"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
+                    autoFocus
                   />
-                  <div className="w-28 relative">
-                    <span className="absolute left-3 top-2 text-slate-400 text-sm">$</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Min Selection</label>
                     <input
                       type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={newOptionPrice}
-                      onChange={(e) => setNewOptionPrice(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl pl-7 pr-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      min="0"
+                      value={minSelection}
+                      onChange={(e) => setMinSelection(parseInt(e.target.value) || 0)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Max Selection</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={maxSelection}
+                      onChange={(e) => setMaxSelection(parseInt(e.target.value) || 1)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="isRequired"
+                    checked={isRequired}
+                    onChange={(e) => setIsRequired(e.target.checked)}
+                    className="w-4 h-4 text-[#c2621f] rounded border-slate-300 focus:ring-[#c2621f]"
+                  />
+                  <label htmlFor="isRequired" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                    Required Field (Customer must select at least one option)
+                  </label>
+                </div>
+                <div className="pt-2 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-slate-800 mb-2 uppercase tracking-wider">
+                    Modifier Options / Items
+                  </label>
+
+                  <div className="space-y-2 mb-3 max-h-48 overflow-y-auto pr-1">
+                    {options.map((opt, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                      >
+                        <span className="font-medium text-slate-800">{opt.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="price-font text-xs text-[#8a3f16] bg-[#fdece1] px-2 py-0.5 rounded border border-[#f0c9a6]">
+                            +${Number(opt.price).toFixed(2)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveOption(idx)}
+                            className="text-slate-400 hover:text-red-600 transition"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Option name (e.g. Extra Cheddar)"
+                      value={newOptionName}
+                      onChange={(e) => setNewOptionName(e.target.value)}
+                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
+                    />
+                    <div className="w-28 relative">
+                      <span className="absolute left-3 top-2 text-slate-400 text-sm price-font">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={newOptionPrice}
+                        onChange={(e) => setNewOptionPrice(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl pl-7 pr-3 py-2 text-sm price-font focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddOption}
+                      className="bg-[#1c1917] hover:bg-[#33291f] text-white p-2.5 rounded-xl transition"
+                      title="Add Item"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="ticket-tear-line" />
+
+                <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={handleAddOption}
-                    className="bg-slate-900 hover:bg-slate-800 text-white p-2.5 rounded-xl transition"
-                    title="Add Item"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
                   >
-                    <Plus size={18} />
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
+                  >
+                    Save Modifier Group
                   </button>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
-          >
-                  Save Modifier Group
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

@@ -175,15 +175,25 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
+        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+        .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        .ticket-tear-line {
+          background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
+          height: 1px;
+        }
+      `}</style>
+
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Raw Materials</h1>
-          <p className="text-sm text-gray-500">Manage ingredients, stock levels, and costs.</p>
+          <h1 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Raw Materials</h1>
+          <p className="text-sm text-gray-500 mt-2">Manage ingredients, stock levels, and costs.</p>
         </div>
         <button
           onClick={handleOpenCreateModal}
-        className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
           >
           + Add Material
         </button>
@@ -198,7 +208,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       placeholder="Search materials or codes..."
       value={search}
       onChange={(e) => setSearch(e.target.value)}
-      className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+      className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/40 focus:border-[#c2621f] transition"
     />
   </div>
   {error && <p className="text-sm font-medium text-red-600">{error}</p>}
@@ -208,7 +218,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       <div className="bg-white rounded-xl shadow border overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <tr className="bg-[#1c1917] text-[11px] font-semibold text-[#d8c6b0] uppercase tracking-wider">
               <th className="px-4 py-3">Code</th>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Unit</th>
@@ -233,14 +243,25 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
                 </td>
               </tr>
             ) : (
-              filteredItems.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-600">{item.code || '-'}</td>
+              filteredItems.map((item) => {
+                const stockNum = Number(item.currentStock);
+                const minNum = Number(item.minQty);
+                const isLow = !isNaN(stockNum) && !isNaN(minNum) && minNum > 0 && stockNum <= minNum;
+                return (
+                <tr key={item.id} className="hover:bg-[#faf3ea] transition-colors">
+                  <td className="px-4 py-3 text-gray-600 price-font">{item.code || '-'}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
                   <td className="px-4 py-3 text-gray-600">{item.unit}</td>
-                  <td className="px-4 py-3 text-gray-900">${item.costPrice}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">{item.currentStock}</td>
-                  <td className="px-4 py-3 text-gray-500">
+                  <td className="px-4 py-3 text-[#1c1917] price-font font-semibold">${item.costPrice}</td>
+                  <td className="px-4 py-3 price-font font-semibold">
+                    <span className={isLow ? 'text-red-600' : 'text-gray-900'}>{item.currentStock}</span>
+                    {isLow && (
+                      <span className="ml-2 inline-flex items-center text-[9px] font-bold uppercase tracking-wide text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                        Low
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 price-font">
                     {item.minQty} / {item.maxQty}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{item.warehouse || '-'}</td>
@@ -248,14 +269,14 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
   <div className="flex items-center justify-end gap-2">
     <button
       onClick={() => handleOpenEditModal(item)}
-      className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-lg transition"
+      className="p-1.5 text-gray-500 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
       title="Edit"
     >
       <Pencil className="w-4 h-4" />
     </button>
     <button
       onClick={() => handleDelete(item.id)}
-      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-lg transition"
+      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
       title="Delete"
     >
       <Trash2 className="w-4 h-4" />
@@ -263,10 +284,21 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
   </div>
 </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
+        {!loading && filteredItems.length > 0 && (
+          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 text-xs text-gray-500">
+            {search ? (
+              <>Showing <span className="price-font font-semibold text-[#1c1917]">{filteredItems.length}</span> of{' '}
+              <span className="price-font font-semibold text-[#1c1917]">{items.length}</span> materials</>
+            ) : (
+              <><span className="price-font font-semibold text-[#1c1917]">{items.length}</span> materials total</>
+            )}
+          </div>
+        )}
       </div>
 {/* Modern Modal Overlay */}
 {/* Compact Modal Overlay */}
@@ -275,30 +307,29 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col border border-gray-100">
       
       {/* Header */}
-      <div className="px-5 py-3.5 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center justify-between">
+      <div className="px-6 py-4 bg-[#1c1917] border-b-2 border-[#c2621f] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold">
-            📦
-          </div>
+          <div className="w-1.5 h-8 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
           <div>
-            <h2 className="text-base font-bold text-gray-900">
-              {editingItem ? 'Edit Raw Material' : 'Add New Material'}
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2621f] leading-none mb-1">Inventory</p>
+            <h2 className="ticket-font uppercase text-xl leading-none text-white">
+              {editingItem ? 'Edit Material' : 'New Material'}
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-[11px] text-slate-400 mt-1.5">
               Configure inventory items, recipe units, and stock limits
             </p>
           </div>
         </div>
         <button
           onClick={() => setIsModalOpen(false)}
-          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+          className="p-1 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition shrink-0"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Form Body - Compact Grid */}
-      <form id="raw-material-form" onSubmit={handleSave} className="p-5 space-y-3.5">
+      <form id="raw-material-form" onSubmit={handleSave} className="p-5 space-y-3.5 overflow-y-auto">
         
         {/* Row 1: Name (Spans 2 cols) & Recipe Unit */}
         <div className="grid grid-cols-3 gap-3">
@@ -311,7 +342,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
               placeholder="e.g. Mozzarella Cheese"
             />
           </div>
@@ -323,7 +354,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
             <select
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
             >
               {COMMON_UNITS.map((u) => (
                 <option key={u} value={u}>{u}</option>
@@ -340,7 +371,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
               placeholder="RM-001"
             />
           </div>
@@ -351,7 +382,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
               type="text"
               value={barCode}
               onChange={(e) => setBarCode(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
               placeholder="123456789"
             />
           </div>
@@ -362,7 +393,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
               type="text"
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
               placeholder="Brand Name"
             />
           </div>
@@ -378,7 +409,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       min="0"
       value={costPrice}
       onChange={(e) => setCostPrice(e.target.value)}
-      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
       placeholder="0.00"
     />
   </div>
@@ -391,7 +422,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       min="0"
       value={currentStock}
       onChange={(e) => setCurrentStock(e.target.value)}
-      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
       placeholder="0.00"
     />
   </div>
@@ -402,7 +433,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
               type="text"
               value={warehouse}
               onChange={(e) => setWarehouse(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+              className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
               placeholder="Main Pantry"
             />
           </div>
@@ -418,7 +449,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       min="0"
       value={minQty}
       onChange={(e) => setMinQty(e.target.value)}
-      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
       placeholder="0.00"
     />
   </div>
@@ -431,7 +462,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       min="0"
       value={maxQty}
       onChange={(e) => setMaxQty(e.target.value)}
-      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
       placeholder="0.00"
     />
   </div>
@@ -444,12 +475,14 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition resize-none"
+            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition resize-none"
             placeholder="Add optional notes or instructions..."
           />
         </div>
 
       </form>
+
+      <div className="ticket-tear-line mx-5" />
 
       {/* Footer */}
       <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-3">
@@ -463,7 +496,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
         <button
           type="submit"
           form="raw-material-form"
-         className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition hover:opacity-95"
+         className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
           >
           {editingItem ? 'Update Material' : 'Save Material'}
         </button>
