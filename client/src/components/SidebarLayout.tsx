@@ -16,6 +16,8 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Table2,
+  CircleUserRound,
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -36,12 +38,18 @@ export default function SidebarLayout({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isPartnersOpen, setIsPartnersOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const productSubItems = [
     { id: 'categories', label: 'Categories', icon: Layers },
     { id: 'menu-items', label: 'Menu Items', icon: Utensils },
     { id: 'modifiers', label: 'Modifiers', icon: SlidersHorizontal },
     { id: 'raw-materials', label: 'Raw Materials', icon: Wheat },
+  ];
+
+  const setingSubItems = [
+    { id: 'tabels', label: 'Tables', icon: Table2 },
+    { id: 'customers', label: 'Customers', icon: CircleUserRound }, // Updated ID to 'customers'
   ];
 
   const partnerSubItems = [
@@ -231,21 +239,55 @@ export default function SidebarLayout({
             )}
           </div>
 
-          {/* Settings */}
-          <button
-            onClick={() => handleTabChange('settings')}
-            className={`w-full flex items-center ${
-              isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
-            } py-2 rounded-md text-xs font-medium transition ${
-              activeTab === 'settings'
-                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c2621f]'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-            title="Settings"
-          >
-            <Settings className={`w-4 h-4 shrink-0 ${activeTab === 'settings' ? 'text-[#c2621f]' : ''}`} />
-            {!isCollapsed && <span className="truncate">Settings</span>}
-          </button>
+          {/* Settings Group */}
+          <div>
+            <button
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                setIsSettingsOpen(!isSettingsOpen);
+              }}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+              } py-2 rounded-md text-xs font-medium text-slate-300 hover:bg-white/5 transition`}
+              title="Settings"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Settings className="w-4 h-4 text-[#c2621f] shrink-0" />
+                {!isCollapsed && <span className="truncate">Settings</span>}
+              </div>
+              {!isCollapsed && (
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                    isSettingsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                  }`}
+                />
+              )}
+            </button>
+
+            {/* Settings Sub-menu */}
+            {isSettingsOpen && !isCollapsed && (
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+                {setingSubItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabChange(item.id)}
+                      className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
+                        isActive
+                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* Footer / Logout */}
@@ -266,10 +308,6 @@ export default function SidebarLayout({
       </aside>
 
       {/* Main Content Area */}
-      {/* Changed overflow-hidden -> overflow-y-auto: pages that don't manage their
-          own internal scroll (Categories, Suppliers, Modifiers, etc.) need the
-          shell itself to scroll, otherwise their content below the fold is
-          unreachable — this was the root cause of the earlier "can't scroll down" issue. */}
       <main className="flex-1 h-full w-full overflow-y-auto bg-slate-50">
         {children}
       </main>

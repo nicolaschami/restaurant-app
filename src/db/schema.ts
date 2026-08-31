@@ -10,10 +10,13 @@ import {
     jsonb ,
     primaryKey   ,
     uniqueIndex, 
+    pgEnum,
+    bigint,
+    bigserial,
   index
   } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-
+export const tableStatusEnum = pgEnum('table_status', ['free', 'occupied', 'reserved']);
 export type RawMaterialItem = {
   materialId: number;
   name: string;
@@ -21,6 +24,34 @@ export type RawMaterialItem = {
   quantity: number;
   totalCost: number;
 };
+
+
+
+export const restaurantTables = pgTable('restaurant_tables', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(), // OR use: serial('id').primaryKey(),
+  restaurantId: bigint('restaurant_id', { mode: 'number' }).notNull(),
+  label: varchar('label', { length: 50 }).notNull(),
+  capacity: integer('capacity'),
+  zone: varchar('zone', { length: 50 }),
+  notes: text('notes'),
+  status: tableStatusEnum('status').default('free').notNull(),
+  currentOrderId: bigint('current_order_id', { mode: 'number' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const customers = pgTable('customers', {
+  id: serial('id').primaryKey(),
+  restaurantId: varchar('restaurant_id', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 50 }).notNull(),
+  email: varchar('email', { length: 50 }),
+  address: text('address'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // supplier table 
 export const suppliers = pgTable(
   'supplier',
@@ -247,6 +278,7 @@ export const restaurants = pgTable('restaurants', {
 export const orders = pgTable('orders', {
     id: serial('id').primaryKey(),
     restaurantId: integer('restaurant_id').references(() => restaurants.id, { onDelete: 'cascade' }),
+    ticketNo: integer('ticket_no'), // 👈 New column added
     tableId: integer('table_id'),
     status: varchar('status', { length: 20 }).default('open'),
     totalAmount: numeric('total_amount', { precision: 10, scale: 2 }).default('0.00'),
@@ -264,10 +296,13 @@ export const orders = pgTable('orders', {
 export const orderItems = pgTable('order_items', {
   id: serial('id').primaryKey(),
   orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }),
-  menuItemId: integer('menu_item_id').references(() => menuItems.id, { onDelete: 'set null' }),
-  quantity: integer('quantity').default(1).notNull(),
+  menuItemId: integer('menu_item_id'),
+  quantity: integer('quantity').notNull().default(1),
   unitPrice: numeric('unit_price', { precision: 10, scale: 2 }).notNull(),
   subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),
+  variantSize: varchar('variant_size', { length: 50 }),
+  modifiers: jsonb('modifiers').default([]), // 👈 Added JSONB field
+
   kitchenStatus: varchar('kitchen_status', { length: 20 }).default('pending'),
   sentToKitchenAt: timestamp('sent_to_kitchen_at'),
   completedAt: timestamp('completed_at'),

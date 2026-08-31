@@ -10,6 +10,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 require("dotenv/config");
 const categories_js_1 = __importDefault(require("./routes/categories.js"));
 const kitchenStations_js_1 = __importDefault(require("./routes/kitchenStations.js"));
+
 const fastify = (0, fastify_1.default)({ logger: true });
 // 1. Health Check
 fastify.get('/health', async () => {

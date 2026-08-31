@@ -22,7 +22,8 @@
     "express": "^5.2.1",
     "fastify": "^5.11.3",
     "multer": "^2.2.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "react-hot-toast": "^2.6.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

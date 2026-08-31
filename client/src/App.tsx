@@ -1,4 +1,18 @@
-import { useState, useRef, FC } from 'react';
+import { useState, useRef, useEffect, type FC } from 'react';
+import { api } from './api';
+
+interface ActiveOrder {
+  orderId: number;
+  ticketNo: number;
+  orderType: string;
+  status: string;
+  totalAmount: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  deliveryAddress: string | null;
+  itemCount: number;
+  createdAt?: string; // Optional timestamp to calculate exact elapsed minutes
+}
 
 // ==========================================
 // IMPORTS (Page & Component Dependencies)
@@ -11,19 +25,12 @@ import Modifiers from './pages/Modifiers';
 import RawMaterials from './pages/RawMaterials';
 import SuppliersPage from './pages/Suppliers';
 import PosScreen from './pages/PosScreen';
+import Tables from './pages/Tablo';
+import Customers from './pages/customers';
 
 // ==========================================
 // TYPES & MOCK DATA
 // ==========================================
-interface Ticket {
-  id: string;
-  label: string;
-  type: 'Dine-In' | 'Takeaway' | 'Delivery';
-  mins: number;
-  items: number;
-  total: string;
-}
-
 interface Metric {
   label: string;
   value: string;
@@ -38,15 +45,6 @@ const DASHBOARD_METRICS: Metric[] = [
   { label: "Active Orders", value: "18", detail: "8 kitchen · 10 ready", icon: "🧾" },
   { label: "Menu Items", value: "48", detail: "4 active categories", icon: "🍔" },
   { label: "Stock Alerts", value: "3", detail: "Action required", icon: "⚠️", alert: true },
-];
-
-const TICKETS: Ticket[] = [
-  { id: 'ORD-1042', label: 'Table 4', type: 'Dine-In', mins: 4, items: 3, total: '42.00' },
-  { id: 'ORD-1041', label: 'Takeaway', type: 'Takeaway', mins: 9, items: 2, total: '18.50' },
-  { id: 'ORD-1039', label: 'Table 7', type: 'Dine-In', mins: 14, items: 5, total: '76.20' },
-  { id: 'ORD-1037', label: 'Delivery #22', type: 'Delivery', mins: 24, items: 4, total: '54.00' },
-  { id: 'ORD-1035', label: 'Table 2', type: 'Dine-In', mins: 31, items: 2, total: '29.00' },
-  { id: 'ORD-1033', label: 'Table 9', type: 'Dine-In', mins: 6, items: 3, total: '38.75' },
 ];
 
 const SALES_BARS = [
@@ -114,14 +112,41 @@ interface DashboardViewProps {
 }
 
 const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate }) => {
+  const [tickets, setTickets] = useState<ActiveOrder[]>([]);
+  const [isLoadingTickets, setIsLoadingTickets] = useState<boolean>(true);
   const railRef = useRef<HTMLDivElement>(null);
+
+  const fetchActiveOrders = async () => {
+    try {
+    const response = await api.get('/orders/active', {
+  params: { restaurantId: '1' },
+});
+      setTickets(response.data.orders || []);
+    } catch (err) {
+      console.error('Failed to fetch active orders:', err);
+    } finally {
+      setIsLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveOrders();
+    // Poll every 15 seconds to keep live tickets updated
+    const interval = setInterval(fetchActiveOrders, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   const scrollRail = (dir: 'left' | 'right') => {
     railRef.current?.scrollBy({ left: dir === 'left' ? -190 : 190, behavior: 'smooth' });
   };
 
+  const getElapsedMinutes = (createdAt?: string) => {
+    if (!createdAt) return 0;
+    const diffMs = Date.now() - new Date(createdAt).getTime();
+    return Math.max(0, Math.floor(diffMs / (1000 * 60)));
+  };
+
   return (
-    /* h-full + overflow-y-auto so this view scrolls on its own even if
-       SidebarLayout gives it a fixed-height container */
     <div className="h-full overflow-y-auto counter-texture px-4 sm:px-6 lg:px-8 py-6 pb-20 space-y-6">
       <DashboardStyles />
 
@@ -202,7 +227,7 @@ const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate }) =
       {/* 3. MAIN SECTION GRID */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         
-        {/* Live Kitchen Rail */}
+        {/* Live Kitchen Rail (API Integrated) */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm xl:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -210,7 +235,7 @@ const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate }) =
                 <h2 className="ticket-font uppercase text-lg text-[#1c1917]">Live Kitchen Rail</h2>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fdece1] px-2.5 py-0.5 text-xs font-bold text-[#8a3f16] ring-1 ring-inset ring-[#f0c9a6]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#c2621f] animate-ping" />
-                  {TICKETS.length} Pending
+                  {tickets.length} Pending
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-400">Oldest tickets flagged in red</p>
@@ -246,40 +271,51 @@ const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate }) =
               ref={railRef}
               className="flex gap-4 overflow-x-auto no-scrollbar px-11 pb-2 pt-[9px] snap-x scroll-smooth"
             >
-              {TICKETS.map((t) => {
-                const isOverdue = t.mins >= 20;
-                const isAging = t.mins >= 10;
-                const dotColor = isOverdue ? 'bg-red-500' : isAging ? 'bg-amber-500' : 'bg-emerald-500';
-                const badgeClass = isOverdue
-                  ? 'bg-red-100 text-red-700 border-red-200'
-                  : isAging
-                  ? 'bg-amber-100 text-amber-700 border-amber-200'
-                  : 'bg-emerald-100 text-emerald-700 border-emerald-200';
+              {isLoadingTickets ? (
+                <div className="py-8 text-center text-xs text-slate-400 w-full">Loading active tickets...</div>
+              ) : tickets.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400 w-full">No active kitchen tickets</div>
+              ) : (
+                tickets.map((t) => {
+                  const mins = getElapsedMinutes(t.createdAt);
+                  const isOverdue = mins >= 20;
+                  const isAging = mins >= 10;
+                  const dotColor = isOverdue ? 'bg-red-500' : isAging ? 'bg-amber-500' : 'bg-emerald-500';
+                  const badgeClass = isOverdue
+                    ? 'bg-red-100 text-red-700 border-red-200'
+                    : isAging
+                    ? 'bg-amber-100 text-amber-700 border-amber-200'
+                    : 'bg-emerald-100 text-emerald-700 border-emerald-200';
 
-                return (
-                  <div key={t.id} className="relative shrink-0 w-44 snap-start">
-                    <div className={`absolute left-1/2 -top-[3px] -translate-x-1/2 h-3 w-3 rounded-full ${dotColor} ring-4 ring-white z-10`} />
-                    <div
-                      className={`mt-2.5 rounded-2xl border p-4 transition-all hover:shadow-md ${
-                        isOverdue ? 'border-red-200 bg-red-50/30' : 'border-slate-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="price-font text-xs font-bold text-[#1c1917]">{t.id}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border price-font ${badgeClass}`}>
-                          {t.mins}m{isOverdue ? ' !' : ''}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm font-bold text-slate-800">{t.label}</p>
-                      <p className="text-xs text-slate-400">{t.type} · {t.items} items</p>
-                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2">
-                        <span className="text-xs text-slate-400">Total</span>
-                        <span className="price-font text-sm font-bold text-[#1c1917]">${t.total}</span>
+                  const label = t.customerName || `${t.orderType} Order`;
+
+                  return (
+                    <div key={t.orderId} className="relative shrink-0 w-44 snap-start">
+                      <div className={`absolute left-1/2 -top-[3px] -translate-x-1/2 h-3 w-3 rounded-full ${dotColor} ring-4 ring-white z-10`} />
+                      <div
+                        className={`mt-2.5 rounded-2xl border p-4 transition-all hover:shadow-md ${
+                          isOverdue ? 'border-red-200 bg-red-50/30' : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="price-font text-xs font-bold text-[#1c1917]">#{t.ticketNo}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border price-font ${badgeClass}`}>
+                            {mins}m{isOverdue ? ' !' : ''}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm font-bold text-slate-800 truncate" title={label}>{label}</p>
+                        <p className="text-xs text-slate-400">{t.orderType} · {t.itemCount} items</p>
+                        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2">
+                          <span className="text-xs text-slate-400">Total</span>
+                          <span className="price-font text-sm font-bold text-[#1c1917]">
+                            ${Number(t.totalAmount || 0).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -449,14 +485,10 @@ export default function App() {
       case 'pos':
         return <PosScreen onLogout={handleLogout} />;
       case 'settings':
-        return (
-          <div className="min-h-full bg-slate-50 p-8">
-            <div className="mx-auto max-w-[1600px] rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-              <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-              <p className="mt-2 text-sm text-slate-500">Configure your system settings.</p>
-            </div>
-          </div>
-        );
+      case 'tabels':
+        return <Tables />;
+      case 'customers':
+        return <Customers />;
       default:
         return <DashboardView restaurantName={restaurantName} onNavigate={setActiveTab} />;
     }

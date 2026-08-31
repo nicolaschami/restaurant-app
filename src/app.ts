@@ -29,6 +29,10 @@ import supplierRoutes from './routes/supplier.js';
 import kitchenStationRoutes from './routes/kitchenStations.js';
 import authRoutes from './routes/aut.js';
 import printerRoutes from './routes/printer';
+import tableRoutes from './routes/tables.js';
+import customerRoutes from './routes/customers.js';
+import orderRoutes from './routes/orders.js';
+
 const app = express();
 
 // Serve the uploads directory statically
@@ -493,71 +497,7 @@ fastify.post('/api/restaurants', async (request, reply) => {
 
 
 // 3. Create Order (Waitstaff POS)
-fastify.post('/api/orders', async (request, reply) => {
-    const body = request.body as {
-      restaurantId?: number;
-      tableId?: number | string; // Accept number or string (e.g. "5" -> 5)
-      totalAmount?: string;
-      orderType?: string;
-      customerName?: string;
-      customerPhone?: string;
-      deliveryAddress?: string;
-      serverId?: number;
-      cashierId?: number;
-    } | undefined;
-  
-    if (!body) {
-      return reply.status(400).send({ error: 'Missing request body.' });
-    }
-  
-    const {
-      restaurantId,
-      tableId,
-      totalAmount,
-      orderType,
-      customerName,
-      customerPhone,
-      deliveryAddress,
-      serverId,
-      cashierId,
-    } = body;
-  
-    if (!restaurantId) {
-      return reply.status(400).send({ error: 'restaurantId is required.' });
-    }
-  
-    try {
-      const [newOrder] = await db
-        .insert(orders)
-        .values({
-          restaurantId: Number(restaurantId),
-          // Safely parse tableId into a number or set to null
-          tableId: tableId ? Number(tableId) : null,
-          totalAmount: totalAmount ?? '0.00',
-          status: 'open',
-          orderType: orderType ?? 'dine_in',
-          customerName: customerName ?? null,
-          customerPhone: customerPhone ?? null,
-          deliveryAddress: deliveryAddress ?? null,
-          serverId: serverId ? Number(serverId) : null,
-          cashierId: cashierId ? Number(cashierId) : null,
-        })
-        .returning();
-  
-      return reply.status(201).send({ order: newOrder });
-    } catch (err: any) {
-      // PostgreSQL code 23503 = Foreign Key Violation (restaurantId, serverId, or cashierId missing)
-      if (err.code === '23503') {
-        return reply.status(404).send({
-          error: `Foreign key constraint failed. Check if restaurantId (${restaurantId}), serverId, or cashierId exist.`,
-          detail: err.detail,
-        });
-      }
-  
-      console.error('❌ Database Insert Error:', err);
-      return reply.status(500).send({ error: err.message });
-    }
-  });
+
 
 // 4. Get Active Orders for Kitchen Display System (KDS)
 fastify.get('/api/kds/:restaurantId', async (request, reply) => {
@@ -871,12 +811,15 @@ app.use(express.json());
 fastify.register(uploadRoutes); // 👈 Registers POST /api/upload under Fastify
 fastify.register(printerRoutes);
 fastify.register(categoryRoutes);
+fastify.register(tableRoutes);
+fastify.register(customerRoutes);
 fastify.register(kitchenStationRoutes);
 fastify.register(authRoutes);
 fastify.register(modifierGroupRoutes);
 fastify.register(modifierOptionRoutes);
 fastify.register(rawMaterialsRoutes);
 fastify.register(supplierRoutes);
+fastify.register(orderRoutes)
 // Serve the root uploads folder statically
 app.use('/uploads', express.static('uploads'));
 
