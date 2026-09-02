@@ -671,48 +671,7 @@ async function updateOrderTotal(orderId: number) {
 
 
 // New one get the order item 
-fastify.get('/api/orders/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const orderId = parseInt(id);
-  
-    if (isNaN(orderId)) {
-      return reply.status(400).send({ error: 'Invalid order ID format.' });
-    }
-  
-    // 1. Fetch order details with joined order_items and menu_items
-    const rows = await db
-      .select({
-        order: orders,
-        item: orderItems,
-        menuItemName: menuItems.menuName,
-      })
-      .from(orders)
-      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
-      .leftJoin(menuItems, eq(orderItems.menuItemId, menuItems.id))
-      .where(eq(orders.id, orderId));
-  
-    if (!rows.length) {
-      return reply.status(404).send({ error: 'Order not found.' });
-    }
-  
-    // 2. Extract base order details
-    const orderData = rows[0].order;
-  
-    // 3. Format items array (filtering out nulls if order has no items yet)
-    const items = rows
-      .filter((r) => r.item !== null)
-      .map((r) => ({
-        ...r.item,
-        name: r.menuItemName ?? 'Unknown Item',
-      }));
-  
-    return reply.send({
-      order: {
-        ...orderData,
-        items,
-      },
-    });
-  });
+
 
 
 // delete item from order 

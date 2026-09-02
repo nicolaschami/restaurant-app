@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRef } from 'react'; 
 import { api } from '../api';
 import {
   Coffee,
@@ -28,12 +29,18 @@ import {
  Phone,
   MapPin,
   FileText,
-  Mail
+  Mail,
+  Loader2
   } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface PosScreenProps {
   onLogout: () => void;
+  // Minimal shape needed from the dashboard ticket — just enough to know which
+  // order to fetch. Full line items/table/customer come from GET /orders/:id.
+  activeOrder?: { orderId: number; ticketNo?: number } | null;
+  onResetOrder?: () => void;
+ onClose?: () => void; // 👈 Accept onClose
 }
 
 /* ---------- API SHAPES ---------- */
@@ -218,8 +225,10 @@ const parseModPrice = (val: any): number => {
 
 let ticketSeq = 214;
 
-export default function PosScreen({ onLogout }: PosScreenProps) {
+export default function PosScreen({onClose, onLogout, activeOrder, onResetOrder }: PosScreenProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingOrder, setIsLoadingOrder] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -373,6 +382,108 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
 
     fetchAll();
   }, [onLogout]);
+
+  /* ---------- LOAD A SELECTED TICKET FROM THE DASHBOARD ---------- */
+  useEffect(() => {
+    const orderId = activeOrder?.orderId;
+    if (!orderId) return;
+    // Wait until menu/table/customer lists are in, so we can match line items
+    // back to real menu items and resolve table/customer objects.
+    if (isLoadingItems || isLoadingCategories) return;
+
+    let cancelled = false;
+
+    const loadOrder = async () => {
+      try {
+        setIsLoadingOrder(true);
+        setError(null);
+
+        // NOTE: same convention as the rest of this file (api.post('/orders', ...),
+        // api.get('/orders/active')) — no '/api' prefix, that lives in the api client's baseURL.
+        const res = await api.get(`/orders/${orderId}`);
+        const order = res.data.order || res.data;
+        if (cancelled) return;
+
+        setTicketNo(order.ticketNo ?? activeOrder?.ticketNo ?? ticketSeq);
+        setOrderType((order.orderType as OrderType) || 'Dine-In');
+        setDeliveryFee(String(order.deliveryFee ?? 0));
+
+        if (order.orderType === 'Dine-In' && order.tableId) {
+          const matchedTable = tables.find((t) => t.id === order.tableId);
+          setDineInTable(
+            matchedTable ?? {
+              id: order.tableId,
+              label: order.tableLabel ?? String(order.tableId),
+              status: 'occupied',
+            }
+          );
+        } else {
+          setDineInTable(null);
+        }
+
+        if (order.orderType === 'Delivery' && (order.customerId || order.customerName)) {
+          const matchedCustomer = customers.find((c) => c.id === order.customerId);
+          setDeliveryCustomer(
+            matchedCustomer ?? {
+              id: order.customerId ?? order.customerName,
+              name: order.customerName ?? 'Customer',
+              phone: order.customerPhone ?? '',
+              address: order.customerAddress ?? order.deliveryAddress ?? '',
+            }
+          );
+        } else {
+          setDeliveryCustomer(null);
+        }
+
+        const lineItems = order.items || [];
+        const rebuiltBasket: BasketItem[] = lineItems.map((li: any, idx: number) => {
+          const rawItem = rawMenuItems.find((r) => r.id === li.menuItemId);
+          return {
+            cartItemId: `${order.id ?? orderId}-${idx}-${Date.now()}`,
+            item: {
+              id: li.menuItemId,
+              catId: rawItem?.categoryId ?? 0,
+              name: li.name ?? rawItem?.menuName ?? 'Item',
+              price: Number(li.unitPrice) || 0,
+              hasVariants: rawItem?.hasVariants ?? false,
+              variantPrices: rawItem?.variantPrices,
+              modifierGroupIds: rawItem?.modifierGroupIds,
+            },
+            quantity: li.quantity ?? 1,
+            variantSize: li.variantSize || undefined,
+            modifiers: (li.modifiers || []).map((m: any) => ({
+              groupId: m.groupId,
+              groupName: m.groupName,
+              optionId: m.optionId,
+              optionName: m.optionName,
+              price: Number(m.price) || 0,
+            })),
+            comp: li.isComp ? { reason: li.compReason || '' } : null,
+          };
+        });
+
+        setBasket(rebuiltBasket);
+        console.log('[currentOrderId SET FROM LOAD EFFECT]', order.id ?? orderId, '(loaded from GET /orders/:id)');
+       setCurrentOrderId(order.id ?? orderId);
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('Failed to load order', err);
+          setError(err.response?.data?.message || 'Could not load the selected order.');
+        }
+      } finally {
+        if (!cancelled) setIsLoadingOrder(false);
+        // Clear the parent's selection so re-visiting POS without a new click
+        // doesn't keep refetching the same order.
+        onResetOrder?.();
+      }
+    };
+
+    loadOrder();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrder?.orderId, isLoadingItems, isLoadingCategories]);
 
   const displayItems: Item[] = useMemo(
     () =>
@@ -622,26 +733,45 @@ export default function PosScreen({ onLogout }: PosScreenProps) {
   const itemCount = basket.reduce((a, b) => a + b.quantity, 0);
 
   /* ---------- SAVE ORDER ---------- */
-const handleSaveOrder = async () => {
-  if (basket.length === 0) return;
 
-  if (orderType === 'Dine-In' && !dineInTable) {
-    setShowTablePicker(true);
+// add near your other useState lines:
+const savingRef = useRef(false);
+
+const handleSaveOrder = async (isPayment: boolean) => {
+  // Hard, synchronous guard — impossible to double-fire even on a fast double-click,
+  // unlike isSaving (state), which can lag a render behind the actual click.
+  if (savingRef.current) {
+    console.log('[SAVE] blocked — already saving');
     return;
   }
 
+  console.log('[SAVE] start', { isPayment, basketLength: basket.length, orderType, currentOrderId });
+
+  if (basket.length === 0) {
+    console.log('[SAVE] blocked — empty basket');
+    return;
+  }
+  if (orderType === 'Dine-In' && !dineInTable) {
+    console.log('[SAVE] blocked — no table selected, opening picker');
+    setShowTablePicker(true);
+    return;
+  }
   if (orderType === 'Delivery' && !deliveryCustomer) {
+    console.log('[SAVE] blocked — no customer selected, opening picker');
     setShowCustomerPicker(true);
     return;
   }
 
-  try {
-    setIsSaving(true);
-    setError(null);
+  savingRef.current = true;
+  setIsSaving(true);
+  setError(null);
 
+  try {
     const orderPayload = {
       restaurantId: 1,
       ticketNo,
+      orderStatus: isPayment ? 'CLOSED' : 'open',
+      tableStatus: isPayment ? 'free' : 'occupied',
       orderType,
       tableId: orderType === 'Dine-In' ? dineInTable?.id : null,
       tableLabel: orderType === 'Dine-In' ? dineInTable?.label : null,
@@ -672,44 +802,61 @@ const handleSaveOrder = async () => {
       })),
     };
 
-    // 1. Post Order
-    await api.post('/orders', orderPayload);
+    console.log('[SAVE] currentOrderId =', currentOrderId, '→ branch:', currentOrderId ? 'UPDATE' : 'CREATE');
 
-    // 2. Fetch Fresh Table Statuses Immediately
+    let savedOrderId = currentOrderId;
+    if (currentOrderId) {
+      const res = await api.put(`/orders/${currentOrderId}`, orderPayload);
+      console.log('[SAVE] PUT response', res.data);
+    } else {
+      const res = await api.post('/orders', orderPayload);
+      savedOrderId = res.data?.order?.id ?? null;
+      console.log('[SAVE] POST response, new id =', savedOrderId);
+    }
+
     const tableRes = await api
       .get('/tables', { params: { restaurantId: 1 } })
       .catch(() => ({ data: [] }));
-
-    // Safely handle API responses wrapped in { tables: [...] } or direct arrays [...]
-    const freshTables = Array.isArray(tableRes.data) 
-      ? tableRes.data 
-      : tableRes.data?.tables || [];
-
+    const freshTables = Array.isArray(tableRes.data) ? tableRes.data : tableRes.data?.tables || [];
     if (freshTables.length > 0) {
       setTables(freshTables);
     } else if (orderType === 'Dine-In' && dineInTable) {
-      // Optimistic fallback: manually set selected table to occupied if fetch returns empty
-      setTables((prevTables) =>
-        prevTables.map((t) =>
-          t.id === dineInTable.id ? { ...t, status: 'occupied' } : t
-        )
-      );
+      setTables((prev) => prev.map((t) => (t.id === dineInTable.id ? { ...t, status: 'occupied' } : t)));
     }
 
-    // 3. Reset form states for next order
     setBasket([]);
     setDineInTable(null);
     setDeliveryCustomer(null);
     setDeliveryFee('0.00');
-    setTicketNo((prev) => prev + 1);
+    if (!currentOrderId) setTicketNo((prev) => prev + 1);
+    setCurrentOrderId(null);
 
+    console.log('[SAVE] success, done. saved order id =', savedOrderId);
+    onClose?.();
   } catch (err: any) {
-    console.error('Failed to save order:', err);
-    setError(err.response?.data?.message || 'Failed to save order. Please try again.');
+    console.error('[SAVE] failed:', err);
+    setError(err.response?.data?.message || err.response?.data?.error || 'Failed to save order. Please try again.');
   } finally {
     setIsSaving(false);
+    savingRef.current = false;
   }
 };
+/* ---------- Update order  ---------- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ---------- End Update order  ---------- */
+
 
   /* ---------- ORDER TYPE SWITCHING ---------- */
 
@@ -1678,6 +1825,11 @@ const handleSaveOrder = async () => {
           box-shadow: 0 24px 60px rgba(0,0,0,0.4);
           animation: modalIn 0.2s ease-out;
         }
+        @keyframes kb-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
         @keyframes modalIn {
           from { opacity: 0; transform: scale(0.95) translateY(10px); }
           to { opacity: 1; transform: scale(1) translateY(0); }
@@ -2594,7 +2746,29 @@ const handleSaveOrder = async () => {
         </main>
 
         {/* TICKET */}
-        <aside className="ticket-col">
+        <aside className="ticket-col" style={{ position: 'relative' }}>
+          {isLoadingOrder && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                background: theme === 'dark' ? 'rgba(18,19,22,0.88)' : 'rgba(255,255,255,0.9)',
+                backdropFilter: 'blur(2px)',
+                borderRadius: 12,
+              }}
+            >
+              <Loader2 className="w-6 h-6" style={{ animation: 'kb-spin 0.8s linear infinite' }} />
+              <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.85 }}>
+                Loading ticket #{activeOrder?.ticketNo ?? ''}…
+              </span>
+            </div>
+          )}
           <div className="ticket-head">
             <div className="ticket-head-top">
               <h2
@@ -2743,20 +2917,16 @@ const handleSaveOrder = async () => {
                 <RotateCcw className="w-4 h-4" />
                 <span>Clear</span>
               </button>
-              <button className="btn-icon-action" onClick={() => alert('Ticket held for later')} title="Hold ticket">
-                <Receipt className="w-4 h-4" />
-                <span>Hold</span>
-              </button>
+              <button className="btn-icon-action" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(false)}>
+  <Receipt className="w-4 h-4" />
+  {isSaving ? 'Processing...' : 'Hold'}
+</button>
             </div>
 
-            <button
-              className="btn-pay"
-              disabled={basket.length === 0 || isSaving}
-              onClick={handleSaveOrder}
-            >
-              <CreditCard className="w-4 h-4" />
-              {isSaving ? 'Processing...' : `Take Payment · $${total.toFixed(2)}`}
-            </button>
+           <button className="btn-pay" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(true)}>
+  <CreditCard className="w-4 h-4" />
+  {isSaving ? 'Processing...' : `Take Payment · $${total.toFixed(2)}`}
+</button>
           </div>
         </aside>
       </div>

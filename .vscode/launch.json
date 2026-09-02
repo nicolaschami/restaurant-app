@@ -9,6 +9,13 @@
       "runtimeArgs": ["tsx", "src/app.ts"],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "Run Script: dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }
