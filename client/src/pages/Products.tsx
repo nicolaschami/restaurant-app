@@ -75,7 +75,7 @@ interface ModifierGroup {
 }
 
 interface ProductsProps {
-  onLogout: () => void;
+  onLogout ?: () => void;
 }
 
 const parseCost = (val: any): number => {

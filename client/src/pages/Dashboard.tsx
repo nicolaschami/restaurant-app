@@ -78,7 +78,6 @@ const DashboardStyles = () => (
       background-size: 18px 18px;
     }
 
-    /* --- Kitchen Pass rail --- */
     .kb-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
       letter-spacing: 0.12em; color: #8a8377; margin: 0; }
     .kb-rail-bar { height: 10px; border-radius: 4px; margin-bottom: 2px;
@@ -86,7 +85,7 @@ const DashboardStyles = () => (
       box-shadow: 0 2px 4px rgba(0,0,0,0.15) inset, 0 3px 6px rgba(0,0,0,0.18);
       display: flex; align-items: center; justify-content: space-evenly; padding: 0 12px; }
     .kb-bolt { width: 4px; height: 4px; border-radius: 50%; background: rgba(0,0,0,0.35); }
-    .kb-rail-tickets { display: flex; gap: 22px; flex-wrap: wrap; padding: 26px 6px 6px; }
+    .kb-rail-tickets { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 6px 6px; } /* reduced top padding */
     .kb-ticket-wrap { position: relative; width: 176px; transition: opacity 460ms ease, transform 460ms ease; }
     .kb-clip { position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
       width: 14px; height: 20px; border-radius: 3px;
@@ -108,15 +107,17 @@ const DashboardStyles = () => (
     .kb-price { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; color: #221F1C; }
 
     .kb-dial-card { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 10px;
-      padding: 20px; text-align: center; }
+      padding: 14px 16px; text-align: center; width: 180px; }
     .kb-dial-center { position: absolute; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: center; }
-    .kb-dial-num { font-family: 'Bebas Neue', sans-serif; font-size: 34px; color: #221F1C; line-height: 1; }
-    .kb-dial-unit { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8a8377; letter-spacing: 0.08em; }
-    .kb-legend-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; }
-    .kb-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .kb-legend-label { font-size: 12px; color: #55504a; flex: 1; }
-    .kb-legend-count { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: #221F1C; }
+    .kb-dial-num { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #221F1C; line-height: 1; }
+    .kb-dial-unit { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8a8377; letter-spacing: 0.08em; }
+    .kb-legend-row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; font-size: 11px; }
+    .kb-legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .kb-legend-label { font-size: 11px; color: #55504a; flex: 1; }
+    .kb-legend-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #221F1C; }
+
+    .kb-dial-card svg { width: 110px; height: 110px; }
 
     .kb-receipt { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 4px;
       padding: 22px 22px 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
@@ -130,6 +131,12 @@ const DashboardStyles = () => (
       background-image: repeating-linear-gradient(90deg, #221F1C 0 2px, transparent 2px 5px,
         #221F1C 5px 6px, transparent 6px 9px, #221F1C 9px 12px, transparent 12px 16px);
       opacity: 0.8; }
+
+    .filter-btn { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+      padding: 4px 12px; border-radius: 20px; border: 1px solid #d6d3d1; background: transparent;
+      color: #55504a; cursor: pointer; transition: all 0.15s; }
+    .filter-btn.active { background: #221F1C; color: white; border-color: #221F1C; }
+    .filter-btn:hover:not(.active) { background: #f0ede8; }
   `}</style>
 );
 
@@ -152,23 +159,23 @@ const ServicePulseDial: FC<{ tickets: ActiveOrder[]; mounted: boolean; getMins: 
     ? Math.round(tickets.reduce((s, t) => s + getMins(t), 0) / tickets.length)
     : 0;
 
-  const R = 54;
+  const R = 42;
   const C = 2 * Math.PI * R;
   const dialPct = Math.min(avgMins / 30, 1);
   const dialColor = avgMins >= 20 ? '#A23B2E' : avgMins >= 10 ? '#B8863B' : '#4C7A5E';
 
   return (
-    <div className="kb-dial-card" style={{ flex: '0 0 240px' }}>
-      <p className="kb-eyebrow" style={{ marginBottom: 4 }}>SERVICE PULSE</p>
-      <div style={{ position: 'relative', width: 140, height: 140, margin: '8px auto' }}>
-        <svg width="140" height="140" viewBox="0 0 140 140">
-          <circle cx="70" cy="70" r={R} fill="none" stroke="#E7E1D2" strokeWidth="10" />
+    <div className="kb-dial-card">
+      <p className="kb-eyebrow" style={{ marginBottom: 2 }}>SERVICE PULSE</p>
+      <div style={{ position: 'relative', width: 110, height: 110, margin: '4px auto' }}>
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r={R} fill="none" stroke="#E7E1D2" strokeWidth="8" />
           <circle
-            cx="70" cy="70" r={R} fill="none"
-            stroke={dialColor} strokeWidth="10" strokeLinecap="round"
+            cx="55" cy="55" r={R} fill="none"
+            stroke={dialColor} strokeWidth="8" strokeLinecap="round"
             strokeDasharray={C}
             strokeDashoffset={mounted ? C * (1 - dialPct) : C}
-            transform="rotate(-90 70 70)"
+            transform="rotate(-90 55 55)"
             style={{ transition: 'stroke-dashoffset 900ms ease 300ms' }}
           />
         </svg>
@@ -177,7 +184,7 @@ const ServicePulseDial: FC<{ tickets: ActiveOrder[]; mounted: boolean; getMins: 
           <span className="kb-dial-unit">AVG MIN</span>
         </div>
       </div>
-      <div style={{ marginTop: 10, textAlign: 'left' }}>
+      <div style={{ marginTop: 6, textAlign: 'left' }}>
         <div className="kb-legend-row">
           <span className="kb-legend-dot" style={{ background: '#4C7A5E' }} />
           <span className="kb-legend-label">Fresh</span>
@@ -199,11 +206,86 @@ const ServicePulseDial: FC<{ tickets: ActiveOrder[]; mounted: boolean; getMins: 
 };
 
 // ==========================================
+// SUB-COMPONENT: ORDER MIX DIAL
+// ==========================================
+const ORDER_TYPE_META = [
+  { key: 'dinein', label: 'Dine-In', color: '#5B7C99', match: (s: string) => s.toLowerCase().includes('dine') },
+  { key: 'takeaway', label: 'Takeaway', color: '#B8863B', match: (s: string) => s.toLowerCase().includes('take') || s.toLowerCase().includes('pick') },
+  { key: 'delivery', label: 'Delivery', color: '#6B6560', match: (s: string) => s.toLowerCase().includes('deliver') },
+] as const;
+
+const OrderMixDial: FC<{ tickets: ActiveOrder[]; mounted: boolean }> = ({ tickets, mounted }) => {
+  const counts = { dinein: 0, takeaway: 0, delivery: 0 };
+  tickets.forEach((t) => {
+    const s = (t.orderType || '').toLowerCase();
+    const meta = ORDER_TYPE_META.find((m) => m.match(s));
+    if (meta) counts[meta.key]++;
+  });
+  const total = tickets.length;
+
+  const R = 42;
+  const C = 2 * Math.PI * R;
+
+  let cumulative = 0;
+  const segments = ORDER_TYPE_META.map((meta) => {
+    const count = counts[meta.key];
+    const pct = total > 0 ? count / total : 0;
+    const segment = { ...meta, count, pct, offset: cumulative };
+    cumulative += pct;
+    return segment;
+  });
+
+  return (
+    <div className="kb-dial-card">
+      <p className="kb-eyebrow" style={{ marginBottom: 2 }}>ORDER MIX</p>
+      <div style={{ position: 'relative', width: 110, height: 110, margin: '4px auto' }}>
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r={R} fill="none" stroke="#E7E1D2" strokeWidth="8" />
+          {total === 0
+            ? null
+            : segments.map((seg) => {
+                if (seg.pct === 0) return null;
+                const segLen = mounted ? seg.pct * C : 0;
+                const gap = C - segLen;
+                const rotation = -90 + seg.offset * 360;
+                return (
+                  <circle
+                    key={seg.key}
+                    cx="55" cy="55" r={R} fill="none"
+                    stroke={seg.color} strokeWidth="8"
+                    strokeDasharray={`${segLen} ${gap}`}
+                    strokeDashoffset={0}
+                    transform={`rotate(${rotation} 55 55)`}
+                    style={{ transition: 'stroke-dasharray 900ms ease 300ms' }}
+                  />
+                );
+              })}
+        </svg>
+        <div className="kb-dial-center">
+          <span className="kb-dial-num">{total}</span>
+          <span className="kb-dial-unit">ACTIVE</span>
+        </div>
+      </div>
+      <div style={{ marginTop: 6, textAlign: 'left' }}>
+        {segments.map((seg) => (
+          <div className="kb-legend-row" key={seg.key}>
+            <span className="kb-legend-dot" style={{ background: seg.color }} />
+            <span className="kb-legend-label">{seg.label}</span>
+            <span className="kb-legend-count">{seg.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // DASHBOARD VIEW
 // ==========================================
 export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate, onSelectTicket }) => {
   const [tickets, setTickets] = useState<ActiveOrder[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState<boolean>(true);
+  const [filterType, setFilterType] = useState<'all' | 'dinein' | 'takeaway' | 'delivery'>('all');
   const [now, setNow] = useState<number>(Date.now());
   const [mounted, setMounted] = useState(false);
   const railRef = useRef<HTMLDivElement>(null);
@@ -249,6 +331,15 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
 
   const getMins = (t: ActiveOrder) => getElapsedMinutes(t.created_at || t.createdAt);
 
+  const filteredTickets = tickets.filter((t) => {
+    if (filterType === 'all') return true;
+    const type = (t.orderType || '').toLowerCase();
+    if (filterType === 'dinein') return type.includes('dine');
+    if (filterType === 'takeaway') return type.includes('take') || type.includes('pick');
+    if (filterType === 'delivery') return type.includes('deliver');
+    return true;
+  });
+
   const maxRevenue = Math.max(...SALES_BARS.map((d) => d.revenue));
   const weekTotal = SALES_BARS.reduce((s, d) => s + d.revenue, 0);
 
@@ -264,15 +355,28 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
         </div>
       </div>
 
-      {/* THE PASS: rail + service pulse dial */}
+      {/* THE PASS – updated layout */}
       <div>
-        <div className="mb-3 flex items-center justify-between px-1">
-          <p className="kb-eyebrow">THE PASS</p>
+        {/* Filter row with "Open POS" button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['all', 'dinein', 'takeaway', 'delivery'] as const).map((key) => (
+              <button
+                key={key}
+                className={`filter-btn ${filterType === key ? 'active' : ''}`}
+                onClick={() => setFilterType(key)}
+              >
+                {key === 'all' ? 'All' : key.charAt(0).toUpperCase() + key.slice(1)}
+              </button>
+            ))}
+          </div>
           <button onClick={() => onNavigate('pos')} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
             Open POS →
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+
+        {/* Rail + dials */}
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ flex: '1 1 560px', minWidth: 300 }} ref={railRef}>
             <div className="kb-rail-bar">
               {Array.from({ length: 14 }).map((_, i) => (
@@ -282,10 +386,12 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
             <div className="kb-rail-tickets">
               {isLoadingTickets ? (
                 <div className="py-8 text-center text-xs text-slate-400 w-full">Loading active tickets...</div>
-              ) : tickets.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-400 w-full">No active kitchen tickets</div>
+              ) : filteredTickets.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400 w-full">
+                  {filterType === 'all' ? 'No active kitchen tickets' : `No ${filterType} orders`}
+                </div>
               ) : (
-                tickets.map((t, i) => {
+                filteredTickets.map((t, i) => {
                   const mins = getMins(t);
                   const angle = (i % 2 === 0 ? -1 : 1) * (1.2 + (i % 3) * 0.6);
                   const status =
@@ -336,7 +442,11 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
             </div>
           </div>
 
-          <ServicePulseDial tickets={tickets} mounted={mounted} getMins={getMins} />
+          {/* Dials – side by side */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', flex: '0 0 auto' }}>
+            <ServicePulseDial tickets={filteredTickets} mounted={mounted} getMins={getMins} />
+            <OrderMixDial tickets={filteredTickets} mounted={mounted} />
+          </div>
         </div>
       </div>
 

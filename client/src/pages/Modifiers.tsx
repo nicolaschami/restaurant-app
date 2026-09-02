@@ -35,7 +35,7 @@ interface ModifierGroup {
 }
 
 interface ModifiersProps {
-  onLogout: () => void;
+  onLogout ?: () => void;
 }
 
 export default function Modifiers({ onLogout }: ModifiersProps) {

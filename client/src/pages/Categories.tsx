@@ -12,7 +12,7 @@ interface Category {
 }
 
 interface CategoriesProps {
-  onLogout: () => void;
+  onLogout?: () => void;
 }
 
 export default function Categories({ onLogout }: CategoriesProps) {
