@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { Search, Pencil, Trash2, X, LayoutGrid, List, Users, AlertTriangle, CheckSquare, Square } from 'lucide-react';
+import {
+  Search,
+  Pencil,
+  Trash2,
+  X,
+  LayoutGrid,
+  List,
+  Users,
+  AlertTriangle,
+  CheckSquare,
+  Square,
+  CheckCircle2,
+  Clock,
+  UserCheck,
+  Filter,
+  MoreVertical,
+  Layers,
+  Sparkles
+} from 'lucide-react';
 
 // --- Types ---
 export interface DiningTable {
@@ -8,7 +26,7 @@ export interface DiningTable {
   restaurantId?: number;
   number: string;
   capacity?: number | string;
-  status?: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | string;
+  status?: 'FREE' | 'OCCUPIED' | 'RESERVED' | string;
   section?: string | null;
   notes?: string | null;
   createdAt?: string;
@@ -25,16 +43,18 @@ interface ConfirmState {
   action: () => Promise<void> | void;
 }
 
-const TABLE_STATUSES = ['AVAILABLE', 'OCCUPIED', 'RESERVED'];
+const TABLE_STATUSES = ['FREE', 'OCCUPIED', 'RESERVED'] as const;
 
 export default function TablesPage({ onLogout }: TablesProps) {
   // Data & Global states
   const [items, setItems] = useState<DiningTable[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [quickStatusMenuId, setQuickStatusMenuId] = useState<number | null>(null);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -51,7 +71,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
   // Form states
   const [number, setNumber] = useState('');
   const [capacity, setCapacity] = useState('4');
-  const [status, setStatus] = useState('AVAILABLE');
+  const [status, setStatus] = useState('FREE');
   const [section, setSection] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -65,7 +85,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
       const data = res.data?.tables || res.data?.data || res.data;
       const loadedData = Array.isArray(data) ? data : [];
       setItems(loadedData);
-      
+
       // Clean up selection if items changed
       setSelectedIds((prev) => prev.filter((id) => loadedData.some((item: DiningTable) => item.id === id)));
     } catch (err: any) {
@@ -91,14 +111,61 @@ export default function TablesPage({ onLogout }: TablesProps) {
     fetchTables();
   }, []);
 
-  // Filtered List
-  const filteredItems = items.filter((item) => {
-    const tableNumber = item.number ? item.number.toLowerCase() : '';
-    const tableSection = item.section ? item.section.toLowerCase() : '';
-    const query = search.toLowerCase();
+  // Filtered List based on Search & Status Filter
+ 
+  // Updated Filtered List logic
+const filteredItems = items.filter((item) => {
+  const rawNumber = item.number ? item.number.toLowerCase() : '';
+  // Construct the full formatted string as shown in the UI (e.g., "t-01" or "t-1")
+  const formattedNumber = `t-${rawNumber}`; 
+  const tableSection = item.section ? item.section.toLowerCase() : '';
+  
+  // Clean user query by trimming whitespace
+  const query = search.toLowerCase().trim();
 
-    return tableNumber.includes(query) || tableSection.includes(query);
-  });
+  // Match against raw number ("1"), formatted number ("t-1"), or section ("main floor")
+  const matchesSearch =
+    rawNumber.includes(query) ||
+    formattedNumber.includes(query) ||
+    tableSection.includes(query);
+
+  const matchesStatus =
+    statusFilter === 'ALL' ||
+    (item.status || 'AVAILABLE').toUpperCase() === statusFilter;
+
+  return matchesSearch && matchesStatus;
+});
+
+  // Counts for Header Status Pills
+  const statusCounts = {
+    ALL: items.length,
+    FREE: items.filter((i) => (i.status || 'FREE').toUpperCase() === 'FREE').length,
+    OCCUPIED: items.filter((i) => (i.status || '').toUpperCase() === 'OCCUPIED').length,
+    RESERVED: items.filter((i) => (i.status || '').toUpperCase() === 'RESERVED').length,
+  };
+
+  // Quick Inline Status Update
+  const handleQuickStatusChange = async (tableId: number, newStatus: string) => {
+    try {
+      const targetItem = items.find((i) => i.id === tableId);
+      if (!targetItem) return;
+
+      const payload = {
+        ...targetItem,
+        status: newStatus,
+      };
+
+      // Optimistic state update
+      setItems((prev) => prev.map((item) => (item.id === tableId ? { ...item, status: newStatus } : item)));
+      setQuickStatusMenuId(null);
+
+      await api.put(`/tables/${tableId}`, payload);
+    } catch (err: any) {
+      console.error('Quick status change failed:', err);
+      setError('Could not update table status.');
+      fetchTables(); // Revert on failure
+    }
+  };
 
   // Selection Logic
   const toggleSelectAll = () => {
@@ -120,7 +187,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
     setEditingItem(null);
     setNumber('');
     setCapacity('4');
-    setStatus('AVAILABLE');
+    setStatus('FREE');
     setSection('');
     setNotes('');
   };
@@ -134,7 +201,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
     setEditingItem(item);
     setNumber(item.number || '');
     setCapacity(String(item.capacity ?? '4'));
-    setStatus(item.status || 'AVAILABLE');
+    setStatus(item.status || 'FREE');
     setSection(item.section || '');
     setNotes(item.notes || '');
     setIsModalOpen(true);
@@ -171,7 +238,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
     }
   };
 
-  // Delete Handlers with Custom Confirmation
+  // Delete Handlers
   const confirmDeleteSingle = (item: DiningTable) => {
     setConfirmModal({
       isOpen: true,
@@ -220,30 +287,49 @@ export default function TablesPage({ onLogout }: TablesProps) {
     }
   };
 
-  // Helpers for Status Styling
-  const getStatusBadge = (statusStr: string) => {
+  // Status Styling Configuration
+  const getStatusConfig = (statusStr?: string) => {
     switch (statusStr?.toUpperCase()) {
-      case 'AVAILABLE':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'FREE':
+        return {
+          badge: 'bg-emerald-50 text-emerald-700 border-emerald-300/60 ring-1 ring-emerald-500/10',
+          stripe: 'from-emerald-500 to-teal-400',
+          cardBg: 'bg-gradient-to-b from-emerald-50/30 to-white',
+          borderHighlight: 'border-emerald-300 hover:border-emerald-500',
+          indicator: 'bg-emerald-500',
+          icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />,
+          label: 'FREE',
+        };
       case 'OCCUPIED':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+        return {
+          badge: 'bg-rose-50 text-rose-700 border-rose-300/60 ring-1 ring-rose-500/10',
+          stripe: 'from-rose-500 to-amber-500',
+          cardBg: 'bg-gradient-to-b from-rose-50/30 to-white',
+          borderHighlight: 'border-rose-300 hover:border-rose-500',
+          indicator: 'bg-rose-500 animate-pulse',
+          icon: <UserCheck className="w-3.5 h-3.5 text-rose-600" />,
+          label: 'OCCUPIED',
+        };
       case 'RESERVED':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return {
+          badge: 'bg-amber-50 text-amber-700 border-amber-300/60 ring-1 ring-amber-500/10',
+          stripe: 'from-amber-500 to-orange-400',
+          cardBg: 'bg-gradient-to-b from-amber-50/30 to-white',
+          borderHighlight: 'border-amber-300 hover:border-amber-500',
+          indicator: 'bg-amber-500',
+          icon: <Clock className="w-3.5 h-3.5 text-amber-600" />,
+          label: 'RESERVED',
+        };
       default:
-        return 'bg-gray-50 text-gray-700 border-gray-200';
-    }
-  };
-
-  const getStatusStripe = (statusStr: string) => {
-    switch (statusStr?.toUpperCase()) {
-      case 'AVAILABLE':
-        return 'from-emerald-500 to-emerald-400';
-      case 'OCCUPIED':
-        return 'from-amber-500 to-amber-400';
-      case 'RESERVED':
-        return 'from-blue-500 to-blue-400';
-      default:
-        return 'from-[#8a3f16] to-[#c2621f]';
+        return {
+          badge: 'bg-slate-50 text-slate-700 border-slate-200',
+          stripe: 'from-slate-400 to-slate-500',
+          cardBg: 'bg-white',
+          borderHighlight: 'border-slate-200',
+          indicator: 'bg-slate-400',
+          icon: null,
+          label: statusStr || 'UNKNOWN',
+        };
     }
   };
 
@@ -262,15 +348,70 @@ export default function TablesPage({ onLogout }: TablesProps) {
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Dining Tables</h1>
-          <p className="text-sm text-gray-500 mt-2">Manage floor layout, table capacity, and real-time status.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">
+              Dining Floor Layout
+            </h1>
+            <span className="bg-amber-100 text-[#8a3f16] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-300/60">
+              <Sparkles size={11} /> Live Floor
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 mt-1">
+            Monitor real-time table availability, customer seating, and floor sections.
+          </p>
         </div>
         <button
           onClick={handleOpenCreateModal}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#8a3f16] to-[#c2621f] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-[#8a3f16]/25 transition hover:opacity-95"
         >
-          + Add Table
+          + Add New Table
         </button>
+      </div>
+
+      {/* Live Operational Status Filters */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { key: 'ALL', label: 'All Tables', count: statusCounts.ALL, activeClass: 'border-[#c2621f] bg-stone-900 text-white shadow-md' },
+          { key: 'FREE', label: 'FREE', count: statusCounts.FREE, activeClass: 'border-emerald-500 bg-emerald-600 text-white shadow-md shadow-emerald-500/20' },
+          { key: 'OCCUPIED', label: 'Occupied', count: statusCounts.OCCUPIED, activeClass: 'border-rose-500 bg-rose-600 text-white shadow-md shadow-rose-500/20' },
+          { key: 'RESERVED', label: 'Reserved', count: statusCounts.RESERVED, activeClass: 'border-amber-500 bg-amber-600 text-white shadow-md shadow-amber-500/20' },
+        ].map((btn) => {
+          const isActive = statusFilter === btn.key;
+          return (
+            <button
+              key={btn.key}
+              onClick={() => setStatusFilter(btn.key)}
+              className={`p-3 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between ${
+                isActive
+                  ? btn.activeClass
+                  : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/80 shadow-sm'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">
+                  {btn.label}
+                </span>
+                {btn.key !== 'ALL' && (
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      btn.key === 'FREE'
+                        ? 'bg-emerald-400'
+                        : btn.key === 'OCCUPIED'
+                        ? 'bg-rose-400'
+                        : 'bg-amber-400'
+                    }`}
+                  />
+                )}
+              </div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="price-font text-2xl font-black">{btn.count}</span>
+                <span className="text-[10px] opacity-75 font-medium">
+                  {Math.round((btn.count / (items.length || 1)) * 100)}%
+                </span>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Contextual Bulk Action Bar */}
@@ -307,43 +448,58 @@ export default function TablesPage({ onLogout }: TablesProps) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by table number or floor section..."
+              placeholder="Search by table number (e.g. T-01) or floor section..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/40 focus:border-[#c2621f] transition"
             />
           </div>
+
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0 self-start sm:self-auto">
             <button
               onClick={() => setViewMode('cards')}
-              title="Card View"
-              className={`p-2 rounded-lg transition ${
-                viewMode === 'cards' ? 'bg-white text-[#b5541f] shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
+              title="Card Floor View"
+              className={`p-2 rounded-lg transition flex items-center gap-1.5 text-xs font-medium ${
+                viewMode === 'cards'
+                  ? 'bg-white text-[#b5541f] shadow-sm font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <LayoutGrid size={18} />
+              <LayoutGrid size={16} /> Grid
             </button>
             <button
               onClick={() => setViewMode('table')}
-              title="Table View"
-              className={`p-2 rounded-lg transition ${
-                viewMode === 'table' ? 'bg-white text-[#b5541f] shadow-sm font-semibold' : 'text-slate-500 hover:text-slate-800'
+              title="Data Table View"
+              className={`p-2 rounded-lg transition flex items-center gap-1.5 text-xs font-medium ${
+                viewMode === 'table'
+                  ? 'bg-white text-[#b5541f] shadow-sm font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              <List size={18} />
+              <List size={16} /> List
             </button>
           </div>
         </div>
         {error && <p className="text-sm font-medium text-red-600">{error}</p>}
       </div>
 
-      {/* Table / Card List */}
-      <div className="bg-white rounded-xl shadow border overflow-hidden">
+      {/* Table / Card Container */}
+      <div className="bg-white rounded-xl shadow border border-slate-200/80 overflow-hidden">
         {loading && items.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">Loading tables...</div>
+          <div className="text-center py-16 text-gray-500">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-amber-600 border-r-transparent mb-3"></div>
+            <p className="text-sm font-medium">Syncing dining floor tables...</p>
+          </div>
         ) : filteredItems.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">No dining tables found.</div>
+          <div className="text-center py-16 text-gray-500">
+            <Filter className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+            <p className="text-base font-semibold text-slate-700">No tables found</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Try modifying your search or switching status filters above.
+            </p>
+          </div>
         ) : viewMode === 'table' ? (
+          /* LIST VIEW */
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -358,9 +514,9 @@ export default function TablesPage({ onLogout }: TablesProps) {
                     </button>
                   </th>
                   <th className="px-4 py-3">Table No.</th>
-                  <th className="px-4 py-3">Section</th>
+                  <th className="px-4 py-3">Floor Section</th>
                   <th className="px-4 py-3">Capacity</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Live Status</th>
                   <th className="px-4 py-3">Notes</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -368,6 +524,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
               <tbody className="divide-y divide-gray-200 text-sm">
                 {filteredItems.map((item) => {
                   const isSelected = selectedIds.includes(item.id);
+                  const statusCfg = getStatusConfig(item.status);
                   return (
                     <tr
                       key={item.id}
@@ -387,17 +544,54 @@ export default function TablesPage({ onLogout }: TablesProps) {
                           )}
                         </button>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 price-font">{item.number}</td>
-                      <td className="px-4 py-3 text-gray-600">{item.section || 'Main Floor'}</td>
-                      <td className="px-4 py-3 text-gray-600 price-font">{item.capacity || 0} Seats</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border ${getStatusBadge(
-                            item.status || 'AVAILABLE'
-                          )}`}
-                        >
-                          {item.status || 'AVAILABLE'}
+                      <td className="px-4 py-3 font-bold text-gray-900 price-font text-base">
+                        T-{item.number}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 font-medium">
+                        {item.section || 'Main Floor'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 price-font">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Users size={14} className="text-slate-400" />
+                          {item.capacity || 0} Seats
                         </span>
+                      </td>
+                      <td className="px-4 py-3 relative">
+                        <div className="inline-block">
+                          <button
+                            onClick={() =>
+                              setQuickStatusMenuId(quickStatusMenuId === item.id ? null : item.id)
+                            }
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider border cursor-pointer hover:opacity-80 transition ${statusCfg.badge}`}
+                          >
+                            {statusCfg.icon}
+                            {statusCfg.label}
+                          </button>
+
+                          {/* Quick Status Toggle Dropdown */}
+                          {quickStatusMenuId === item.id && (
+                            <div className="absolute left-0 mt-1 z-30 w-36 bg-white rounded-xl shadow-xl border border-slate-200 py-1">
+                              {TABLE_STATUSES.map((st) => (
+                                <button
+                                  key={st}
+                                  onClick={() => handleQuickStatusChange(item.id, st)}
+                                  className="w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                  <span
+                                    className={`w-2 h-2 rounded-full ${
+                                      st === 'FREE'
+                                        ? 'bg-emerald-500'
+                                        : st === 'OCCUPIED'
+                                        ? 'bg-rose-500'
+                                        : 'bg-amber-500'
+                                    }`}
+                                  />
+                                  {st}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-gray-500 truncate max-w-xs">{item.notes || '-'}</td>
                       <td className="px-4 py-3 text-right">
@@ -405,14 +599,14 @@ export default function TablesPage({ onLogout }: TablesProps) {
                           <button
                             onClick={() => handleOpenEditModal(item)}
                             className="p-1.5 text-gray-500 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
-                            title="Edit"
+                            title="Edit Table"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => confirmDeleteSingle(item)}
                             className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                            title="Delete"
+                            title="Delete Table"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -425,70 +619,133 @@ export default function TablesPage({ onLogout }: TablesProps) {
             </table>
           </div>
         ) : (
+          /* GRID CARD VIEW */
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 bg-[#faf8f4]">
             {filteredItems.map((item) => {
               const isSelected = selectedIds.includes(item.id);
+              const statusCfg = getStatusConfig(item.status);
+
               return (
                 <div
                   key={item.id}
-                  className={`bg-white rounded-2xl border transition-all overflow-hidden flex flex-col relative ${
-                    isSelected ? 'ring-2 ring-[#c2621f] border-transparent shadow-md' : 'border-slate-200 shadow-sm hover:shadow-md'
+                  className={`rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col relative shadow-sm hover:shadow-md ${
+                    statusCfg.cardBg
+                  } ${statusCfg.borderHighlight} ${
+                    isSelected ? 'ring-2 ring-[#c2621f] border-transparent shadow-md' : ''
                   }`}
                 >
-                  <div className={`h-1 w-full bg-gradient-to-r ${getStatusStripe(item.status || 'AVAILABLE')}`} />
-                  <div className="p-4 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleSelectItem(item.id)}
-                          className="text-slate-400 hover:text-[#c2621f] transition"
-                        >
-                          {isSelected ? (
-                            <CheckSquare size={18} className="text-[#c2621f]" />
-                          ) : (
-                            <Square size={18} />
+                  {/* Top Status Gradient Bar */}
+                  <div className={`h-1.5 w-full bg-gradient-to-r ${statusCfg.stripe}`} />
+
+                  <div className="p-4 flex-1 flex flex-col justify-between">
+                    <div>
+                      {/* Header row inside card */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            onClick={() => toggleSelectItem(item.id)}
+                            className="text-slate-400 hover:text-[#c2621f] transition"
+                          >
+                            {isSelected ? (
+                              <CheckSquare size={18} className="text-[#c2621f]" />
+                            ) : (
+                              <Square size={18} />
+                            )}
+                          </button>
+                          <div>
+                            <h4 className="price-font text-xl font-black text-slate-900 leading-none">
+                              T-{item.number}
+                            </h4>
+                            <span className="text-[11px] font-medium text-slate-500 mt-1 flex items-center gap-1">
+                              <Layers size={11} className="text-slate-400" />
+                              {item.section || 'Main Floor'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Interactive Status Badge Button */}
+                        <div className="relative">
+                          <button
+                            onClick={() =>
+                              setQuickStatusMenuId(
+                                quickStatusMenuId === item.id ? null : item.id
+                              )
+                            }
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-extrabold tracking-wider border shrink-0 transition ${statusCfg.badge}`}
+                            title="Click to change status"
+                          >
+                            {statusCfg.icon}
+                            {statusCfg.label}
+                          </button>
+
+                          {/* Inline Dropdown for Quick Status Shift */}
+                          {quickStatusMenuId === item.id && (
+                            <div className="absolute right-0 mt-1 z-30 w-36 bg-white rounded-xl shadow-2xl border border-slate-200 py-1">
+                              <div className="px-3 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                                Set Status
+                              </div>
+                              {TABLE_STATUSES.map((st) => (
+                                <button
+                                  key={st}
+                                  onClick={() => handleQuickStatusChange(item.id, st)}
+                                  className="w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                  <span
+                                    className={`w-2 h-2 rounded-full ${
+                                      st === 'FREE'
+                                        ? 'bg-emerald-500'
+                                        : st === 'OCCUPIED'
+                                        ? 'bg-rose-500'
+                                        : 'bg-amber-500'
+                                    }`}
+                                  />
+                                  {st}
+                                </button>
+                              ))}
+                            </div>
                           )}
-                        </button>
-                        <div>
-                          <h4 className="price-font text-lg font-bold text-slate-900 leading-none">T{item.number}</h4>
-                          <span className="text-[11px] text-slate-400 mt-1 block">{item.section || 'Main Floor'}</span>
                         </div>
                       </div>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold tracking-wider border shrink-0 ${getStatusBadge(
-                          item.status || 'AVAILABLE'
-                        )}`}
-                      >
-                        {item.status || 'AVAILABLE'}
-                      </span>
-                    </div>
 
-                    <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-                      <Users size={13} className="text-slate-400" />
-                      <span className="price-font">{item.capacity || 0}</span> seats
-                    </div>
+                      {/* Seating Capacity */}
+                      <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100/70 px-2.5 py-1.5 rounded-lg w-fit">
+                        <Users size={14} className="text-slate-500" />
+                        <span className="price-font font-bold">{item.capacity || 0}</span> Seats
+                      </div>
 
-                    {item.notes && (
-                      <p className="mt-2 text-[11px] text-slate-400 italic line-clamp-2">{item.notes}</p>
-                    )}
+                      {/* Notes Section */}
+                      {item.notes && (
+                        <p className="mt-2.5 text-[11px] text-slate-500 italic line-clamp-2 bg-white/60 p-2 rounded-lg border border-slate-100">
+                          "{item.notes}"
+                        </p>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Card Bottom Tear Line */}
                   <div className="ticket-tear-line mx-4" />
-                  <div className="px-4 py-2.5 flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => handleOpenEditModal(item)}
-                      className="p-1.5 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
-                      title="Edit"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => confirmDeleteSingle(item)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                      title="Delete"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+
+                  {/* Actions Footer */}
+                  <div className="px-4 py-2.5 bg-white/40 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      ID: #{item.id}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditModal(item)}
+                        className="p-1.5 text-slate-400 hover:text-[#b5541f] hover:bg-[#fdece1] rounded-lg transition"
+                        title="Edit Table"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => confirmDeleteSingle(item)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                        title="Delete Table"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -496,19 +753,12 @@ export default function TablesPage({ onLogout }: TablesProps) {
           </div>
         )}
 
+        {/* Footer Summary Bar */}
         {!loading && filteredItems.length > 0 && (
           <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 text-xs text-gray-500 flex items-center justify-between">
             <div>
-              {search ? (
-                <>
-                  Showing <span className="price-font font-semibold text-[#1c1917]">{filteredItems.length}</span> of{' '}
-                  <span className="price-font font-semibold text-[#1c1917]">{items.length}</span> tables
-                </>
-              ) : (
-                <>
-                  <span className="price-font font-semibold text-[#1c1917]">{items.length}</span> tables total
-                </>
-              )}
+              Showing <span className="price-font font-semibold text-[#1c1917]">{filteredItems.length}</span> of{' '}
+              <span className="price-font font-semibold text-[#1c1917]">{items.length}</span> total dining tables
             </div>
             {selectedIds.length > 0 && (
               <span className="text-slate-600 font-medium">
@@ -519,7 +769,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
         )}
       </div>
 
-      {/* Form Modal */}
+      {/* Form Modal (Create / Edit) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col border border-gray-100">
@@ -528,10 +778,10 @@ export default function TablesPage({ onLogout }: TablesProps) {
                 <div className="w-1.5 h-8 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2621f] leading-none mb-1">
-                    Layout
+                    Floor Setup
                   </p>
                   <h2 className="ticket-font uppercase text-xl leading-none text-white">
-                    {editingItem ? 'Edit Table' : 'New Table'}
+                    {editingItem ? 'Edit Dining Table' : 'Add New Table'}
                   </h2>
                   <p className="text-[11px] text-slate-400 mt-1.5">Manage floor setup and capacity bounds</p>
                 </div>
@@ -556,7 +806,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
                     value={number}
                     onChange={(e) => setNumber(e.target.value)}
                     className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
-                    placeholder="e.g. T-01"
+                    placeholder="e.g. 01 or T-12"
                   />
                 </div>
 
@@ -575,22 +825,22 @@ export default function TablesPage({ onLogout }: TablesProps) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Section / Area</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Floor Section / Area</label>
                   <input
                     type="text"
                     value={section}
                     onChange={(e) => setSection(e.target.value)}
                     className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
-                    placeholder="e.g. Patio, Main Hall"
+                    placeholder="e.g. Main Hall, Patio, VIP"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Status</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Initial Status</label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
+                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition font-medium"
                   >
                     {TABLE_STATUSES.map((st) => (
                       <option key={st} value={st}>
@@ -602,13 +852,13 @@ export default function TablesPage({ onLogout }: TablesProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Notes</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Notes / Preferences</label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition resize-none"
-                  placeholder="Near window, booth seating, etc."
+                  placeholder="e.g. Near window, high chair accessible, booth"
                 />
               </div>
             </form>

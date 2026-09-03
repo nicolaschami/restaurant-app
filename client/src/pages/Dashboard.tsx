@@ -183,6 +183,14 @@ const DashboardStyles = () => (
     .kb-filter-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
     .kb-filter-chip:hover { background: #EAE3CE; }
 
+    .kb-ws-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+      font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #8a8377; }
+    .kb-ws-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .kb-ws-dot.live { background: #4C7A5E; box-shadow: 0 0 0 3px rgba(76,122,94,0.18); }
+    .kb-ws-dot.connecting { background: #B8863B; animation: kb-pulse 1.2s ease-in-out infinite; }
+    .kb-ws-dot.offline { background: #A23B2E; }
+    @keyframes kb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
     .kb-receipt { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 4px;
       padding: 22px 22px 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
     .kb-receipt-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
@@ -282,30 +290,6 @@ const KitchenStatusCard: FC<{
     <div className="kb-status-card" style={{ flex: '0 0 auto' }}>
       <p className="kb-status-title">Kitchen Status</p>
       <div className="kb-status-grid">
-         {/* MIX column */}
-        <div className="kb-status-col">
-          <p className="kb-status-col-label">Per type</p>
-          <MiniRing
-            segments={typeSegments.map((s) => ({ color: s.color, pct: s.pct, dimmed: s.dimmed }))}
-            centerValue={total}
-            centerUnit="ACTIVE"
-            mounted={mounted}
-          />
-          <div style={{ marginTop: 4 }}>
-            {typeSegments.map((seg) => (
-              <button
-                key={seg.key}
-                className={`kb-legend-row ${typeFilter === seg.key ? 'active' : ''} ${seg.dimmed ? 'dimmed' : ''}`}
-                onClick={() => onToggleType(seg.key)}
-                title={`Show only ${seg.label} tickets`}
-              >
-                <span className="kb-legend-dot" style={{ background: seg.color }} />
-                <span className="kb-legend-label">{seg.label}</span>
-                <span className="kb-legend-count">{seg.count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
         {/* PACE column */}
         <div className="kb-status-col">
           <p className="kb-status-col-label">PACE</p>
@@ -333,7 +317,30 @@ const KitchenStatusCard: FC<{
           </div>
         </div>
 
-       
+        {/* MIX column */}
+        <div className="kb-status-col">
+          <p className="kb-status-col-label">MIX</p>
+          <MiniRing
+            segments={typeSegments.map((s) => ({ color: s.color, pct: s.pct, dimmed: s.dimmed }))}
+            centerValue={total}
+            centerUnit="ACTIVE"
+            mounted={mounted}
+          />
+          <div style={{ marginTop: 4 }}>
+            {typeSegments.map((seg) => (
+              <button
+                key={seg.key}
+                className={`kb-legend-row ${typeFilter === seg.key ? 'active' : ''} ${seg.dimmed ? 'dimmed' : ''}`}
+                onClick={() => onToggleType(seg.key)}
+                title={`Show only ${seg.label} tickets`}
+              >
+                <span className="kb-legend-dot" style={{ background: seg.color }} />
+                <span className="kb-legend-label">{seg.label}</span>
+                <span className="kb-legend-count">{seg.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -349,6 +356,7 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
   const [mounted, setMounted] = useState(false);
   const [typeFilter, setTypeFilter] = useState<OrderTypeKey | null>(null);
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessKey | null>(null);
+  const [wsStatus, setWsStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
   const railRef = useRef<HTMLDivElement>(null);
 
   const fetchActiveOrders = useCallback(async () => {
@@ -364,10 +372,76 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
     }
   }, []);
 
+  // Live updates: server pushes ORDER_UPDATED (create, hold, pay, edit) over
+  // websocket, so the rail refreshes within a second instead of waiting on
+  // the poll below. The poll stays on as a fallback in case the socket drops.
+  // Also tracks connection status (wsStatus) and auto-reconnects with
+  // backoff if the connection drops, so a server restart or network blip
+  // recovers on its own instead of silently going stale.
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    let unmounted = false;
+
+    const connect = () => {
+      const httpBase: string = (api.defaults?.baseURL as string) || window.location.origin;
+      const wsBase = httpBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
+      const wsUrl = `${wsBase}/ws?restaurantId=1`;
+      console.log('[ws] api.defaults.baseURL =', api.defaults?.baseURL);
+      console.log('[ws] connecting to', wsUrl);
+      setWsStatus('connecting');
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        attempt = 0;
+        setWsStatus('live');
+        console.log('[ws] connected');
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const { event: eventName } = JSON.parse(event.data);
+          if (eventName === 'ORDER_UPDATED' || eventName === 'ORDER_STATUS_UPDATED') {
+            fetchActiveOrders();
+            console.log('🚨 ALARM: A NEW ORDER HAS BEEN CREATED !!!');
+          }
+        } catch (err) {
+          console.error('Failed to parse websocket message:', err);
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.error('[ws] error event (browsers hide details here — check the close event below)', err);
+      };
+
+      socket.onclose = (event) => {
+        setWsStatus('offline');
+        console.log('[ws] disconnected — code:', event.code, 'reason:', event.reason || '(none given)', 'clean:', event.wasClean);
+        if (unmounted) return;
+        // Exponential backoff, capped at 15s, so a dead server doesn't get
+        // hammered with reconnect attempts.
+        const delay = Math.min(1000 * 2 ** attempt, 15000);
+        attempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      unmounted = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [fetchActiveOrders]);
+
   useEffect(() => {
     fetchActiveOrders();
 
-    const fetchInterval = setInterval(fetchActiveOrders, 15000);
+    // Fallback poll only — the websocket above handles real-time updates.
+    // 60s here just guards against a missed/dropped socket event.
+    const fetchInterval = setInterval(fetchActiveOrders, 60000);
     const minuteTicker = setInterval(() => {
       setNow(Date.now());
     }, 60000);
@@ -423,7 +497,17 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
       {/* HEADER SECTION */}
       <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Welcome back, {restaurantName}! 👋</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h1 className="text-2xl font-bold text-slate-800">Welcome back, {restaurantName}! 👋</h1>
+            <span className="kb-ws-status" title={
+              wsStatus === 'live' ? 'Live updates connected' :
+              wsStatus === 'connecting' ? 'Connecting to live updates…' :
+              'Live updates offline — retrying, showing last known data'
+            }>
+              <span className={`kb-ws-dot ${wsStatus}`} />
+              {wsStatus === 'live' ? 'Live' : wsStatus === 'connecting' ? 'Connecting…' : 'Offline'}
+            </span>
+          </div>
           <p className="text-sm text-slate-500">Here is what's happening in your kitchen today.</p>
         </div>
       </div>

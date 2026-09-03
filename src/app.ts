@@ -1,85 +1,79 @@
-import Fastify from 'fastify';
-import express from 'express';
+import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
+import fastifyWebsocket from '@fastify/websocket';
+import { WebSocket } from 'ws';
 import path from 'path';
-import fastifyJwt from '@fastify/jwt';
-import { db } from './db/index.js';
-import { restaurants, orders,menuItems,orderItems,categories,kitchenStations,modifierGroups, modifierOptions,menuItemModifiers } from './db/schema.js';
-import uploadRouter from './routes/upload';
-import cors from '@fastify/cors';
-
-
-import fastifyMultipart from '@fastify/multipart';
- import fastifyStatic from '@fastify/static';
-
-
-// Import refactored Fastify upload plugin
-import uploadRoutes from './routes/upload.js';
-
-
-
-import { eq , asc ,sql,and, notInArray} from 'drizzle-orm';
-
-
 import 'dotenv/config';
+import fastifyJwt from '@fastify/jwt';
+import cors from '@fastify/cors';
+import fastifyMultipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { eq, asc, sql, and, notInArray } from 'drizzle-orm';
+
+import { roomManager } from './lib/roomManager.js';
+import { db } from './db/index.js';
+import {
+  restaurants,
+  orders,
+  menuItems,
+  orderItems,
+  menuItemModifiers,
+} from './db/schema.js';
+
+// Route Imports
+import uploadRoutes from './routes/upload.js';
 import categoryRoutes from './routes/categories.js';
-import  {modifierGroupRoutes}  from './routes/modifier-groups.js'
-import  {modifierOptionRoutes}  from './routes/modifier-options.js';
-import rawMaterialsRoutes from './routes/rawMaterials';
+import { modifierGroupRoutes } from './routes/modifier-groups.js';
+import { modifierOptionRoutes } from './routes/modifier-options.js';
+import rawMaterialsRoutes from './routes/rawMaterials.js';
 import supplierRoutes from './routes/supplier.js';
 import kitchenStationRoutes from './routes/kitchenStations.js';
 import authRoutes from './routes/aut.js';
-import printerRoutes from './routes/printer';
+import printerRoutes from './routes/printer.js';
 import tableRoutes from './routes/tables.js';
 import customerRoutes from './routes/customers.js';
 import orderRoutes from './routes/orders.js';
 
-const app = express();
-
-// Serve the uploads directory statically
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Module Type Augmentations
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     payload: {
       id: number;
       email: string;
-      role: number | null; // 👈 Add role here
-      restaurantId?: number | null; // 👈 Add restaurantId here;
+      role: number | null;
+      restaurantId?: number | null;
     };
     user: {
       id: number;
       email: string;
-      role: number | null; // 👈 Add role here
-      restaurantId?: number | null; // 👈 Add restaurantId hereber;
+      role: number | null;
+      restaurantId?: number | null;
     };
   }
 }
 
-
-interface MenuItemBody {
-    restaurantId: number;
-    categoryId?: number;
-    stationId?: number;
-    menuName: string;
-    invoiceName: string;
-    kitchenName: string;
-    priceDineIn: number | string;
-    priceTakeaway?: number | string;
-    priceDelivery?: number | string;
-    priceWaiter?: number | string;
-    costPrice?: number | string;
-    description?: string;
-    images?: string[];
-    isAvailable?: boolean;
+declare module 'fastify' {
+  interface FastifyInstance {
+    authenticate: (
+      request: FastifyRequest,
+      reply: FastifyReply
+    ) => Promise<void>;
   }
+}
 
+const fastify = Fastify({
+  logger: true,
+  bodyLimit: 10485760, // 10MB limit to prevent dropping large payload requests
+});
 
+// --- Register Plugins ---
 
-const fastify = Fastify({ logger: true });
+// 1. WebSocket Plugin Registration
+fastify.register(fastifyWebsocket);
 
-
+// 2. Core Plugins
 fastify.register(fastifyMultipart, {
   limits: {
-    fileSize: 10 * 1024 * 1024, // Limit max file size (10 MB)
+    fileSize: 10 * 1024 * 1024, // 10 MB
   },
 });
 
@@ -95,41 +89,92 @@ fastify.register(cors, {
   credentials: true,
 });
 
-
-
-// 1. Register JWT plugin
 fastify.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || 'super-secret-key-change-me-in-prod',
 });
 
-
-
-fastify.decorate('authenticate', async (request, reply) => {
+// Authentication Decorator
+fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
   try {
-    await request.jwtVerify(); // Automatically populates request.user from JWT token
+    await request.jwtVerify();
   } catch (err) {
     reply.status(401).send({ error: 'Unauthorized' });
   }
 });
 
-declare module 'fastify' {
-  interface FastifyInstance {
-    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  }
+// --- WebSocket Route ---
+fastify.register(async function (fastifyInstance) {
+  fastifyInstance.get(
+    '/ws',
+    { websocket: true },
+    (connection, req) => {
+      fastify.log.info('New WebSocket connection opened');
+
+      // @fastify/websocket v8+ passes the raw ws socket directly as
+      // `connection`. Older versions (v7 and below) wrap it as
+      // `connection.socket`. Handle both so this doesn't silently break
+      // depending on which version is installed.
+      const socket = ((connection as any).socket ?? connection) as WebSocket;
+
+      if (!socket || typeof socket.on !== 'function') {
+        fastify.log.error(
+          'WebSocket handler could not resolve a valid socket instance — check @fastify/websocket version'
+        );
+        return;
+      }
+
+      // Never let a bug in message handling crash the whole process —
+      // an uncaught exception here previously took down the dev server
+      // (nodemon/tsx restart) and killed every open connection with an
+      // abrupt code 1006 close on the client.
+      try {
+        if (typeof roomManager?.handleConnection === 'function') {
+          roomManager.handleConnection(socket, req);
+        } else {
+          socket.on('message', (message: Buffer) => {
+            console.log('Received WS message:', message.toString());
+          });
+        }
+      } catch (err) {
+        fastify.log.error({ err }, 'Error wiring up WebSocket connection');
+      }
+
+      socket.on('close', () => {
+        fastify.log.info('WebSocket connection closed');
+      });
+
+      socket.on('error', (err) => {
+        fastify.log.error({ err }, 'WebSocket connection error');
+      });
+    }
+  );
+});
+
+// --- Utility Functions ---
+async function updateOrderTotal(orderId: number) {
+  const [result] = await db
+    .select({
+      total: sql<string>`COALESCE(SUM(${orderItems.subtotal}), '0.00')::text`,
+    })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+
+  const newTotal = result?.total ?? '0.00';
+
+  await db
+    .update(orders)
+    .set({ totalAmount: newTotal })
+    .where(eq(orders.id, orderId));
 }
 
+// --- Routes ---
 
-
-// 1. Health Check
+// Health Check
 fastify.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 
-// 2. Menuitems 
-
-// -------------------------------------------------------------
-// 1. CREATE (POST /api/menu-items)
-// -------------------------------------------------------------
+// Create Menu Item
 fastify.post(
   '/api/menu-items',
   { onRequest: [fastify.authenticate] },
@@ -137,13 +182,10 @@ fastify.post(
     const body = request.body as any;
     const { restaurantId } = request.user;
 
-    // 🔍 1. Log incoming request body
-    console.log('--- [POST /api/menu-items] INCOMING BODY ---');
-    console.log('hasVariants:', body?.hasVariants);
-    console.log('variantPrices:', JSON.stringify(body?.variantPrices, null, 2));
-
     if (!restaurantId) {
-      return reply.status(403).send({ error: 'User is not associated with a restaurant.' });
+      return reply
+        .status(403)
+        .send({ error: 'User is not associated with a restaurant.' });
     }
 
     if (!body?.menuName?.trim() || body?.priceDineIn === undefined) {
@@ -167,7 +209,6 @@ fastify.post(
       });
     }
 
-    // Insert menu item + junction table modifiers inside a transaction
     const newItem = await db.transaction(async (tx) => {
       const [insertedItem] = await tx
         .insert(menuItems)
@@ -187,20 +228,16 @@ fastify.post(
           images: body.images || [],
           isAvailable: body.isAvailable ?? true,
           hasVariants: Boolean(body.hasVariants),
-          variantPrices: body.variantPrices || [], // Drizzle automatically serializes JS arrays to JSONB
+          variantPrices: body.variantPrices || [],
           rawMaterials: body.rawMaterials || [],
         })
         .returning();
 
-      // 🔍 2. Log what PostgreSQL returned right after the insert query
-      console.log('--- [POST /api/menu-items] DB INSERT RESULT ---');
-      console.log('insertedItem.hasVariants:', insertedItem.hasVariants);
-      console.log('insertedItem.variantPrices:', insertedItem.variantPrices);
-      console.log('rawMaterials:', insertedItem.rawMaterials);
-      // 🟢 Save selected modifier groups into junction table
       const rawGroupIds = body.modifierGroupIds ?? body.modifier_group_ids;
       if (Array.isArray(rawGroupIds) && rawGroupIds.length > 0) {
-        const groupIds = rawGroupIds.map((id) => Number(id)).filter((id) => !isNaN(id));
+        const groupIds = rawGroupIds
+          .map((id) => Number(id))
+          .filter((id) => !isNaN(id));
         if (groupIds.length > 0) {
           await tx.insert(menuItemModifiers).values(
             groupIds.map((groupId, index) => ({
@@ -217,12 +254,11 @@ fastify.post(
 
     return reply.status(201).send({ menuItem: newItem });
   }
-);  // -------------------------------------------------------------
-  // 2. READ ALL / FILTER (GET /api/menu-items)
-  // Query params: ?restaurantId=1&categoryId=2
-  // -------------------------------------------------------------
-  // Updated GET /api/menu-items route
-fastify.get('/api/menu-items',
+);
+
+// Read All Menu Items
+fastify.get(
+  '/api/menu-items',
   { onRequest: [fastify.authenticate] },
   async (request, reply) => {
     const { restaurantId, categoryId } = request.query as {
@@ -239,14 +275,12 @@ fastify.get('/api/menu-items',
       conditions.push(eq(menuItems.categoryId, parseInt(categoryId)));
     }
 
-    // Fetch all items matching conditions
     const items = await db
       .select()
       .from(menuItems)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(menuItems.position));
 
-    // Fetch junction table records to attach modifierGroupIds to each item
     const itemsWithModifiers = await Promise.all(
       items.map(async (item) => {
         const modifiers = await db
@@ -262,37 +296,37 @@ fastify.get('/api/menu-items',
     );
 
     return reply.send({ menuItems: itemsWithModifiers });
-  });
-  
-  // -------------------------------------------------------------
-  // 3. READ ONE (GET /api/menu-items/:id)
-  // -------------------------------------------------------------
-  fastify.get('/api/menu-items/:id', 
-    { onRequest: [fastify.authenticate] },
-    async (request, reply) => {
+  }
+);
+
+// Read One Menu Item
+fastify.get(
+  '/api/menu-items/:id',
+  { onRequest: [fastify.authenticate] },
+  async (request, reply) => {
     const { id } = request.params as { id: string };
     const itemId = parseInt(id);
-  
+
     if (isNaN(itemId)) {
       return reply.status(400).send({ error: 'Invalid ID format.' });
     }
-  
+
     const [item] = await db
       .select()
       .from(menuItems)
       .where(eq(menuItems.id, itemId));
-  
+
     if (!item) {
       return reply.status(404).send({ error: 'Menu item not found.' });
     }
-  
+
     return reply.send({ menuItem: item });
-  });
-  
-  // -------------------------------------------------------------
-  // 4. UPDATE (PUT / PATCH /api/menu-items/:id)
-  // -------------------------------------------------------------
-fastify.patch('/api/menu-items/:id', 
+  }
+);
+
+// Update Menu Item
+fastify.patch(
+  '/api/menu-items/:id',
   { onRequest: [fastify.authenticate] },
   async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -328,16 +362,13 @@ fastify.patch('/api/menu-items/:id',
     if (body.isAvailable !== undefined) updateData.isAvailable = body.isAvailable;
     if (body.categoryId !== undefined) updateData.categoryId = body.categoryId;
     if (body.stationId !== undefined) updateData.stationId = body.stationId;
-
-    // 🟢 Added missing variant and raw material fields: OK !!!!
     if (body.hasVariants !== undefined) updateData.hasVariants = Boolean(body.hasVariants);
     if (body.variantPrices !== undefined) updateData.variantPrices = body.variantPrices;
     if (body.rawMaterials !== undefined) updateData.rawMaterials = body.rawMaterials;
 
-    // Run updates & modifier sync atomically inside a transaction
     const updatedItem = await db.transaction(async (tx) => {
       let item = existing;
-      
+
       if (Object.keys(updateData).length > 0) {
         [item] = await tx
           .update(menuItems)
@@ -346,13 +377,15 @@ fastify.patch('/api/menu-items/:id',
           .returning();
       }
 
-      // 🟢 Sync modifier groups if provided
       const rawGroupIds = body.modifierGroupIds ?? body.modifier_group_ids;
       if (Array.isArray(rawGroupIds)) {
-        // Clear existing modifiers first for clean replacement
-        await tx.delete(menuItemModifiers).where(eq(menuItemModifiers.menuItemId, itemId));
+        await tx
+          .delete(menuItemModifiers)
+          .where(eq(menuItemModifiers.menuItemId, itemId));
 
-        const groupIds = rawGroupIds.map((id) => Number(id)).filter((id) => !isNaN(id));
+        const groupIds = rawGroupIds
+          .map((id) => Number(id))
+          .filter((id) => !isNaN(id));
         if (groupIds.length > 0) {
           await tx.insert(menuItemModifiers).values(
             groupIds.map((groupId, index) => ({
@@ -370,36 +403,36 @@ fastify.patch('/api/menu-items/:id',
     return reply.send({ menuItem: updatedItem });
   }
 );
-  // -------------------------------------------------------------
-  // 5. DELETE (DELETE /api/menu-items/:id)
-  // -------------------------------------------------------------
-  fastify.delete('/api/menu-items/:id', 
-    { onRequest: [fastify.authenticate] },
-    async (request, reply) => {
+
+// Delete Menu Item
+fastify.delete(
+  '/api/menu-items/:id',
+  { onRequest: [fastify.authenticate] },
+  async (request, reply) => {
     const { id } = request.params as { id: string };
     const itemId = parseInt(id);
-  
+
     if (isNaN(itemId)) {
       return reply.status(400).send({ error: 'Invalid ID format.' });
     }
-  
+
     const [deletedItem] = await db
       .delete(menuItems)
       .where(eq(menuItems.id, itemId))
       .returning();
-  
+
     if (!deletedItem) {
       return reply.status(404).send({ error: 'Menu item not found.' });
     }
-  
+
     return reply.send({
       message: 'Menu item deleted successfully.',
       deletedItemId: itemId,
     });
-  });
+  }
+);
 
-
-
+// Reorder Menu Items
 fastify.put(
   '/api/menu-items/reorder',
   { onRequest: [fastify.authenticate] },
@@ -408,24 +441,33 @@ fastify.put(
     const body = request.body as { categoryId?: number; itemIds?: number[] };
 
     if (!restaurantId) {
-      return reply.status(403).send({ error: 'User is not associated with a restaurant.' });
+      return reply
+        .status(403)
+        .send({ error: 'User is not associated with a restaurant.' });
     }
 
     if (!body?.categoryId || typeof body.categoryId !== 'number') {
-      return reply.status(400).send({ error: 'A valid categoryId is required.' });
+      return reply
+        .status(400)
+        .send({ error: 'A valid categoryId is required.' });
     }
 
-    if (!body?.itemIds || !Array.isArray(body.itemIds) || body.itemIds.length === 0) {
-      return reply.status(400).send({ error: 'itemIds must be a non-empty array of numbers.' });
+    if (
+      !body?.itemIds ||
+      !Array.isArray(body.itemIds) ||
+      body.itemIds.length === 0
+    ) {
+      return reply
+        .status(400)
+        .send({ error: 'itemIds must be a non-empty array of numbers.' });
     }
 
     const { categoryId, itemIds } = body;
 
-    // Run updates atomically inside a transaction
     await db.transaction(async (tx) => {
       for (let index = 0; index < itemIds.length; index++) {
         const itemId = itemIds[index];
-        const newPosition = index + 1; // 1, 2, 3...
+        const newPosition = index + 1;
 
         await tx
           .update(menuItems)
@@ -444,34 +486,14 @@ fastify.put(
   }
 );
 
-
-
-// end Menu
-
-
-
-
-// 2. Create Restaurant
-//fastify.post('/api/restaurants', async (request, reply) => {
-  //  const { name, phone } = request.body as { name: string; phone?: string };
-   // const [newRestaurant] = await db
-   // .insert(restaurants)
-   // .values({ name, phone })
-   // .returning();
- // return reply.status(201).send({ restaurant: newRestaurant });
-//});
-
-//const fastify = Fastify({ logger: true });
-
+// Create Restaurant
 fastify.post('/api/restaurants', async (request, reply) => {
   const { name, phone } = request.body as { name: string; phone?: string };
 
-  // 1. Basic validation
   if (!name || name.trim() === '') {
     return reply.status(400).send({ error: 'Restaurant name is required' });
   }
 
-  // 2. Check if restaurant with the same name already exists
   const existingRestaurant = await db
     .select()
     .from(restaurants)
@@ -484,7 +506,6 @@ fastify.post('/api/restaurants', async (request, reply) => {
     });
   }
 
-  // 3. Insert if it does not exist
   const [newRestaurant] = await db
     .insert(restaurants)
     .values({ name: name.trim(), phone })
@@ -493,30 +514,24 @@ fastify.post('/api/restaurants', async (request, reply) => {
   return reply.status(201).send({ restaurant: newRestaurant });
 });
 
-
-
-
-// 3. Create Order (Waitstaff POS)
-
-
-// 4. Get Active Orders for Kitchen Display System (KDS)
+// KDS Orders
 fastify.get('/api/kds/:restaurantId', async (request, reply) => {
-    const { restaurantId } = request.params as { restaurantId: string };
-  
-    const kitchenOrders = await db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.restaurantId, parseInt(restaurantId)),
-          notInArray(orders.status, ['closed', 'canceled'])
-        )
-      );
-  
-    return reply.send({ orders: kitchenOrders });
-  });
+  const { restaurantId } = request.params as { restaurantId: string };
 
-// 5. Update Order Status (Kitchen updates to 'preparing' or 'completed')
+  const kitchenOrders = await db
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.restaurantId, parseInt(restaurantId)),
+        notInArray(orders.status, ['closed', 'canceled'])
+      )
+    );
+
+  return reply.send({ orders: kitchenOrders });
+});
+
+// Update Order Status
 fastify.patch('/api/orders/:id/status', async (request, reply) => {
   const { id } = request.params as { id: string };
   const { status } = request.body as { status: string };
@@ -527,247 +542,222 @@ fastify.patch('/api/orders/:id/status', async (request, reply) => {
     .where(eq(orders.id, parseInt(id)))
     .returning();
 
-  return reply.send({ order: updatedOrder });
-});
-// 6. orderitems 
-async function updateOrderTotal(orderId: number) {
-    // Query sum of subtotals matching order_items.order_id
-    const [result] = await db
-      .select({
-        total: sql<string>`COALESCE(SUM(${orderItems.subtotal}), '0.00')::text`,
-      })
-      .from(orderItems)
-      .where(eq(orderItems.orderId, orderId)); // <--- FIXED: orderItems.orderId instead of orders.id
-  
-    const newTotal = result?.total ?? '0.00';
-  
-    // Update parent order record
-    await db
-      .update(orders)
-      .set({ totalAmount: newTotal })
-      .where(eq(orders.id, orderId));
+  // Optionally trigger roomManager broadcast if available
+  if (updatedOrder?.restaurantId) {
+    roomManager.broadcastToRestaurant(
+      String(updatedOrder.restaurantId),
+      'ORDER_STATUS_UPDATED',
+      updatedOrder
+    );
   }
 
-  fastify.post('/api/orders/:orderId/items', async (request, reply) => {
-    const { orderId } = request.params as { orderId: string };
-    const body = request.body as {
-      items: Array<{
-        menuItemId: number;
-        quantity: number;
-        unitPrice: number | string;
-      }>;
-    };
-  
-    if (!body?.items?.length) {
-      return reply.status(400).send({ error: 'At least one item is required.' });
-    }
-  
-    const parsedOrderId = parseInt(orderId);
-    const resultItems = [];
-  
-    for (const item of body.items) {
-      const qtyToAdd = item.quantity || 1;
-      const priceNum = Number(item.unitPrice);
-  
-      // 1. Check if item already exists for this order
-      const [existingItem] = await db
-        .select()
-        .from(orderItems)
-        .where(
-          and(
-            eq(orderItems.orderId, parsedOrderId),
-            eq(orderItems.menuItemId, item.menuItemId)
-          )
-        );
-  
-      if (existingItem) {
-        // 2. Item exists: Update quantity and subtotal
-        const newQuantity =  qtyToAdd;
-        const newSubtotal = (priceNum * qtyToAdd).toFixed(2);
-  
-        const [updatedItem] = await db
-          .update(orderItems)
-          .set({
-            quantity: newQuantity,
-            subtotal: newSubtotal,
-            unitPrice: priceNum.toFixed(2), // update unit price if changed
-          })
-          .where(eq(orderItems.id, existingItem.id))
-          .returning();
-  
-        resultItems.push(updatedItem);
-      } else {
-        // 3. Item is new: Insert new line item
-        const newSubtotal = (priceNum * qtyToAdd).toFixed(2);
-  
-        const [newItem] = await db
-          .insert(orderItems)
-          .values({
-            orderId: parsedOrderId,
-            menuItemId: item.menuItemId,
-            quantity: qtyToAdd,
-            unitPrice: priceNum.toFixed(2),
-            subtotal: newSubtotal,
-            kitchenStatus: 'pending',
-            sentToKitchenAt: new Date(),
-          })
-          .returning();
-  
-        resultItems.push(newItem);
-      }
-    }
-  
-    // 4. Recalculate parent order total
-    await updateOrderTotal(parsedOrderId);
-  
-    return reply.status(201).send({ items: resultItems });
-  });
+  return reply.send({ order: updatedOrder });
+});
 
-  fastify.patch('/api/order-items/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = request.body as {
-      quantity?: number;
-      kitchenStatus?: string;
-    };
-  
-    const itemId = parseInt(id);
-  
+// Add Order Items
+fastify.post('/api/orders/:orderId/items', async (request, reply) => {
+  const { orderId } = request.params as { orderId: string };
+  const body = request.body as {
+    items: Array<{
+      menuItemId: number;
+      quantity: number;
+      unitPrice: number | string;
+    }>;
+  };
+
+  if (!body?.items?.length) {
+    return reply.status(400).send({ error: 'At least one item is required.' });
+  }
+
+  const parsedOrderId = parseInt(orderId);
+  const resultItems = [];
+
+  for (const item of body.items) {
+    const qtyToAdd = item.quantity || 1;
+    const priceNum = Number(item.unitPrice);
+
     const [existingItem] = await db
       .select()
       .from(orderItems)
-      .where(eq(orderItems.id, itemId));
-  
-    if (!existingItem) {
-      return reply.status(404).send({ error: 'Order item not found.' });
+      .where(
+        and(
+          eq(orderItems.orderId, parsedOrderId),
+          eq(orderItems.menuItemId, item.menuItemId)
+        )
+      );
+
+    if (existingItem) {
+      const newQuantity = qtyToAdd;
+      const newSubtotal = (priceNum * qtyToAdd).toFixed(2);
+
+      const [updatedItem] = await db
+        .update(orderItems)
+        .set({
+          quantity: newQuantity,
+          subtotal: newSubtotal,
+          unitPrice: priceNum.toFixed(2),
+        })
+        .where(eq(orderItems.id, existingItem.id))
+        .returning();
+
+      resultItems.push(updatedItem);
+    } else {
+      const newSubtotal = (priceNum * qtyToAdd).toFixed(2);
+
+      const [newItem] = await db
+        .insert(orderItems)
+        .values({
+          orderId: parsedOrderId,
+          menuItemId: item.menuItemId,
+          quantity: qtyToAdd,
+          unitPrice: priceNum.toFixed(2),
+          subtotal: newSubtotal,
+          kitchenStatus: 'pending',
+          sentToKitchenAt: new Date(),
+        })
+        .returning();
+
+      resultItems.push(newItem);
     }
-  
-    const updateData: Record<string, any> = {};
-  
-    if (body.kitchenStatus) {
-      updateData.kitchenStatus = body.kitchenStatus;
-      if (body.kitchenStatus === 'ready' || body.kitchenStatus === 'completed') {
-        updateData.completedAt = new Date();
-      }
+  }
+
+  await updateOrderTotal(parsedOrderId);
+  return reply.status(201).send({ items: resultItems });
+});
+
+// Update Order Item
+fastify.patch('/api/order-items/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const body = request.body as {
+    quantity?: number;
+    kitchenStatus?: string;
+  };
+
+  const itemId = parseInt(id);
+
+  const [existingItem] = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.id, itemId));
+
+  if (!existingItem) {
+    return reply.status(404).send({ error: 'Order item not found.' });
+  }
+
+  const updateData: Record<string, any> = {};
+
+  if (body.kitchenStatus) {
+    updateData.kitchenStatus = body.kitchenStatus;
+    if (body.kitchenStatus === 'ready' || body.kitchenStatus === 'completed') {
+      updateData.completedAt = new Date();
     }
-  
-    if (body.quantity && body.quantity > 0) {
-      const unitPriceNum = Number(existingItem.unitPrice);
-      updateData.quantity = body.quantity;
-      updateData.subtotal = (unitPriceNum * body.quantity).toFixed(2);
-    }
-  
-    const [updatedItem] = await db
-      .update(orderItems)
-      .set(updateData)
-      .where(eq(orderItems.id, itemId))
-      .returning();
-  
-    if (body.quantity && existingItem.orderId) {
-      await updateOrderTotal(existingItem.orderId);
-    }
-  
-    return reply.send({ item: updatedItem });
-  });
+  }
 
+  if (body.quantity && body.quantity > 0) {
+    const unitPriceNum = Number(existingItem.unitPrice);
+    updateData.quantity = body.quantity;
+    updateData.subtotal = (unitPriceNum * body.quantity).toFixed(2);
+  }
 
-// New one get the order item 
+  const [updatedItem] = await db
+    .update(orderItems)
+    .set(updateData)
+    .where(eq(orderItems.id, itemId))
+    .returning();
 
+  if (body.quantity && existingItem.orderId) {
+    await updateOrderTotal(existingItem.orderId);
+  }
 
+  return reply.send({ item: updatedItem });
+});
 
-// delete item from order 
+// Delete Order Item
 fastify.delete('/api/order-items/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const itemId = parseInt(id);
-  
-    if (isNaN(itemId)) {
-      return reply.status(400).send({ error: 'Invalid item ID format.' });
-    }
-  
-    // 1. Fetch the item first so we know which orderId it belongs to
-    const [existingItem] = await db
-      .select()
-      .from(orderItems)
-      .where(eq(orderItems.id, itemId));
-  
-    if (!existingItem) {
-      return reply.status(404).send({ error: 'Order item not found.' });
-    }
-  
-    const { orderId } = existingItem;
-  
-    // 2. Delete the order item
-    await db
-      .delete(orderItems)
-      .where(eq(orderItems.id, itemId));
-  
-    // 3. Recalculate parent order total_amount
-    if (orderId) {
-      await updateOrderTotal(orderId);
-    }
-  
-    return reply.send({
-      message: 'Item removed successfully.',
-      deletedItemId: itemId,
-      orderId,
-    });
-  });
+  const { id } = request.params as { id: string };
+  const itemId = parseInt(id);
 
-// delete the whole order
+  if (isNaN(itemId)) {
+    return reply.status(400).send({ error: 'Invalid item ID format.' });
+  }
+
+  const [existingItem] = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.id, itemId));
+
+  if (!existingItem) {
+    return reply.status(404).send({ error: 'Order item not found.' });
+  }
+
+  const { orderId } = existingItem;
+
+  await db.delete(orderItems).where(eq(orderItems.id, itemId));
+
+  if (orderId) {
+    await updateOrderTotal(orderId);
+  }
+
+  return reply.send({
+    message: 'Item removed successfully.',
+    deletedItemId: itemId,
+    orderId,
+  });
+});
+
+// Cancel Order
 fastify.patch('/api/orders/:id/cancel', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const orderId = parseInt(id);
-  
-    if (isNaN(orderId)) {
-      return reply.status(400).send({ error: 'Invalid order ID format.' });
-    }
-  
-    // 1. Fetch current order to verify existence and status
-    const [existingOrder] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, orderId));
-  
-    if (!existingOrder) {
-      return reply.status(404).send({ error: 'Order not found.' });
-    }
-  
-    // Prevent cancelling an already closed/cancelled order
-    if (existingOrder.status === 'cancelled') {
-      return reply.status(400).send({ error: 'Order is already cancelled.' });
-    }
-  
-    if (existingOrder.status === 'closed' || existingOrder.status === 'completed') {
-      return reply.status(400).send({ error: 'Cannot cancel a completed or closed order.' });
-    }
-  
-    // 2. Update order status to 'cancelled' and reset totalAmount to 0.00
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: 'cancelled',
-        totalAmount: '0.00',
-      })
-      .where(eq(orders.id, orderId))
-      .returning();
-  
-    // 3. Mark all pending/preparing kitchen items as 'cancelled'
-    await db
-      .update(orderItems)
-      .set({ kitchenStatus: 'cancelled' })
-      .where(eq(orderItems.orderId, orderId));
-  
-    return reply.send({
-      message: 'Order cancelled successfully.',
-      order: updatedOrder,
-    });
+  const { id } = request.params as { id: string };
+  const orderId = parseInt(id);
+
+  if (isNaN(orderId)) {
+    return reply.status(400).send({ error: 'Invalid order ID format.' });
+  }
+
+  const [existingOrder] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId));
+
+  if (!existingOrder) {
+    return reply.status(404).send({ error: 'Order not found.' });
+  }
+
+  if (existingOrder.status === 'cancelled') {
+    return reply.status(400).send({ error: 'Order is already cancelled.' });
+  }
+
+  if (
+    existingOrder.status === 'closed' ||
+    existingOrder.status === 'completed'
+  ) {
+    return reply
+      .status(400)
+      .send({ error: 'Cannot cancel a completed or closed order.' });
+  }
+
+  const [updatedOrder] = await db
+    .update(orders)
+    .set({
+      status: 'cancelled',
+      totalAmount: '0.00',
+    })
+    .where(eq(orders.id, orderId))
+    .returning();
+
+  await db
+    .update(orderItems)
+    .set({ kitchenStatus: 'cancelled' })
+    .where(eq(orderItems.orderId, orderId));
+
+  return reply.send({
+    message: 'Order cancelled successfully.',
+    order: updatedOrder,
   });
-  
-  // Register plugins
+});
 
-app.use(express.json());
-
-
-fastify.register(uploadRoutes); // 👈 Registers POST /api/upload under Fastify
+// --- Register External Modular Routes ---
+fastify.register(uploadRoutes);
 fastify.register(printerRoutes);
 fastify.register(categoryRoutes);
 fastify.register(tableRoutes);
@@ -778,13 +768,9 @@ fastify.register(modifierGroupRoutes);
 fastify.register(modifierOptionRoutes);
 fastify.register(rawMaterialsRoutes);
 fastify.register(supplierRoutes);
-fastify.register(orderRoutes)
-// Serve the root uploads folder statically
-app.use('/uploads', express.static('uploads'));
+fastify.register(orderRoutes);
 
-// Register your upload router under /api
-app.use('/api', uploadRouter);
-// Start Server
+// --- Start Server ---
 const start = async () => {
   try {
     await fastify.listen({ port: 3000, host: '0.0.0.0' });

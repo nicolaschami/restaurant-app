@@ -1,7 +1,7 @@
 // src/routes/orders.ts
 
 import { FastifyInstance } from 'fastify';
-
+import { roomManager } from '../lib/roomManager';
 import { db } from '../db';
 import { orders, orderItems, menuItems, restaurantTables } from '../db/schema';
 import { eq, max, inArray, sql, and, ne } from 'drizzle-orm';
@@ -190,7 +190,19 @@ fastify.post('/api/orders', async (request, reply) => {
       };
     });
 
+ // 👇 NEW: broadcast to every dashboard/POS screen watching this restaurant
+    if (result?.restaurantId) {
+      roomManager.broadcastToRestaurant(
+        String(result.restaurantId),
+        'ORDER_UPDATED',
+        result
+      );
+    }
+
+
     return reply.status(201).send({ order: result });
+
+    
    } catch (err: any) {
   console.error('❌ Order creation failed:', err);
   return reply.status(500).send({
@@ -285,7 +297,13 @@ if (updatedOrder.tableId) {
 
     return { ...updatedOrder, items: insertedItems };
   });
-
+if (result?.restaurantId) {
+    roomManager.broadcastToRestaurant(
+      String(result.restaurantId),
+      'ORDER_UPDATED', // Action/Event type for your frontend listeners
+      result          // The payload containing updated header + re-inserted items
+    );
+  }
   return reply.status(200).send({ order: result });
 } catch (err: any) {
   console.error('❌ Order Update Failed:', err);

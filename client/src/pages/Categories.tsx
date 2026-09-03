@@ -43,7 +43,7 @@ export default function Categories({ onLogout }: CategoriesProps) {
       setCategories(res.data.categories || res.data);
     } catch (err: any) {
       if (err.response?.status === 401) {
-        onLogout();
+       
       } else {
         setError('Could not load categories. Check server connection.');
       }

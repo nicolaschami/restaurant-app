@@ -363,7 +363,7 @@ export default function Products({ onLogout }: ProductsProps) {
       );
       setModifierGroups(detailedGroups);
     } catch (err: any) {
-      if (err.response?.status === 401) onLogout();
+      if (err.response?.status === 401) ;
       else setError('Failed to load menu items or dropdown options.');
     } finally {
       setLoading(false);

@@ -95,7 +95,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
       setGroups(parsedGroups);
     } catch (err: any) {
       if (err.response?.status === 401) {
-        onLogout();
+        
       } else {
         setError('Failed to load modifier groups.');
       }
