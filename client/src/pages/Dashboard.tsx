@@ -58,6 +58,51 @@ const STOCK_ALERTS = [
   { name: 'Cooking Oil', remaining: '4.2 liters left', progress: 42, color: '#B8863B', icon: '🫗' },
 ];
 
+const FRESHNESS_META = [
+  { key: 'fresh', label: 'Fresh', color: '#4C7A5E' },
+  { key: 'aging', label: 'Aging', color: '#B8863B' },
+  { key: 'late', label: 'Late', color: '#A23B2E' },
+] as const;
+type FreshnessKey = (typeof FRESHNESS_META)[number]['key'];
+
+const freshnessOf = (mins: number): FreshnessKey => (mins >= 20 ? 'late' : mins >= 10 ? 'aging' : 'fresh');
+
+// Formats elapsed minutes as a compact, human-friendly duration:
+// under 1h -> "42m", under 24h -> "8h 22m" (or just "8h" on the hour),
+// 24h+ -> "1d 3h" (or just "2d" on the day). Keeps the ticket badge readable
+// instead of showing raw minute counts like "502m".
+const formatDuration = (mins: number): string => {
+  if (mins < 60) return `${mins}m`;
+  if (mins < 1440) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m === 0 ? `${h}h` : `${h}h ${m}m`;
+  }
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  return h === 0 ? `${d}d` : `${d}d ${h}h`;
+};
+
+// Same idea, but shaped for the small two-line dial center (a single
+// value + unit) rather than the inline badge string above.
+const formatDialAvg = (mins: number): { value: number; unit: string } => {
+  if (mins < 60) return { value: mins, unit: 'AVG MIN' };
+  if (mins < 1440) return { value: Math.round(mins / 60), unit: 'AVG HR' };
+  return { value: Math.round(mins / 1440), unit: 'AVG DAY' };
+};
+
+const ORDER_TYPE_META = [
+  { key: 'dinein', label: 'Dine-In', color: '#5B7C99', match: (s: string) => s.includes('dine') },
+  { key: 'takeaway', label: 'Takeaway', color: '#B8863B', match: (s: string) => s.includes('take') || s.includes('pick') },
+  { key: 'delivery', label: 'Delivery', color: '#6B6560', match: (s: string) => s.includes('deliver') },
+] as const;
+type OrderTypeKey = (typeof ORDER_TYPE_META)[number]['key'];
+
+const matchOrderType = (orderType: string) => {
+  const s = (orderType || '').toLowerCase();
+  return ORDER_TYPE_META.find((m) => m.match(s));
+};
+
 // ==========================================
 // STYLES
 // ==========================================
@@ -85,7 +130,7 @@ const DashboardStyles = () => (
       box-shadow: 0 2px 4px rgba(0,0,0,0.15) inset, 0 3px 6px rgba(0,0,0,0.18);
       display: flex; align-items: center; justify-content: space-evenly; padding: 0 12px; }
     .kb-bolt { width: 4px; height: 4px; border-radius: 50%; background: rgba(0,0,0,0.35); }
-    .kb-rail-tickets { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 6px 6px; } /* reduced top padding */
+    .kb-rail-tickets { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 6px 6px; }
     .kb-ticket-wrap { position: relative; width: 176px; transition: opacity 460ms ease, transform 460ms ease; }
     .kb-clip { position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
       width: 14px; height: 20px; border-radius: 3px;
@@ -106,18 +151,37 @@ const DashboardStyles = () => (
     .kb-meta { font-size: 11px; color: #8a8377; margin: 3px 0 0; }
     .kb-price { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; color: #221F1C; }
 
-    .kb-dial-card { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 10px;
-      padding: 14px 16px; text-align: center; width: 180px; }
+    /* --- Merged Kitchen Status card (Pace + Mix side by side) --- */
+    .kb-status-card { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 10px;
+      padding: 16px 18px; }
+    .kb-status-title { font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: 0.02em;
+      color: #221F1C; margin: 0 0 10px; }
+    .kb-status-grid { display: flex; gap: 18px; }
+    .kb-status-col { flex: 1 1 150px; min-width: 140px; }
+    .kb-status-col + .kb-status-col { border-left: 1px dashed #E7E1D2; padding-left: 18px; }
+    .kb-status-col-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700;
+      letter-spacing: 0.1em; color: #8a8377; margin: 0 0 2px; }
+    .kb-dial-wrap { position: relative; width: 92px; height: 92px; margin: 4px auto; }
     .kb-dial-center { position: absolute; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: center; }
-    .kb-dial-num { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #221F1C; line-height: 1; }
-    .kb-dial-unit { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8a8377; letter-spacing: 0.08em; }
-    .kb-legend-row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; font-size: 11px; }
-    .kb-legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .kb-legend-label { font-size: 11px; color: #55504a; flex: 1; }
-    .kb-legend-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #221F1C; }
+    .kb-dial-num { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #221F1C; line-height: 1; }
+    .kb-dial-unit { font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #8a8377; letter-spacing: 0.06em; }
+    .kb-legend-row { display: flex; align-items: center; gap: 6px; padding: 3px 5px; border-radius: 6px;
+      width: 100%; text-align: left; border: none; background: transparent; cursor: pointer;
+      transition: background 120ms ease; }
+    .kb-legend-row:hover { background: #F1ECDC; }
+    .kb-legend-row.active { background: #F1ECDC; box-shadow: inset 0 0 0 1px #E7E1D2; }
+    .kb-legend-row.dimmed { opacity: 0.45; }
+    .kb-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .kb-legend-label { font-size: 10.5px; color: #55504a; flex: 1; }
+    .kb-legend-count { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 700; color: #221F1C; }
 
-    .kb-dial-card svg { width: 110px; height: 110px; }
+    .kb-filter-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px;
+      font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #221F1C;
+      background: #F1ECDC; border: 1px solid #E7E1D2; padding: 3px 6px 3px 10px; border-radius: 12px;
+      cursor: pointer; }
+    .kb-filter-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .kb-filter-chip:hover { background: #EAE3CE; }
 
     .kb-receipt { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 4px;
       padding: 22px 22px 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
@@ -131,149 +195,145 @@ const DashboardStyles = () => (
       background-image: repeating-linear-gradient(90deg, #221F1C 0 2px, transparent 2px 5px,
         #221F1C 5px 6px, transparent 6px 9px, #221F1C 9px 12px, transparent 12px 16px);
       opacity: 0.8; }
-
-    .filter-btn { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
-      padding: 4px 12px; border-radius: 20px; border: 1px solid #d6d3d1; background: transparent;
-      color: #55504a; cursor: pointer; transition: all 0.15s; }
-    .filter-btn.active { background: #221F1C; color: white; border-color: #221F1C; }
-    .filter-btn:hover:not(.active) { background: #f0ede8; }
   `}</style>
 );
 
 // ==========================================
-// SUB-COMPONENT: SERVICE PULSE DIAL
+// SUB-COMPONENT: MINI RING (shared by both dial columns)
 // ==========================================
-const ServicePulseDial: FC<{ tickets: ActiveOrder[]; mounted: boolean; getMins: (t: ActiveOrder) => number }> = ({
-  tickets,
-  mounted,
-  getMins,
-}) => {
-  const counts = { fresh: 0, aging: 0, late: 0 };
-  tickets.forEach((t) => {
-    const m = getMins(t);
-    if (m >= 20) counts.late++;
-    else if (m >= 10) counts.aging++;
-    else counts.fresh++;
-  });
-  const avgMins = tickets.length
-    ? Math.round(tickets.reduce((s, t) => s + getMins(t), 0) / tickets.length)
-    : 0;
-
-  const R = 42;
+const MiniRing: FC<{
+  segments: { color: string; pct: number; dimmed?: boolean }[];
+  centerValue: string | number;
+  centerUnit: string;
+  mounted: boolean;
+}> = ({ segments, centerValue, centerUnit, mounted }) => {
+  const R = 34;
   const C = 2 * Math.PI * R;
-  const dialPct = Math.min(avgMins / 30, 1);
-  const dialColor = avgMins >= 20 ? '#A23B2E' : avgMins >= 10 ? '#B8863B' : '#4C7A5E';
+  let cumulative = 0;
 
   return (
-    <div className="kb-dial-card">
-      <p className="kb-eyebrow" style={{ marginBottom: 2 }}>SERVICE PULSE</p>
-      <div style={{ position: 'relative', width: 110, height: 110, margin: '4px auto' }}>
-        <svg width="110" height="110" viewBox="0 0 110 110">
-          <circle cx="55" cy="55" r={R} fill="none" stroke="#E7E1D2" strokeWidth="8" />
-          <circle
-            cx="55" cy="55" r={R} fill="none"
-            stroke={dialColor} strokeWidth="8" strokeLinecap="round"
-            strokeDasharray={C}
-            strokeDashoffset={mounted ? C * (1 - dialPct) : C}
-            transform="rotate(-90 55 55)"
-            style={{ transition: 'stroke-dashoffset 900ms ease 300ms' }}
-          />
-        </svg>
-        <div className="kb-dial-center">
-          <span className="kb-dial-num">{avgMins}</span>
-          <span className="kb-dial-unit">AVG MIN</span>
-        </div>
-      </div>
-      <div style={{ marginTop: 6, textAlign: 'left' }}>
-        <div className="kb-legend-row">
-          <span className="kb-legend-dot" style={{ background: '#4C7A5E' }} />
-          <span className="kb-legend-label">Fresh</span>
-          <span className="kb-legend-count">{counts.fresh}</span>
-        </div>
-        <div className="kb-legend-row">
-          <span className="kb-legend-dot" style={{ background: '#B8863B' }} />
-          <span className="kb-legend-label">Aging</span>
-          <span className="kb-legend-count">{counts.aging}</span>
-        </div>
-        <div className="kb-legend-row">
-          <span className="kb-legend-dot" style={{ background: '#A23B2E' }} />
-          <span className="kb-legend-label">Late</span>
-          <span className="kb-legend-count">{counts.late}</span>
-        </div>
+    <div className="kb-dial-wrap">
+      <svg width="92" height="92" viewBox="0 0 92 92">
+        <circle cx="46" cy="46" r={R} fill="none" stroke="#E7E1D2" strokeWidth="7" />
+        {segments.map((seg, i) => {
+          if (seg.pct <= 0) return null;
+          const segLen = mounted ? seg.pct * C : 0;
+          const gap = C - segLen;
+          const rotation = -90 + cumulative * 360;
+          cumulative += seg.pct;
+          return (
+            <circle
+              key={i}
+              cx="46" cy="46" r={R} fill="none"
+              stroke={seg.color} strokeWidth="7" strokeLinecap={segments.length === 1 ? 'round' : 'butt'}
+              strokeOpacity={seg.dimmed ? 0.25 : 1}
+              strokeDasharray={`${segLen} ${gap}`}
+              transform={`rotate(${rotation} 46 46)`}
+              style={{ transition: 'stroke-dasharray 900ms ease 300ms, stroke-opacity 150ms ease' }}
+            />
+          );
+        })}
+      </svg>
+      <div className="kb-dial-center">
+        <span className="kb-dial-num">{centerValue}</span>
+        <span className="kb-dial-unit">{centerUnit}</span>
       </div>
     </div>
   );
 };
 
 // ==========================================
-// SUB-COMPONENT: ORDER MIX DIAL
+// SUB-COMPONENT: KITCHEN STATUS CARD (Pace + Mix, both filterable)
 // ==========================================
-const ORDER_TYPE_META = [
-  { key: 'dinein', label: 'Dine-In', color: '#5B7C99', match: (s: string) => s.toLowerCase().includes('dine') },
-  { key: 'takeaway', label: 'Takeaway', color: '#B8863B', match: (s: string) => s.toLowerCase().includes('take') || s.toLowerCase().includes('pick') },
-  { key: 'delivery', label: 'Delivery', color: '#6B6560', match: (s: string) => s.toLowerCase().includes('deliver') },
-] as const;
+const KitchenStatusCard: FC<{
+  tickets: ActiveOrder[];
+  mounted: boolean;
+  getMins: (t: ActiveOrder) => number;
+  freshnessFilter: FreshnessKey | null;
+  onToggleFreshness: (key: FreshnessKey) => void;
+  typeFilter: OrderTypeKey | null;
+  onToggleType: (key: OrderTypeKey) => void;
+}> = ({ tickets, mounted, getMins, freshnessFilter, onToggleFreshness, typeFilter, onToggleType }) => {
+  // Both dials are computed off ALL active tickets (not the filtered view),
+  // so they always show the kitchen's real state — the filter is something
+  // you apply to the rail, not something that shrinks your own dashboard.
+  const freshCounts = { fresh: 0, aging: 0, late: 0 };
+  tickets.forEach((t) => freshCounts[freshnessOf(getMins(t))]++);
+  const avgMins = tickets.length
+    ? Math.round(tickets.reduce((s, t) => s + getMins(t), 0) / tickets.length)
+    : 0;
+  const dialPct = Math.min(avgMins / 30, 1);
+  const dialColor = avgMins >= 20 ? '#A23B2E' : avgMins >= 10 ? '#B8863B' : '#4C7A5E';
+  const dialAvg = formatDialAvg(avgMins);
 
-const OrderMixDial: FC<{ tickets: ActiveOrder[]; mounted: boolean }> = ({ tickets, mounted }) => {
-  const counts = { dinein: 0, takeaway: 0, delivery: 0 };
+  const typeCounts = { dinein: 0, takeaway: 0, delivery: 0 };
   tickets.forEach((t) => {
-    const s = (t.orderType || '').toLowerCase();
-    const meta = ORDER_TYPE_META.find((m) => m.match(s));
-    if (meta) counts[meta.key]++;
+    const meta = matchOrderType(t.orderType);
+    if (meta) typeCounts[meta.key]++;
   });
   const total = tickets.length;
-
-  const R = 42;
-  const C = 2 * Math.PI * R;
-
-  let cumulative = 0;
-  const segments = ORDER_TYPE_META.map((meta) => {
-    const count = counts[meta.key];
+  const typeSegments = ORDER_TYPE_META.map((meta) => {
+    const count = typeCounts[meta.key];
     const pct = total > 0 ? count / total : 0;
-    const segment = { ...meta, count, pct, offset: cumulative };
-    cumulative += pct;
-    return segment;
+    return { ...meta, count, pct, dimmed: typeFilter !== null && typeFilter !== meta.key };
   });
 
   return (
-    <div className="kb-dial-card">
-      <p className="kb-eyebrow" style={{ marginBottom: 2 }}>ORDER MIX</p>
-      <div style={{ position: 'relative', width: 110, height: 110, margin: '4px auto' }}>
-        <svg width="110" height="110" viewBox="0 0 110 110">
-          <circle cx="55" cy="55" r={R} fill="none" stroke="#E7E1D2" strokeWidth="8" />
-          {total === 0
-            ? null
-            : segments.map((seg) => {
-                if (seg.pct === 0) return null;
-                const segLen = mounted ? seg.pct * C : 0;
-                const gap = C - segLen;
-                const rotation = -90 + seg.offset * 360;
-                return (
-                  <circle
-                    key={seg.key}
-                    cx="55" cy="55" r={R} fill="none"
-                    stroke={seg.color} strokeWidth="8"
-                    strokeDasharray={`${segLen} ${gap}`}
-                    strokeDashoffset={0}
-                    transform={`rotate(${rotation} 55 55)`}
-                    style={{ transition: 'stroke-dasharray 900ms ease 300ms' }}
-                  />
-                );
-              })}
-        </svg>
-        <div className="kb-dial-center">
-          <span className="kb-dial-num">{total}</span>
-          <span className="kb-dial-unit">ACTIVE</span>
-        </div>
-      </div>
-      <div style={{ marginTop: 6, textAlign: 'left' }}>
-        {segments.map((seg) => (
-          <div className="kb-legend-row" key={seg.key}>
-            <span className="kb-legend-dot" style={{ background: seg.color }} />
-            <span className="kb-legend-label">{seg.label}</span>
-            <span className="kb-legend-count">{seg.count}</span>
+    <div className="kb-status-card" style={{ flex: '0 0 auto' }}>
+      <p className="kb-status-title">Kitchen Status</p>
+      <div className="kb-status-grid">
+         {/* MIX column */}
+        <div className="kb-status-col">
+          <p className="kb-status-col-label">Per type</p>
+          <MiniRing
+            segments={typeSegments.map((s) => ({ color: s.color, pct: s.pct, dimmed: s.dimmed }))}
+            centerValue={total}
+            centerUnit="ACTIVE"
+            mounted={mounted}
+          />
+          <div style={{ marginTop: 4 }}>
+            {typeSegments.map((seg) => (
+              <button
+                key={seg.key}
+                className={`kb-legend-row ${typeFilter === seg.key ? 'active' : ''} ${seg.dimmed ? 'dimmed' : ''}`}
+                onClick={() => onToggleType(seg.key)}
+                title={`Show only ${seg.label} tickets`}
+              >
+                <span className="kb-legend-dot" style={{ background: seg.color }} />
+                <span className="kb-legend-label">{seg.label}</span>
+                <span className="kb-legend-count">{seg.count}</span>
+              </button>
+            ))}
           </div>
-        ))}
+        </div>
+        {/* PACE column */}
+        <div className="kb-status-col">
+          <p className="kb-status-col-label">PACE</p>
+          <MiniRing
+            segments={[{ color: dialColor, pct: dialPct }]}
+            centerValue={dialAvg.value}
+            centerUnit={dialAvg.unit}
+            mounted={mounted}
+          />
+          <div style={{ marginTop: 4 }}>
+            {FRESHNESS_META.map((f) => (
+              <button
+                key={f.key}
+                className={`kb-legend-row ${freshnessFilter === f.key ? 'active' : ''} ${
+                  freshnessFilter && freshnessFilter !== f.key ? 'dimmed' : ''
+                }`}
+                onClick={() => onToggleFreshness(f.key)}
+                title={`Show only ${f.label} tickets`}
+              >
+                <span className="kb-legend-dot" style={{ background: f.color }} />
+                <span className="kb-legend-label">{f.label}</span>
+                <span className="kb-legend-count">{freshCounts[f.key]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+       
       </div>
     </div>
   );
@@ -285,9 +345,10 @@ const OrderMixDial: FC<{ tickets: ActiveOrder[]; mounted: boolean }> = ({ ticket
 export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate, onSelectTicket }) => {
   const [tickets, setTickets] = useState<ActiveOrder[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState<boolean>(true);
-  const [filterType, setFilterType] = useState<'all' | 'dinein' | 'takeaway' | 'delivery'>('all');
   const [now, setNow] = useState<number>(Date.now());
   const [mounted, setMounted] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<OrderTypeKey | null>(null);
+  const [freshnessFilter, setFreshnessFilter] = useState<FreshnessKey | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
 
   const fetchActiveOrders = useCallback(async () => {
@@ -331,14 +392,26 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
 
   const getMins = (t: ActiveOrder) => getElapsedMinutes(t.created_at || t.createdAt);
 
-  const filteredTickets = tickets.filter((t) => {
-    if (filterType === 'all') return true;
-    const type = (t.orderType || '').toLowerCase();
-    if (filterType === 'dinein') return type.includes('dine');
-    if (filterType === 'takeaway') return type.includes('take') || type.includes('pick');
-    if (filterType === 'delivery') return type.includes('deliver');
+  const toggleType = (key: OrderTypeKey) => setTypeFilter((prev) => (prev === key ? null : key));
+  const toggleFreshness = (key: FreshnessKey) => setFreshnessFilter((prev) => (prev === key ? null : key));
+  const clearFilters = () => {
+    setTypeFilter(null);
+    setFreshnessFilter(null);
+  };
+
+  const displayedTickets = tickets.filter((t) => {
+    if (typeFilter) {
+      const meta = matchOrderType(t.orderType);
+      if (!meta || meta.key !== typeFilter) return false;
+    }
+    if (freshnessFilter) {
+      if (freshnessOf(getMins(t)) !== freshnessFilter) return false;
+    }
     return true;
   });
+
+  const typeLabel = typeFilter ? ORDER_TYPE_META.find((m) => m.key === typeFilter) : null;
+  const freshLabel = freshnessFilter ? FRESHNESS_META.find((f) => f.key === freshnessFilter) : null;
 
   const maxRevenue = Math.max(...SALES_BARS.map((d) => d.revenue));
   const weekTotal = SALES_BARS.reduce((s, d) => s + d.revenue, 0);
@@ -355,27 +428,34 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
         </div>
       </div>
 
-      {/* THE PASS – updated layout */}
+      {/* THE PASS: rail + kitchen status card */}
       <div>
-        {/* Filter row with "Open POS" button */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['all', 'dinein', 'takeaway', 'delivery'] as const).map((key) => (
-              <button
-                key={key}
-                className={`filter-btn ${filterType === key ? 'active' : ''}`}
-                onClick={() => setFilterType(key)}
-              >
-                {key === 'all' ? 'All' : key.charAt(0).toUpperCase() + key.slice(1)}
+        <div className="mb-3 flex items-center justify-between px-1" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <p className="kb-eyebrow">THE PASS</p>
+            {typeLabel && (
+              <button className="kb-filter-chip" onClick={() => toggleType(typeLabel.key)}>
+                <span className="dot" style={{ background: typeLabel.color }} />
+                {typeLabel.label} ✕
               </button>
-            ))}
+            )}
+            {freshLabel && (
+              <button className="kb-filter-chip" onClick={() => toggleFreshness(freshLabel.key)}>
+                <span className="dot" style={{ background: freshLabel.color }} />
+                {freshLabel.label} ✕
+              </button>
+            )}
+            {(typeFilter || freshnessFilter) && (
+              <button className="kb-filter-chip" onClick={clearFilters} style={{ opacity: 0.7 }}>
+                Clear all
+              </button>
+            )}
           </div>
           <button onClick={() => onNavigate('pos')} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
             Open POS →
           </button>
         </div>
 
-        {/* Rail + dials */}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ flex: '1 1 560px', minWidth: 300 }} ref={railRef}>
             <div className="kb-rail-bar">
@@ -386,12 +466,12 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
             <div className="kb-rail-tickets">
               {isLoadingTickets ? (
                 <div className="py-8 text-center text-xs text-slate-400 w-full">Loading active tickets...</div>
-              ) : filteredTickets.length === 0 ? (
+              ) : displayedTickets.length === 0 ? (
                 <div className="py-8 text-center text-xs text-slate-400 w-full">
-                  {filterType === 'all' ? 'No active kitchen tickets' : `No ${filterType} orders`}
+                  {tickets.length === 0 ? 'No active kitchen tickets' : 'No tickets match the current filter'}
                 </div>
               ) : (
-                filteredTickets.map((t, i) => {
+                displayedTickets.map((t, i) => {
                   const mins = getMins(t);
                   const angle = (i % 2 === 0 ? -1 : 1) * (1.2 + (i % 3) * 0.6);
                   const status =
@@ -424,7 +504,7 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
                         <div className="kb-ticket-row">
                           <span className="kb-ticket-no">#{t.ticketNo}</span>
                           <span className="kb-badge" style={{ color: status.color, background: status.bg }}>
-                            {status.label} · {mins}m
+                            {status.label} · {formatDuration(mins)}
                           </span>
                         </div>
                         <p className="kb-customer" title={label}>{label}</p>
@@ -442,11 +522,15 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
             </div>
           </div>
 
-          {/* Dials – side by side */}
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', flex: '0 0 auto' }}>
-            <ServicePulseDial tickets={filteredTickets} mounted={mounted} getMins={getMins} />
-            <OrderMixDial tickets={filteredTickets} mounted={mounted} />
-          </div>
+          <KitchenStatusCard
+            tickets={tickets}
+            mounted={mounted}
+            getMins={getMins}
+            freshnessFilter={freshnessFilter}
+            onToggleFreshness={toggleFreshness}
+            typeFilter={typeFilter}
+            onToggleType={toggleType}
+          />
         </div>
       </div>
 
