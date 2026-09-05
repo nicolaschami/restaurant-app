@@ -8,6 +8,16 @@ export default defineConfig({
     react(),
     tailwindcss(), // Tells Vite how to process @import "tailwindcss";
   ],
+  define: {
+    // Defines 'global' in browser environment for Node libraries
+    global: 'window',
+  },
+  resolve: {
+    alias: {
+      // Maps Node buffer imports to the browser polyfill package
+      buffer: 'buffer/',
+    },
+  },
   server: {
     port: 5173,
     proxy: {

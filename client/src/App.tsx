@@ -11,6 +11,7 @@ import Customers from './pages/customers';
 import Suppliers from './pages/Suppliers';
 import KitchenStations from './pages/kitchenstation'; // Your Kitchen Station Setup component
 import KDSContainer from './pages/Kdscontainer';
+import Printo from './pages/Printo'
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
@@ -61,6 +62,7 @@ export function App() {
       {activeTab === 'tables' && <Tables />}
       {activeTab === 'customers' && <Customers />}
       {activeTab === 'suppliers' && <Suppliers />}
+      {activeTab === 'print' && <Printo />}
 
       {/* KDS Display Screen */}
       {activeTab === 'kitchenscreen' && <KDSContainer />}

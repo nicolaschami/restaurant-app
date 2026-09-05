@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRef } from 'react'; 
 import { api } from '../api';
+import { generateReceiptPDF } from '../services/pdfService';
 import {
   Coffee,
   Wine,

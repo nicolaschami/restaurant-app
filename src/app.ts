@@ -28,12 +28,12 @@ import rawMaterialsRoutes from './routes/rawMaterials.js';
 import supplierRoutes from './routes/supplier.js';
 import kitchenStationRoutes from './routes/kitchenStations.js';
 import authRoutes from './routes/aut.js';
-import printerRoutes from './routes/printer.js';
+//import printerRoutes from './routes/printer.js';
 import tableRoutes from './routes/tables.js';
 import customerRoutes from './routes/customers.js';
 import orderRoutes from './routes/orders.js';
 import { kdsRoutes} from './routes/kds.js'
-
+import printerRoutes from './routes/silent-print.js';
 // Module Type Augmentations
 declare module '@fastify/jwt' {
   interface FastifyJWT {

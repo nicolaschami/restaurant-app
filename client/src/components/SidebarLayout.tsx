@@ -19,6 +19,7 @@ import {
   Table2,
   CircleUserRound,
   TableOfContents,
+  Printer,
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -52,6 +53,7 @@ export default function SidebarLayout({
   const setingSubItems = [
     { id: 'tables', label: 'Tables', icon: Table2 }, // Fixed typo: 'tabels' -> 'tables'
     { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents }, // Fixed typo: 'tabels' -> 'tables'
+    { id: 'print', label: 'Print Test page', icon: Printer }, // Fixed typo: 'tabels' -> 'tables'
     
   ];
 
