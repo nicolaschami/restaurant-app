@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -18,6 +18,7 @@ import {
   PanelLeftOpen,
   Table2,
   CircleUserRound,
+  TableOfContents,
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -36,253 +37,295 @@ export default function SidebarLayout({
   children,
 }: SidebarLayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [openSections, setOpenSections] = useState<{ [key: string]: boolean }>({
-    products: true,
-    partners: false,
-    settings: false,
-  });
+  const [isProductsOpen, setIsProductsOpen] = useState(false);
+  const [isPartnersOpen, setIsPartnersOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const toggleSection = (section: string) => {
-    if (isCollapsed) setIsCollapsed(false);
-    setOpenSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
+  const productSubItems = [
+    { id: 'categories', label: 'Categories', icon: Layers },
+    { id: 'menu-items', label: 'Menu Items', icon: Utensils },
+    { id: 'modifiers', label: 'Modifiers', icon: SlidersHorizontal },
+    { id: 'raw-materials', label: 'Raw Materials', icon: Wheat },
+    { id: 'kitchenscreen', label: 'Kitchen screen', icon: Wheat },
+  ];
 
-  const handleTabClick = (e: React.MouseEvent, tabId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (setActiveTab) {
+  const setingSubItems = [
+    { id: 'tables', label: 'Tables', icon: Table2 }, // Fixed typo: 'tabels' -> 'tables'
+    { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents }, // Fixed typo: 'tabels' -> 'tables'
+    
+  ];
+
+  const partnerSubItems = [
+    { id: 'users', label: 'Users', icon: UserCheck },
+    { id: 'employees', label: 'Employees', icon: Briefcase },
+    { id: 'suppliers', label: 'Suppliers', icon: Truck },
+    { id: 'customers', label: 'Customers', icon: CircleUserRound },
+  ];
+
+  // Auto-expand the dropdown parent if activeTab belongs to its sub-items
+  useEffect(() => {
+    if (productSubItems.some((item) => item.id === activeTab)) {
+      setIsProductsOpen(true);
+    }
+    if (partnerSubItems.some((item) => item.id === activeTab)) {
+      setIsPartnersOpen(true);
+    }
+    if (setingSubItems.some((item) => item.id === activeTab)) {
+      setIsSettingsOpen(true);
+    }
+  }, [activeTab]);
+
+  const handleTabChange = (tabId: string) => {
+    if (typeof setActiveTab === 'function') {
       setActiveTab(tabId);
     }
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#1c1917] select-none">
+    <div className="flex h-screen w-screen bg-[#1c1917] overflow-hidden select-none">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
+      `}</style>
+
+      {/* Collapsible Sidebar */}
       <aside
-        className={`bg-[#1c1917] text-slate-300 flex flex-col border-r border-[#33291f] h-full transition-all duration-300 ${
-          isCollapsed ? 'w-16' : 'w-56'
+        className={`bg-[#1c1917] text-slate-300 flex flex-col border-r border-[#33291f] shrink-0 h-full transition-all duration-300 ${
+          isCollapsed ? 'w-16' : 'w-48'
         }`}
       >
-        {/* Header */}
+        {/* Header with Toggle Button */}
         <div className="p-3 border-b border-[#33291f] flex items-center justify-between">
           {!isCollapsed && (
-            <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded bg-gradient-to-br from-[#8a3f16] to-[#c2621f] text-xs">
+            <div className="min-w-0 flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#8a3f16] to-[#c2621f] text-[11px]">
                 🍽️
               </span>
-              <div>
-                <h1 className="text-xs font-bold text-white uppercase tracking-wider">POS Center</h1>
-                <p className="text-[10px] text-slate-400">{restaurantName}</p>
+              <div className="min-w-0">
+                <h1 className="ticket-font uppercase text-xs text-white leading-none truncate">POS Center</h1>
+                <p className="text-[10px] text-slate-400 truncate mt-0.5">{restaurantName}</p>
               </div>
             </div>
           )}
+
           <button
-            type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-white/5 mx-auto"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition mx-auto"
+            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
-            {isCollapsed ? <PanelLeftOpen className="w-4 h-4 text-[#c2621f]" /> : <PanelLeftClose className="w-4 h-4" />}
+            {isCollapsed ? (
+              <PanelLeftOpen className="w-4 h-4 text-[#c2621f]" />
+            ) : (
+              <PanelLeftClose className="w-4 h-4" />
+            )}
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {/* Main Links */}
+        {/* Navigation Items */}
+        <nav className="flex-1 p-1.5 space-y-1 overflow-y-auto">
+          
+          {/* Dashboard */}
           <button
-            type="button"
-            onClick={(e) => handleTabClick(e, 'dashboard')}
-            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded text-xs font-medium ${
-              activeTab === 'dashboard' ? 'bg-[#c2621f] text-white' : 'text-slate-300 hover:bg-white/5'
+            onClick={() => handleTabChange('dashboard')}
+            className={`w-full flex items-center ${
+              isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
+            } py-2 rounded-md text-xs font-medium transition ${
+              activeTab === 'dashboard'
+                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c2621f]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
+            title="Dashboard"
           >
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span>Dashboard</span>}
+            <LayoutDashboard className={`w-4 h-4 shrink-0 ${activeTab === 'dashboard' ? 'text-[#c2621f]' : ''}`} />
+            {!isCollapsed && <span className="truncate">Dashboard</span>}
           </button>
 
+          {/* POS Terminal */}
           <button
-            type="button"
-            onClick={(e) => handleTabClick(e, 'pos')}
-            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded text-xs font-medium ${
-              activeTab === 'pos' ? 'bg-[#c2621f] text-white' : 'text-slate-300 hover:bg-white/5'
+            onClick={() => handleTabChange('pos')}
+            className={`w-full flex items-center ${
+              isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
+            } py-2 rounded-md text-xs font-medium transition ${
+              activeTab === 'pos'
+                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c2621f]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
+            title="POS Terminal"
           >
-            <ShoppingCart className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span>POS Terminal</span>}
+            <ShoppingCart className={`w-4 h-4 shrink-0 ${activeTab === 'pos' ? 'text-[#c2621f]' : ''}`} />
+            {!isCollapsed && <span className="truncate">POS Terminal</span>}
           </button>
 
-          {/* Products Category */}
-          <div className="py-1">
+          {/* Products Group */}
+          <div>
             <button
-              type="button"
-              onClick={() => toggleSection('products')}
-              className="w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium text-slate-200 hover:bg-white/5"
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                setIsProductsOpen(!isProductsOpen);
+              }}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+              } py-2 rounded-md text-xs font-medium text-slate-300 hover:bg-white/5 transition`}
+              title="Products"
             >
-              <div className="flex items-center gap-2">
-                <UtensilsCrossed className="w-4 h-4 text-[#c2621f]" />
-                {!isCollapsed && <span>Products</span>}
+              <div className="flex items-center gap-2 min-w-0">
+                <UtensilsCrossed className="w-4 h-4 text-[#c2621f] shrink-0" />
+                {!isCollapsed && <span className="truncate">Products</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
-                  className={`w-3 h-3 transition-transform ${openSections.products ? 'rotate-180' : ''}`}
+                  className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                    isProductsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                  }`}
                 />
               )}
             </button>
 
-            {openSections.products && !isCollapsed && (
-              <div className="ml-4 mt-1 border-l border-[#33291f] pl-2 space-y-1">
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'categories')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'categories' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5" /> Categories
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'menu-items')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'menu-items' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Utensils className="w-3.5 h-3.5" /> Menu Items
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'modifiers')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'modifiers' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" /> Modifiers
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'raw-materials')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'raw-materials' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Wheat className="w-3.5 h-3.5" /> Raw Materials
-                </button>
+            {/* Products Sub-menu */}
+            {isProductsOpen && !isCollapsed && (
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+                {productSubItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabChange(item.id)}
+                      className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
+                        isActive
+                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Partners Category */}
-          <div className="py-1">
+          {/* Partners Group */}
+          <div>
             <button
-              type="button"
-              onClick={() => toggleSection('partners')}
-              className="w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium text-slate-200 hover:bg-white/5"
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                setIsPartnersOpen(!isPartnersOpen);
+              }}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+              } py-2 rounded-md text-xs font-medium text-slate-300 hover:bg-white/5 transition`}
+              title="Partners"
             >
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#c2621f]" />
-                {!isCollapsed && <span>Partners</span>}
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className="w-4 h-4 text-[#c2621f] shrink-0" />
+                {!isCollapsed && <span className="truncate">Partners</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
-                  className={`w-3 h-3 transition-transform ${openSections.partners ? 'rotate-180' : ''}`}
+                  className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                    isPartnersOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                  }`}
                 />
               )}
             </button>
 
-            {openSections.partners && !isCollapsed && (
-              <div className="ml-4 mt-1 border-l border-[#33291f] pl-2 space-y-1">
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'users')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'users' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <UserCheck className="w-3.5 h-3.5" /> Users
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'employees')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'employees' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Briefcase className="w-3.5 h-3.5" /> Employees
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'suppliers')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'suppliers' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Truck className="w-3.5 h-3.5" /> Suppliers
-                </button>
+            {/* Partners Sub-menu */}
+            {isPartnersOpen && !isCollapsed && (
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+                {partnerSubItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabChange(item.id)}
+                      className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
+                        isActive
+                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Settings Category */}
-          <div className="py-1">
+          {/* Settings Group */}
+          <div>
             <button
-              type="button"
-              onClick={() => toggleSection('settings')}
-              className="w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-medium text-slate-200 hover:bg-white/5"
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                setIsSettingsOpen(!isSettingsOpen);
+              }}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+              } py-2 rounded-md text-xs font-medium text-slate-300 hover:bg-white/5 transition`}
+              title="Settings"
             >
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-[#c2621f]" />
-                {!isCollapsed && <span>Settings</span>}
+              <div className="flex items-center gap-2 min-w-0">
+                <Settings className="w-4 h-4 text-[#c2621f] shrink-0" />
+                {!isCollapsed && <span className="truncate">Settings</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
-                  className={`w-3 h-3 transition-transform ${openSections.settings ? 'rotate-180' : ''}`}
+                  className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                    isSettingsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                  }`}
                 />
               )}
             </button>
 
-            {openSections.settings && !isCollapsed && (
-              <div className="ml-4 mt-1 border-l border-[#33291f] pl-2 space-y-1">
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'tables')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'tables' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Table2 className="w-3.5 h-3.5" /> Tables
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleTabClick(e, 'customers')}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-[11px] ${
-                    activeTab === 'customers' ? 'text-[#c2621f] font-bold bg-white/5' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <CircleUserRound className="w-3.5 h-3.5" /> Customers
-                </button>
+            {/* Settings Sub-menu */}
+            {isSettingsOpen && !isCollapsed && (
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+                {setingSubItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabChange(item.id)}
+                      className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
+                        isActive
+                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         </nav>
 
-        {/* Footer */}
+        {/* Footer / Logout */}
         {onLogout && (
-          <div className="p-2 border-t border-[#33291f]">
+          <div className="p-1.5 border-t border-[#33291f]">
             <button
-              type="button"
               onClick={onLogout}
-              className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded"
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
+              } py-2 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/10 transition`}
+              title="Logout"
             >
-              <LogOut className="w-4 h-4" />
-              {!isCollapsed && <span>Logout</span>}
+              <LogOut className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span className="truncate">Logout</span>}
             </button>
           </div>
         )}
       </aside>
 
-      {/* Main Content View */}
-      <main className="flex-1 h-full overflow-y-auto bg-slate-50">
+      {/* Main Content Area */}
+      <main className="flex-1 h-full w-full overflow-y-auto bg-slate-50">
         {children}
       </main>
     </div>

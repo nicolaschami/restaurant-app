@@ -330,7 +330,7 @@ export default function Products({ onLogout }: ProductsProps) {
       const [itemsRes, catRes, stationRes, modRes, rawMatRes] = await Promise.all([
         api.get('/menu-items?restaurant_id=1&limit=2000').catch(() => ({ data: [] })),
         api.get('/categories?restaurant_id=1').catch(() => ({ data: [] })),
-        api.get('/kitchen-stations').catch(() => ({ data: [] })),
+        api.get('/kitchenStation').catch(() => ({ data: [] })),
         api.get('/modifier-groups?restaurant_id=1').catch(() => ({ data: [] })),
         api.get('/raw-materials?restaurant_id=1').catch(() => ({ data: [] })),
       ]);
@@ -363,7 +363,7 @@ export default function Products({ onLogout }: ProductsProps) {
       );
       setModifierGroups(detailedGroups);
     } catch (err: any) {
-      if (err.response?.status === 401) ;
+      if (err.response?.status === 401) setError('Failed to load menu items or dropdown options.');
       else setError('Failed to load menu items or dropdown options.');
     } finally {
       setLoading(false);

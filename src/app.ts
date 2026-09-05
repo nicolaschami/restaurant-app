@@ -32,6 +32,7 @@ import printerRoutes from './routes/printer.js';
 import tableRoutes from './routes/tables.js';
 import customerRoutes from './routes/customers.js';
 import orderRoutes from './routes/orders.js';
+import { kdsRoutes} from './routes/kds.js'
 
 // Module Type Augmentations
 declare module '@fastify/jwt' {
@@ -515,21 +516,7 @@ fastify.post('/api/restaurants', async (request, reply) => {
 });
 
 // KDS Orders
-fastify.get('/api/kds/:restaurantId', async (request, reply) => {
-  const { restaurantId } = request.params as { restaurantId: string };
 
-  const kitchenOrders = await db
-    .select()
-    .from(orders)
-    .where(
-      and(
-        eq(orders.restaurantId, parseInt(restaurantId)),
-        notInArray(orders.status, ['closed', 'canceled'])
-      )
-    );
-
-  return reply.send({ orders: kitchenOrders });
-});
 
 // Update Order Status
 fastify.patch('/api/orders/:id/status', async (request, reply) => {
@@ -769,7 +756,7 @@ fastify.register(modifierOptionRoutes);
 fastify.register(rawMaterialsRoutes);
 fastify.register(supplierRoutes);
 fastify.register(orderRoutes);
-
+fastify.register(kdsRoutes);
 // --- Start Server ---
 const start = async () => {
   try {

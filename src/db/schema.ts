@@ -25,7 +25,29 @@ export type RawMaterialItem = {
   totalCost: number;
 };
 
+export const orderKdsStatusEnum = pgEnum('order_kds_status_enum', [
+  'PENDING_FIRE',   // Drafted, not yet sent to kitchen
+  'FIRE_SENT',      // Sent to kitchen, cooking in progress
+  'READY',          // All items bumped on KDS
+  'PARTIAL_FIRE',   // Some items cooking, new add-ons drafted on POS
+]);
 
+// 2. KDS Item State Enum
+export const itemKdsStatusEnum = pgEnum('item_kds_status_enum', [
+  'PENDING',        // Draft item
+  'FIRE_SENT',      // Displayed on KDS screen as new order/add-on
+  'IN_PREP',        // Cook explicitly started work on this item
+  'BUMPED',         // Marked complete on KDS
+  'CANCELLED',      // Item voided
+]);
+
+// 3. Station Enum
+export const stationEnum = pgEnum('station_enum', [
+  'GRILL',
+  'FRYER',
+  'SALAD',
+  'ASSEMBLY',
+]);
 
 export const restaurantTables = pgTable('restaurant_tables', {
   id: bigserial('id', { mode: 'number' }).primaryKey(), // OR use: serial('id').primaryKey(),
@@ -224,6 +246,7 @@ export const users = pgTable('users', {
     id: serial('id').primaryKey(),
     restaurantId: integer('restaurant_id').references(() => restaurants.id, { onDelete: 'cascade' }),
     name: varchar('name', { length: 100 }).notNull(),
+    description: text("description"),
   });
 
   // 3. Menu Items Table
@@ -289,6 +312,13 @@ export const orders = pgTable('orders', {
     customerName: varchar('customer_name', { length: 100 }),
     customerPhone: varchar('customer_phone', { length: 20 }),
     deliveryAddress: text('delivery_address'),
+    kdsStatus: orderKdsStatusEnum('kds_status').notNull().default('PENDING_FIRE'),
+    revisionNumber: integer('revision_number').notNull().default(1),
+     lastFiredAt: timestamp('last_fired_at', { withTimezone: true }),
+
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+
+    
   });
 
   // 4. OrdersItems 
@@ -306,4 +336,38 @@ export const orderItems = pgTable('order_items', {
   kitchenStatus: varchar('kitchen_status', { length: 20 }).default('pending'),
   sentToKitchenAt: timestamp('sent_to_kitchen_at'),
   completedAt: timestamp('completed_at'),
+station: stationEnum('station').notNull().default('GRILL'),
+  quantityFired: integer('quantity_fired').notNull().default(0),
+  quantityOrderd: integer('quantity_ordered').notNull().default(0),
+  quantityCompleted: integer('quantity_completed').notNull().default(0),
+  kdsStatus: itemKdsStatusEnum('kds_status').notNull().default('PENDING'),
+  fireBatchNumber: integer('fire_batch_number').notNull().default(1),
+
+  // Timestamps
+  firedAt: timestamp('fired_at', { withTimezone: true }),
+  
+parentItemId: integer('parent_item_id').references((): any => orderItems.id, { onDelete: 'set null' }),
+
 });
+
+
+export const ordersRelations = relations(orders, ({ many }) => ({
+  items: many(orderItems),
+}));
+
+export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
+  order: one(orders, {
+    fields: [orderItems.orderId],
+    references: [orders.id],
+  }),
+  // Parent item relation for Split Line add-ons
+  parentItem: one(orderItems, {
+    fields: [orderItems.parentItemId],
+    references: [orderItems.id],
+    relationName: 'itemAddOns',
+  }),
+  // Child add-on items relation
+  childAddOns: many(orderItems, {
+    relationName: 'itemAddOns',
+  }),
+}));

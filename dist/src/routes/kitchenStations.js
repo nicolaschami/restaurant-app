@@ -6,7 +6,7 @@ const index_js_1 = require("../db/index.js");
 const schema_js_1 = require("../db/schema.js");
 async function kitchenStationRoutes(fastify) {
     // CREATE KITCHEN STATION
-    fastify.post('/api/kitchen-stations', async (request, reply) => {
+    fastify.post('/api/kitchenstation', async (request, reply) => {
         const body = request.body;
         if (!body?.restaurantId || !body?.name) {
             return reply.status(400).send({ error: 'restaurantId and name are required.' });
@@ -21,7 +21,7 @@ async function kitchenStationRoutes(fastify) {
         return reply.status(201).send({ station: newStation });
     });
     // GET ALL KITCHEN STATIONS
-    fastify.get('/api/kitchen-stations', async (request, reply) => {
+    fastify.get('/api/kitchenstation', async (request, reply) => {
         const { restaurantId } = request.query;
         const result = await index_js_1.db
             .select()
