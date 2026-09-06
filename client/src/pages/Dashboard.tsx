@@ -507,25 +507,59 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
             )}
           </div>
           
-          {/* EQUAL-STYLED ACTION BUTTONS */}
+          {/* ACTION BUTTONS: Kitchen Display | Open Drawer | Open POS */}
           <div className="flex items-center gap-4">
+           <button
+  onClick={() => onNavigate('kitchenscreen')}
+  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+>
+  <svg 
+    className="w-4 h-4 text-slate-500 group-hover:text-slate-800" 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24"
+  >
+    {/* Chef Hat Icon */}
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth={2} 
+      d="M6 13.87A4 4 0 017.41 6a5.11 5.11 0 019.18 0A4 4 0 0118 13.87V19H6v-5.13zM6 19h12v2H6v-2z" 
+    />
+  </svg>
+  <span>Kitchen Display</span>
+</button>
             <button
               onClick={handleOpenDrawer}
               disabled={isOpeningDrawer}
               className="text-xs font-semibold text-amber-600 hover:text-amber-700 disabled:opacity-50 transition-colors"
             >
-              {isOpeningDrawer ? 'Opening Drawer...' : 'Open Cash Drawer 📥'}
+              {isOpeningDrawer ? 'Opening Drawer...' : '📥 Open Cash Drawer '}
             </button>
-            <button 
-              onClick={() => onNavigate('pos')} 
-              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-            >
-              Open POS →
-            </button>
+            <button
+  onClick={() => onNavigate('pos')}
+  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+>
+  <svg 
+    className="w-4 h-4 text-emerald-600" 
+    fill="none" 
+    stroke="currentColor" 
+    viewBox="0 0 24 24"
+  >
+    {/* POS / Terminal / Credit Card Icon */}
+    <path 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      strokeWidth={2} 
+      d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2z" 
+    />
+  </svg>
+  <span>Open POS</span>
+</button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', items: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div style={{ flex: '1 1 560px', minWidth: 300 }} ref={railRef}>
             <div className="kb-rail-bar">
               {Array.from({ length: 14 }).map((_, i) => (

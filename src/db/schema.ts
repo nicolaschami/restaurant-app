@@ -308,6 +308,7 @@ export const orders = pgTable('orders', {
     orderType: varchar('order_type', { length: 20 }).default('dine_in'),
     customerName: varchar('customer_name', { length: 100 }),
     customerPhone: varchar('customer_phone', { length: 20 }),
+    notes: varchar('notes', { length: 200 }),
     deliveryAddress: text('delivery_address'),
     kdsStatus: orderKdsStatusEnum('kds_status').notNull().default('PENDING_FIRE'),
     revisionNumber: integer('revision_number').notNull().default(1),

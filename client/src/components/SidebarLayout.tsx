@@ -13,6 +13,7 @@ import {
   Truck,
   Settings,
   ChevronDown,
+  ChevronRight,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,8 +21,50 @@ import {
   CircleUserRound,
   TableOfContents,
   Printer,
-  InfoIcon,
   Info,
+  // Report Icons
+  BarChart3,
+  Receipt,
+  TrendingUp,
+  CreditCard,
+  Percent,
+  RotateCcw,
+  Ban,
+  Coins,
+  Vault,
+  ShoppingBag,
+  Clock,
+  Calendar,
+  Sparkles,
+  Award,
+  TrendingDown,
+  DollarSign,
+  PlusCircle,
+  Menu,
+  PackageCheck,
+  AlertTriangle,
+  ArrowLeftRight,
+  Trash2,
+  Sliders,
+  Scale,
+  Calculator,
+  ChefHat,
+  Timer,
+  AlertCircle,
+  LayoutGrid,
+  UserSquare2,
+  History,
+  ShieldAlert,
+  UserX,
+  Repeat,
+  Armchair,
+  MapPin,
+  Bike,
+  UserCheck2,
+  Map,
+  User,
+  Crown,
+  UserPlus,
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -42,7 +85,25 @@ export default function SidebarLayout({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isPartnersOpen, setIsPartnersOpen] = useState(false);
+  const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // States for expanding nested sub-categories under Reports
+  const [openReportSubGroups, setOpenReportSubGroups] = useState<Record<string, boolean>>({
+    financial: false,
+    sales: false,
+    product: false,
+    inventory: false,
+    kitchen: false,
+    staff: false,
+    tables: false,
+    delivery: false,
+    customers: false,
+  });
+
+  const toggleReportSubGroup = (key: string) => {
+    setOpenReportSubGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const productSubItems = [
     { id: 'categories', label: 'Categories', icon: Layers },
@@ -52,12 +113,128 @@ export default function SidebarLayout({
     { id: 'kitchenscreen', label: 'Kitchen screen', icon: Wheat },
   ];
 
-  const setingSubItems = [
-    { id: 'tables', label: 'Tables', icon: Table2 }, // Fixed typo: 'tabels' -> 'tables'
-    { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents }, // Fixed typo: 'tabels' -> 'tables'
-    { id: 'print', label: 'Print Test page', icon: Printer }, // Fixed typo: 'tabels' -> 'tables'
-    { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info }, // Fixed typo: 'tabels' -> 'tables'
-    
+  // Full Reports Hierarchy
+  const reportCategories = [
+    {
+      id: 'financial',
+      label: 'Financial Reports',
+      icon: DollarSign,
+      items: [
+        { id: 'report-z-report', label: 'Z Report / Closing', icon: Receipt },
+        { id: 'report-x-report', label: 'X Report / Shift Audit', icon: Receipt },
+        { id: 'report-payment-methods', label: 'Payment Methods', icon: CreditCard },
+        { id: 'report-tax', label: 'Tax Report', icon: Calculator },
+        { id: 'report-discounts', label: 'Discounts Report', icon: Percent },
+        { id: 'report-refunds', label: 'Refunds Report', icon: RotateCcw },
+        { id: 'report-voids', label: 'Voids Report', icon: Ban },
+        { id: 'report-tips', label: 'Tips Report', icon: Coins },
+        { id: 'report-cash-drawer', label: 'Cash Drawer Report', icon: Vault },
+      ],
+    },
+    {
+      id: 'sales',
+      label: 'Sales Analytics',
+      icon: TrendingUp,
+      items: [
+        { id: 'report-daily-sales', label: 'Daily Sales', icon: BarChart3 },
+        { id: 'report-category-sales', label: 'Sales by Category', icon: Layers },
+        { id: 'report-item-sales', label: 'Sales by Item', icon: Utensils },
+        { id: 'report-employee-sales', label: 'Sales by Employee', icon: UserSquare2 },
+        { id: 'report-dine-in-delivery', label: 'Dine-In vs Delivery', icon: ShoppingBag },
+        { id: 'report-order-types', label: 'Sales by Order Type', icon: ShoppingBag },
+        { id: 'report-peak-hours', label: 'Peak Hours Breakdown', icon: Clock },
+        { id: 'report-day-of-week-sales', label: 'Sales by Day of Week', icon: Calendar },
+        { id: 'report-avg-order-value', label: 'Average Order Value', icon: Sparkles },
+      ],
+    },
+    {
+      id: 'product',
+      label: 'Product Performance',
+      icon: Award,
+      items: [
+        { id: 'report-best-selling', label: 'Best Selling Items', icon: Award },
+        { id: 'report-worst-selling', label: 'Worst Selling Items', icon: TrendingDown },
+        { id: 'report-item-profitability', label: 'Item Profitability', icon: DollarSign },
+        { id: 'report-modifier-sales', label: 'Modifier / Add-on Sales', icon: PlusCircle },
+        { id: 'report-menu-performance', label: 'Menu Performance', icon: Menu },
+      ],
+    },
+    {
+      id: 'inventory',
+      label: 'Inventory',
+      icon: PackageCheck,
+      items: [
+        { id: 'report-current-stock', label: 'Current Stock', icon: PackageCheck },
+        { id: 'report-low-stock', label: 'Low Stock', icon: AlertTriangle },
+        { id: 'report-stock-movement', label: 'Stock Movement', icon: ArrowLeftRight },
+        { id: 'report-ingredient-consumption', label: 'Ingredient Consumption', icon: Wheat },
+        { id: 'report-spoilage-waste', label: 'Waste / Spoilage', icon: Trash2 },
+        { id: 'report-stock-adjustments', label: 'Stock Adjustments', icon: Sliders },
+        { id: 'report-inventory-variance', label: 'Inventory Variance', icon: Scale },
+        { id: 'report-inventory-valuation', label: 'Inventory Valuation', icon: DollarSign },
+      ],
+    },
+    {
+      id: 'kitchen',
+      label: 'Kitchen / KDS',
+      icon: ChefHat,
+      items: [
+        { id: 'report-kitchen-performance', label: 'Kitchen Performance', icon: ChefHat },
+        { id: 'report-prep-times', label: 'Preparation Times', icon: Timer },
+        { id: 'report-delayed-orders', label: 'Delayed Orders', icon: AlertCircle },
+        { id: 'report-orders-by-station', label: 'Orders by Station', icon: LayoutGrid },
+        { id: 'report-item-prep-performance', label: 'Item Prep Performance', icon: Utensils },
+      ],
+    },
+    {
+      id: 'staff',
+      label: 'Staff',
+      icon: Users,
+      items: [
+        { id: 'report-staff-sales', label: 'Employee Sales', icon: UserSquare2 },
+        { id: 'report-employee-shifts', label: 'Employee Shifts', icon: History },
+        { id: 'report-cashier-performance', label: 'Cashier Performance', icon: CreditCard },
+        { id: 'report-employee-discounts', label: 'Discounts by Employee', icon: Percent },
+        { id: 'report-employee-voids', label: 'Voids by Employee', icon: ShieldAlert },
+        { id: 'report-employee-refunds', label: 'Refunds by Employee', icon: UserX },
+      ],
+    },
+    {
+      id: 'tables',
+      label: 'Tables',
+      icon: Table2,
+      items: [
+        { id: 'report-table-sales', label: 'Table Sales', icon: Table2 },
+        { id: 'report-table-turnover', label: 'Table Turnover', icon: Repeat },
+        { id: 'report-table-occupancy', label: 'Table Occupancy', icon: Armchair },
+        { id: 'report-avg-dining-time', label: 'Average Dining Time', icon: Clock },
+        { id: 'report-section-sales', label: 'Sales by Section', icon: MapPin },
+      ],
+    },
+    {
+      id: 'delivery',
+      label: 'Delivery',
+      icon: Bike,
+      items: [
+        { id: 'report-delivery-sales', label: 'Delivery Sales', icon: Bike },
+        { id: 'report-delivery-times', label: 'Delivery Times', icon: Timer },
+        { id: 'report-orders-by-driver', label: 'Orders by Driver', icon: UserCheck2 },
+        { id: 'report-driver-performance', label: 'Driver Performance', icon: Award },
+        { id: 'report-delivery-areas', label: 'Delivery Areas', icon: Map },
+      ],
+    },
+    {
+      id: 'customers',
+      label: 'Customers',
+      icon: CircleUserRound,
+      items: [
+        { id: 'report-customer-sales', label: 'Customer Sales', icon: User },
+        { id: 'report-top-customers', label: 'Top Customers', icon: Crown },
+        { id: 'report-new-vs-returning', label: 'New vs Returning', icon: UserPlus },
+        { id: 'report-customer-frequency', label: 'Customer Frequency', icon: Repeat },
+        { id: 'report-avg-customer-spend', label: 'Average Customer Spend', icon: Sparkles },
+      ],
+    },
   ];
 
   const partnerSubItems = [
@@ -67,7 +244,14 @@ export default function SidebarLayout({
     { id: 'customers', label: 'Customers', icon: CircleUserRound },
   ];
 
-  // Auto-expand the dropdown parent if activeTab belongs to its sub-items
+  const settingSubItems = [
+    { id: 'tables', label: 'Tables', icon: Table2 },
+    { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents },
+    { id: 'print', label: 'Print Test page', icon: Printer },
+    { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
+  ];
+
+  // Auto-expand groups when activeTab matches
   useEffect(() => {
     if (productSubItems.some((item) => item.id === activeTab)) {
       setIsProductsOpen(true);
@@ -75,9 +259,16 @@ export default function SidebarLayout({
     if (partnerSubItems.some((item) => item.id === activeTab)) {
       setIsPartnersOpen(true);
     }
-    if (setingSubItems.some((item) => item.id === activeTab)) {
+    if (settingSubItems.some((item) => item.id === activeTab)) {
       setIsSettingsOpen(true);
     }
+
+    reportCategories.forEach((group) => {
+      if (group.items.some((item) => item.id === activeTab)) {
+        setIsReportsOpen(true);
+        setOpenReportSubGroups((prev) => ({ ...prev, [group.id]: true }));
+      }
+    });
   }, [activeTab]);
 
   const handleTabChange = (tabId: string) => {
@@ -93,13 +284,13 @@ export default function SidebarLayout({
         .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
       `}</style>
 
-      {/* Collapsible Sidebar */}
+      {/* Sidebar */}
       <aside
         className={`bg-[#1c1917] text-slate-300 flex flex-col border-r border-[#33291f] shrink-0 h-full transition-all duration-300 ${
-          isCollapsed ? 'w-16' : 'w-48'
+          isCollapsed ? 'w-16' : 'w-60'
         }`}
       >
-        {/* Header with Toggle Button */}
+        {/* Header */}
         <div className="p-3 border-b border-[#33291f] flex items-center justify-between">
           {!isCollapsed && (
             <div className="min-w-0 flex items-center gap-2">
@@ -126,9 +317,8 @@ export default function SidebarLayout({
           </button>
         </div>
 
-        {/* Navigation Items */}
+        {/* Navigation */}
         <nav className="flex-1 p-1.5 space-y-1 overflow-y-auto">
-          
           {/* Dashboard */}
           <button
             onClick={() => handleTabChange('dashboard')}
@@ -186,7 +376,6 @@ export default function SidebarLayout({
               )}
             </button>
 
-            {/* Products Sub-menu */}
             {isProductsOpen && !isCollapsed && (
               <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
                 {productSubItems.map((item) => {
@@ -210,6 +399,7 @@ export default function SidebarLayout({
               </div>
             )}
           </div>
+
 
           {/* Partners Group */}
           <div>
@@ -236,7 +426,6 @@ export default function SidebarLayout({
               )}
             </button>
 
-            {/* Partners Sub-menu */}
             {isPartnersOpen && !isCollapsed && (
               <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
                 {partnerSubItems.map((item) => {
@@ -286,10 +475,9 @@ export default function SidebarLayout({
               )}
             </button>
 
-            {/* Settings Sub-menu */}
             {isSettingsOpen && !isCollapsed && (
               <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
-                {setingSubItems.map((item) => {
+                {settingSubItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
                   return (
@@ -305,6 +493,87 @@ export default function SidebarLayout({
                       <Icon className="w-3 h-3 shrink-0" />
                       <span className="truncate">{item.label}</span>
                     </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+
+          
+          {/* Nested Reports Group */}
+          <div>
+            <button
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                setIsReportsOpen(!isReportsOpen);
+              }}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+              } py-2 rounded-md text-xs font-medium text-slate-300 hover:bg-white/5 transition`}
+              title="Reports"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <BarChart3 className="w-4 h-4 text-[#c2621f] shrink-0" />
+                {!isCollapsed && <span className="truncate">Reports</span>}
+              </div>
+              {!isCollapsed && (
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                    isReportsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                  }`}
+                />
+              )}
+            </button>
+
+            {/* Sub-menu (Categories) */}
+            {isReportsOpen && !isCollapsed && (
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-1">
+                {reportCategories.map((group) => {
+                  const GroupIcon = group.icon;
+                  const isGroupOpen = !!openReportSubGroups[group.id];
+
+                  return (
+                    <div key={group.id}>
+                      <button
+                        onClick={() => toggleReportSubGroup(group.id)}
+                        className="w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white hover:bg-white/5 transition"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <GroupIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{group.label}</span>
+                        </div>
+                        <ChevronRight
+                          className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                            isGroupOpen ? 'rotate-90 text-[#c2621f]' : 'text-slate-500'
+                          }`}
+                        />
+                      </button>
+
+                      {/* Sub-sub-menu (Individual Reports) */}
+                      {isGroupOpen && (
+                        <div className="mt-0.5 ml-2 pl-2 border-l border-[#44362a] space-y-0.5">
+                          {group.items.map((item) => {
+                            const ItemIcon = item.icon;
+                            const isActive = activeTab === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => handleTabChange(item.id)}
+                                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition ${
+                                  isActive
+                                    ? 'bg-white/10 text-[#e0925a] font-semibold'
+                                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                }`}
+                              >
+                                <ItemIcon className="w-2.5 h-2.5 shrink-0" />
+                                <span className="truncate">{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -329,10 +598,8 @@ export default function SidebarLayout({
         )}
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 h-full w-full overflow-y-auto bg-slate-50">
-        {children}
-      </main>
+      {/* Main Content */}
+      <main className="flex-1 h-full w-full overflow-y-auto bg-slate-50">{children}</main>
     </div>
   );
 }

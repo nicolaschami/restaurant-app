@@ -23,6 +23,7 @@ interface CreateOrderBody {
   ticketNo?: number;
   orderType?: string;
   orderStatus?:string;
+  notes?:string;
   tableStatus?: 'free' | 'occupied';   // 👈 new — sent explicitly by the frontend
   tableId?: number | string | null;
   tableLabel?: string | null;
@@ -80,6 +81,7 @@ fastify.post('/api/orders', async (request, reply) => {
     customerPhone,
     customerAddress,
     total,
+    notes,
     items,
   } = body;
 
@@ -164,6 +166,7 @@ fastify.post('/api/orders', async (request, reply) => {
           ticketNo: nextTicketNo,
           tableId: tableId ? Number(tableId) : null,
           totalAmount: finalTotalAmount,
+          notes:notes,
           status: orderStatus ?? 'open',
           // FIX: this was missing entirely. GET /api/kds/active filters on
           // orders.kdsStatus IN ('FIRE_SENT','PARTIAL_FIRE') — without this,
@@ -777,6 +780,7 @@ fastify.put('/api/orders/:id', async (request, reply) => {
         .set({
           orderType: body.orderType ?? currentOrder.orderType,
           totalAmount: String(body.total),
+          notes:body.notes,
           deliveryAddress: body.customerAddress ?? currentOrder.deliveryAddress,
           customerName: body.customerName ?? currentOrder.customerName,
           customerPhone: body.customerPhone ?? currentOrder.customerPhone,

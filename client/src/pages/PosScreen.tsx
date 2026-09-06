@@ -238,7 +238,7 @@ export default function PosScreen({onClose, onLogout, activeOrder, onResetOrder 
   const [isPrinting, setIsPrinting] = useState(false);                            // ← AND HERE
  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 const [isDeleting, setIsDeleting] = useState(false);
-
+const [orderNotes, setOrderNotes] = useState<string>('');
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rawMenuItems, setRawMenuItems] = useState<ApiMenuItem[]>([]);
@@ -474,6 +474,7 @@ const [isDeleting, setIsDeleting] = useState(false);
         setBasket(rebuiltBasket);
         console.log('[currentOrderId SET FROM LOAD EFFECT]', order.id ?? orderId, '(loaded from GET /orders/:id)');
        setCurrentOrderId(order.id ?? orderId);
+       setOrderNotes(order.notes || '');   // <-- INSERT THIS LINE
       } catch (err: any) {
         if (!cancelled) {
           console.error('Failed to load order', err);
@@ -849,6 +850,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
       subtotal,
       tax,
       total,
+      notes: orderNotes,   
       items: basket.map((b) => ({
         menuItemId: b.item.id,
         name: b.item.name,
@@ -1228,7 +1230,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         .pos-body {
           flex: 1;
           display: grid;
-          grid-template-columns: 230px 1fr 380px;
+          grid-template-columns: 230px 1fr 400px;
           overflow: hidden;
         }
 
@@ -1311,7 +1313,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
           box-shadow: 0 2px 8px rgba(201,162,75,0.3);
         }
         .cat-btn span.label {
-          font-size: 13px;
+          font-size: 11.5px;
           font-weight: 500;
           color: var(--muted);
           white-space: nowrap;
@@ -1323,7 +1325,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         /* ---------- MENU / PRODUCTS ---------- */
         .menu-col {
           background: var(--bg);
-          padding: 24px 28px;
+          padding: 20px 22px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
@@ -1385,8 +1387,8 @@ const handleSaveOrder = async (isPayment: boolean) => {
         }
         .items-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-          gap: 16px;
+          grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+          gap: 12px;
         }
 
         .item-card {
@@ -1411,7 +1413,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
 
         .item-img-wrap {
           width: 100%;
-          height: 110px;
+          height: 84px;
           background: var(--panel-2);
           position: relative;
           overflow: hidden;
@@ -1450,7 +1452,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         }
 
         .item-content {
-          padding: 14px;
+          padding: 10px 12px 12px;
           display: flex;
           flex-direction: column;
           flex: 1;
@@ -1459,17 +1461,17 @@ const handleSaveOrder = async (isPayment: boolean) => {
         .item-name {
           font-family: 'Fraunces', serif;
           font-weight: 500;
-          font-size: 15px;
+          font-size: 13.5px;
           color: var(--text-heading);
-          line-height: 1.3;
+          line-height: 1.25;
         }
         .item-desc {
-          font-size: 11px;
+          font-size: 10.5px;
           color: var(--muted);
-          margin-top: 5px;
-          line-height: 1.4;
+          margin-top: 4px;
+          line-height: 1.35;
           display: -webkit-box;
-          -webkit-line-clamp: 2;
+          -webkit-line-clamp: 1;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
@@ -1478,8 +1480,8 @@ const handleSaveOrder = async (isPayment: boolean) => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-top: 14px;
-          padding-top: 10px;
+          margin-top: 10px;
+          padding-top: 8px;
           border-top: 1px dashed var(--hairline);
         }
         .item-price {
@@ -1539,7 +1541,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
           box-shadow: -4px 0 15px rgba(0,0,0,0.05);
         }
         .ticket-head {
-          padding: 22px 22px 18px;
+          padding: 14px 22px 10px;
           border-bottom: 1px dashed var(--hairline);
           flex-shrink: 0;
         }
@@ -1547,16 +1549,32 @@ const handleSaveOrder = async (isPayment: boolean) => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 6px;
+          gap: 10px;
+          margin-bottom: 0;
         }
         .ticket-head-top h2 {
           font-family: 'Fraunces', serif;
           font-style: italic;
-          font-size: 16.5px;
+          font-size: 15px;
           font-weight: 500;
           color: var(--text-heading);
           margin: 0;
-          line-height: 1.35;
+          line-height: 1.3;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .ticket-item-badge {
+          flex-shrink: 0;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--brass);
+          background: var(--panel);
+          border: 1px solid var(--hairline);
+          padding: 3px 9px;
+          border-radius: 999px;
         }
         .ticket-head-top h2.order-label-editable {
           cursor: pointer;
@@ -1568,17 +1586,10 @@ const handleSaveOrder = async (isPayment: boolean) => {
           text-decoration-style: dotted;
           text-underline-offset: 3px;
         }
-        .ticket-meta {
-          font-size: 11.5px;
-          color: var(--muted-2);
-          display: flex;
-          gap: 10px;
-        }
-
         .ticket-body {
           flex: 1;
           overflow-y: auto;
-          padding: 10px 22px;
+          padding: 6px 22px;
         }
         .ticket-empty {
           height: 100%;
@@ -1750,7 +1761,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         }
 
         .ticket-summary {
-          padding: 18px 22px 22px;
+          padding: 10px 22px 14px;
           flex-shrink: 0;
           background: var(--panel);
           border-top: 1px solid var(--hairline);
@@ -1758,29 +1769,29 @@ const handleSaveOrder = async (isPayment: boolean) => {
         .sum-row {
           display: flex;
           justify-content: space-between;
-          font-size: 12.5px;
+          font-size: 12px;
           color: var(--muted);
-          padding: 4px 0;
+          padding: 2px 0;
         }
         .sum-row .mono { color: var(--text-primary); }
         .sum-total {
           display: flex;
           justify-content: space-between;
-          align-items: baseline;
-          margin-top: 10px;
-          padding-top: 14px;
+          align-items: center;
+          margin-top: 4px;
+          padding-top: 6px;
           border-top: 1px dashed var(--hairline);
         }
         .sum-total-label {
           font-family: 'Fraunces', serif;
           font-style: italic;
-          font-size: 15px;
+          font-size: 14px;
           color: var(--text-heading);
         }
         .sum-total-value {
           font-family: 'IBM Plex Mono', monospace;
           font-weight: 600;
-          font-size: 22px;
+          font-size: 19px;
           color: var(--brass-soft);
         }
 
@@ -1817,20 +1828,20 @@ const handleSaveOrder = async (isPayment: boolean) => {
         .quick-actions-row {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 8px;
-          margin-top: 18px;
+          gap: 6px;
+          margin-top: 10px;
         }
         .btn-icon-action {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 4px;
-          padding: 10px 4px;
+          gap: 3px;
+          padding: 7px 4px;
           border-radius: 99px;
           border: 1px solid var(--hairline);
           background: transparent;
-          color: var(--muted);
+          color: var(--text-heading);
           cursor: pointer;
           transition: all 0.2s ease;
           font-size: 10px;
@@ -1846,18 +1857,18 @@ const handleSaveOrder = async (isPayment: boolean) => {
 
         .btn-pay {
           width: 100%;
-          margin-top: 10px;
+          margin-top: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 10px;
-          padding: 15px;
+          padding: 12px;
           border-radius: 10px;
           border: none;
           background: linear-gradient(135deg, var(--brass-soft), var(--brass-dim));
           color: #201a0c;
           font-weight: 700;
-          font-size: 13.5px;
+          font-size: 13px;
           letter-spacing: 0.02em;
           cursor: pointer;
           box-shadow: 0 6px 20px rgba(201,162,75,0.25);
@@ -2821,6 +2832,53 @@ const handleSaveOrder = async (isPayment: boolean) => {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
+
+
+
+/* ---------- ORDER NOTES (Summary Row) ---------- */
+.sum-row.notes-row {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--hairline);
+}
+
+.order-notes-input-summary {
+  width: 100%;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  color: var(--text-primary);
+  resize: vertical;
+  min-height: 30px;
+  max-height: 64px;
+  line-height: 1.4;
+  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.order-notes-input-summary:hover {
+  background: var(--panel-2);
+  border-color: var(--brass-dim);
+}
+
+.order-notes-input-summary:focus {
+  outline: none;
+  background: var(--card);
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.15);
+}
+
+.order-notes-input-summary::placeholder {
+  color: var(--muted-2);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 12px;
+  opacity: 0.75;
+}
       `}</style>
 
       {/* HEADER */}
@@ -2978,9 +3036,9 @@ const handleSaveOrder = async (isPayment: boolean) => {
               >
                 {orderLabel}
               </h2>
-            </div>
-            <div className="ticket-meta">
-              <span>{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+              <span className="ticket-item-badge" title={`${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}>
+                {itemCount}
+              </span>
             </div>
           </div>
 
@@ -3100,7 +3158,15 @@ const handleSaveOrder = async (isPayment: boolean) => {
               <span className="sum-total-label">Total due</span>
               <span className="sum-total-value">${total.toFixed(2)}</span>
             </div>
-
+                        <div className="sum-row notes-row">
+              <textarea
+                className="order-notes-input-summary"
+                placeholder="Special requests, allergies, or delivery instructions…"
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
+                rows={1}
+              />
+            </div>
             {/* <div className="quick-actions-row">
              <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
   <Printer className="w-3.5 h-3.5" />
