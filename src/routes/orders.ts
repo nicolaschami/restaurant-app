@@ -958,4 +958,43 @@ fastify.put('/api/orders/:id', async (request, reply) => {
       return reply.status(500).send({ error: err.message || 'Internal Server Error' });
     }
   });
+
+ fastify.delete('/api/orders/:id', 
+  { onRequest: [fastify.authenticate] },
+  async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const itemId = parseInt(id, 10);
+
+    if (isNaN(itemId)) {
+      return reply.status(400).send({ error: 'Invalid ID format.' });
+    }
+
+    try {
+      const [deletedItem] = await db
+        .delete(orders)
+        .where(eq(orders.id, itemId))
+        .returning();
+
+      if (!deletedItem) {
+        return reply.status(404).send({ error: 'Order not found.' });
+      }
+
+      return reply.send({
+        message: 'order  deleted successfully.',
+        deletedItemId: itemId,
+      });
+    } catch (error: any) {
+      // Foreign key constraint violation (PostgreSQL code 23503)
+      if (error?.code === '23503') {
+        return reply.status(409).send({ 
+          error: 'Cannot delete supplier because it is linked to active inventory or purchase orders.' 
+        });
+      }
+
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Internal server error.' });
+    }
+  }
+);
+
 }

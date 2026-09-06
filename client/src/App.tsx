@@ -12,6 +12,7 @@ import Suppliers from './pages/Suppliers';
 import KitchenStations from './pages/kitchenstation'; // Your Kitchen Station Setup component
 import KDSContainer from './pages/Kdscontainer';
 import Printo from './pages/Printo'
+import RestaurantSettings from './pages/RestaurantSettings';
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
@@ -69,6 +70,8 @@ export function App() {
 
       {/* Kitchen Station Management Setup Screen (Matches ID in SidebarLayout) */}
       {activeTab === 'kitchenstations' && <KitchenStations />}
+      {activeTab === 'RestaurantSettings' && <RestaurantSettings />}
+      
     </SidebarLayout>
   );
 }

@@ -28,12 +28,16 @@ import rawMaterialsRoutes from './routes/rawMaterials.js';
 import supplierRoutes from './routes/supplier.js';
 import kitchenStationRoutes from './routes/kitchenStations.js';
 import authRoutes from './routes/aut.js';
-//import printerRoutes from './routes/printer.js';
+import drawerRoutes from './routes/open-drawer';
 import tableRoutes from './routes/tables.js';
 import customerRoutes from './routes/customers.js';
 import orderRoutes from './routes/orders.js';
 import { kdsRoutes} from './routes/kds.js'
 import printerRoutes from './routes/silent-print.js';
+
+import restaurantRoutes from './routes/restaurants.js';
+
+
 // Module Type Augmentations
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -488,32 +492,7 @@ fastify.put(
 );
 
 // Create Restaurant
-fastify.post('/api/restaurants', async (request, reply) => {
-  const { name, phone } = request.body as { name: string; phone?: string };
 
-  if (!name || name.trim() === '') {
-    return reply.status(400).send({ error: 'Restaurant name is required' });
-  }
-
-  const existingRestaurant = await db
-    .select()
-    .from(restaurants)
-    .where(eq(restaurants.name, name.trim()))
-    .limit(1);
-
-  if (existingRestaurant.length > 0) {
-    return reply.status(409).send({
-      error: `A restaurant with the name '${name}' already exists.`,
-    });
-  }
-
-  const [newRestaurant] = await db
-    .insert(restaurants)
-    .values({ name: name.trim(), phone })
-    .returning();
-
-  return reply.status(201).send({ restaurant: newRestaurant });
-});
 
 // KDS Orders
 
@@ -757,6 +736,9 @@ fastify.register(rawMaterialsRoutes);
 fastify.register(supplierRoutes);
 fastify.register(orderRoutes);
 fastify.register(kdsRoutes);
+fastify.register(drawerRoutes);
+fastify.register(restaurantRoutes);
+
 // --- Start Server ---
 const start = async () => {
   try {

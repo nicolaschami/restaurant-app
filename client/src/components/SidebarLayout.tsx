@@ -20,6 +20,8 @@ import {
   CircleUserRound,
   TableOfContents,
   Printer,
+  InfoIcon,
+  Info,
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -54,6 +56,7 @@ export default function SidebarLayout({
     { id: 'tables', label: 'Tables', icon: Table2 }, // Fixed typo: 'tabels' -> 'tables'
     { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents }, // Fixed typo: 'tabels' -> 'tables'
     { id: 'print', label: 'Print Test page', icon: Printer }, // Fixed typo: 'tabels' -> 'tables'
+    { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info }, // Fixed typo: 'tabels' -> 'tables'
     
   ];
 

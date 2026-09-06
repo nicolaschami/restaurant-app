@@ -17,6 +17,8 @@ import {
   } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 export const tableStatusEnum = pgEnum('table_status', ['free', 'occupied', 'reserved']);
+
+
 export type RawMaterialItem = {
   materialId: number;
   name: string;
@@ -287,12 +289,7 @@ rawMaterials: jsonb('raw_materials').$type<RawMaterialItem[]>().default([]),
   });
 
 // 1. RESTAURANTS (Multi-tenancy table)
-export const restaurants = pgTable('restaurants', {
-  id: serial('id').primaryKey(),
-  name: varchar('name', { length: 100 }).notNull(),
-  phone:varchar('phone', { length: 100 }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+
 // 2. users
 
 
@@ -354,6 +351,39 @@ parentItemId: integer('parent_item_id').references((): any => orderItems.id, { o
 export const ordersRelations = relations(orders, ({ many }) => ({
   items: many(orderItems),
 }));
+
+
+export const restaurants = pgTable('restaurants', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 50 }).notNull(),
+  email: varchar('email', { length: 255 }),
+  address_line1: varchar('address_line1', { length: 255 }),
+  address_line2: varchar('address_line2', { length: 255 }),
+  city: varchar('city', { length: 100 }),
+  state_province: varchar('state_province', { length: 100 }),
+  postal_code: varchar('postal_code', { length: 20 }),
+  country: varchar('country', { length: 100 }).default('US'),
+  currency: varchar('currency', { length: 3 }).default('USD'),
+  timezone: varchar('timezone', { length: 50 }).default('UTC'),
+  logoUrl: text('logo_url'),
+  receipt_header: text('receipt_header'),
+  receipt_footer: text('receipt_footer'),
+  tax_number: varchar('tax_number', { length: 50 }),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// ==========================================
+// TYPE EXPORTS
+// ==========================================
+
+
+// Schema specifically for PUT updates
+
+
+
 
 export const orderItemsRelations = relations(orderItems, ({ one, many }) => ({
   order: one(orders, {

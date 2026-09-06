@@ -67,10 +67,6 @@ type FreshnessKey = (typeof FRESHNESS_META)[number]['key'];
 
 const freshnessOf = (mins: number): FreshnessKey => (mins >= 20 ? 'late' : mins >= 10 ? 'aging' : 'fresh');
 
-// Formats elapsed minutes as a compact, human-friendly duration:
-// under 1h -> "42m", under 24h -> "8h 22m" (or just "8h" on the hour),
-// 24h+ -> "1d 3h" (or just "2d" on the day). Keeps the ticket badge readable
-// instead of showing raw minute counts like "502m".
 const formatDuration = (mins: number): string => {
   if (mins < 60) return `${mins}m`;
   if (mins < 1440) {
@@ -83,8 +79,6 @@ const formatDuration = (mins: number): string => {
   return h === 0 ? `${d}d` : `${d}d ${h}h`;
 };
 
-// Same idea, but shaped for the small two-line dial center (a single
-// value + unit) rather than the inline badge string above.
 const formatDialAvg = (mins: number): { value: number; unit: string } => {
   if (mins < 60) return { value: mins, unit: 'AVG MIN' };
   if (mins < 1440) return { value: Math.round(mins / 60), unit: 'AVG HR' };
@@ -151,7 +145,6 @@ const DashboardStyles = () => (
     .kb-meta { font-size: 11px; color: #8a8377; margin: 3px 0 0; }
     .kb-price { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; color: #221F1C; }
 
-    /* --- Merged Kitchen Status card (Pace + Mix side by side) --- */
     .kb-status-card { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 10px;
       padding: 16px 18px; }
     .kb-status-title { font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: 0.02em;
@@ -206,9 +199,7 @@ const DashboardStyles = () => (
   `}</style>
 );
 
-// ==========================================
-// SUB-COMPONENT: MINI RING (shared by both dial columns)
-// ==========================================
+// SUB-COMPONENT: MINI RING
 const MiniRing: FC<{
   segments: { color: string; pct: number; dimmed?: boolean }[];
   centerValue: string | number;
@@ -250,9 +241,7 @@ const MiniRing: FC<{
   );
 };
 
-// ==========================================
-// SUB-COMPONENT: KITCHEN STATUS CARD (Pace + Mix, both filterable)
-// ==========================================
+// SUB-COMPONENT: KITCHEN STATUS CARD
 const KitchenStatusCard: FC<{
   tickets: ActiveOrder[];
   mounted: boolean;
@@ -262,9 +251,6 @@ const KitchenStatusCard: FC<{
   typeFilter: OrderTypeKey | null;
   onToggleType: (key: OrderTypeKey) => void;
 }> = ({ tickets, mounted, getMins, freshnessFilter, onToggleFreshness, typeFilter, onToggleType }) => {
-  // Both dials are computed off ALL active tickets (not the filtered view),
-  // so they always show the kitchen's real state — the filter is something
-  // you apply to the rail, not something that shrinks your own dashboard.
   const freshCounts = { fresh: 0, aging: 0, late: 0 };
   tickets.forEach((t) => freshCounts[freshnessOf(getMins(t))]++);
   const avgMins = tickets.length
@@ -290,7 +276,6 @@ const KitchenStatusCard: FC<{
     <div className="kb-status-card" style={{ flex: '0 0 auto' }}>
       <p className="kb-status-title">Kitchen Status</p>
       <div className="kb-status-grid">
-        {/* PACE column */}
         <div className="kb-status-col">
           <p className="kb-status-col-label">PACE</p>
           <MiniRing
@@ -317,7 +302,6 @@ const KitchenStatusCard: FC<{
           </div>
         </div>
 
-        {/* MIX column */}
         <div className="kb-status-col">
           <p className="kb-status-col-label">MIX</p>
           <MiniRing
@@ -352,6 +336,7 @@ const KitchenStatusCard: FC<{
 export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate, onSelectTicket }) => {
   const [tickets, setTickets] = useState<ActiveOrder[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState<boolean>(true);
+  const [isOpeningDrawer, setIsOpeningDrawer] = useState<boolean>(false);
   const [now, setNow] = useState<number>(Date.now());
   const [mounted, setMounted] = useState(false);
   const [typeFilter, setTypeFilter] = useState<OrderTypeKey | null>(null);
@@ -372,12 +357,20 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
     }
   }, []);
 
-  // Live updates: server pushes ORDER_UPDATED (create, hold, pay, edit) over
-  // websocket, so the rail refreshes within a second instead of waiting on
-  // the poll below. The poll stays on as a fallback in case the socket drops.
-  // Also tracks connection status (wsStatus) and auto-reconnects with
-  // backoff if the connection drops, so a server restart or network blip
-  // recovers on its own instead of silently going stale.
+  // Open Cash Drawer Handler
+  const handleOpenDrawer = async () => {
+    try {
+      setIsOpeningDrawer(true);
+      const selectedPrinter = localStorage.getItem('pos_printer_name') || 'POS-80';
+      await api.post('/open-drawer', { printerName: selectedPrinter });
+    } catch (err: any) {
+      console.error('Failed to open drawer:', err);
+      alert(err.response?.data?.error || 'Could not open cash drawer.');
+    } finally {
+      setIsOpeningDrawer(false);
+    }
+  };
+
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -388,15 +381,12 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
       const httpBase: string = (api.defaults?.baseURL as string) || window.location.origin;
       const wsBase = httpBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
       const wsUrl = `${wsBase}/ws?restaurantId=1`;
-      console.log('[ws] api.defaults.baseURL =', api.defaults?.baseURL);
-      console.log('[ws] connecting to', wsUrl);
       setWsStatus('connecting');
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
         attempt = 0;
         setWsStatus('live');
-        console.log('[ws] connected');
       };
 
       socket.onmessage = (event) => {
@@ -404,23 +394,15 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
           const { event: eventName } = JSON.parse(event.data);
           if (eventName === 'ORDER_UPDATED' || eventName === 'ORDER_STATUS_UPDATED') {
             fetchActiveOrders();
-            console.log('🚨 ALARM: A NEW ORDER HAS BEEN CREATED !!!');
           }
         } catch (err) {
           console.error('Failed to parse websocket message:', err);
         }
       };
 
-      socket.onerror = (err) => {
-        console.error('[ws] error event (browsers hide details here — check the close event below)', err);
-      };
-
-      socket.onclose = (event) => {
+      socket.onclose = () => {
         setWsStatus('offline');
-        console.log('[ws] disconnected — code:', event.code, 'reason:', event.reason || '(none given)', 'clean:', event.wasClean);
         if (unmounted) return;
-        // Exponential backoff, capped at 15s, so a dead server doesn't get
-        // hammered with reconnect attempts.
         const delay = Math.min(1000 * 2 ** attempt, 15000);
         attempt += 1;
         reconnectTimer = setTimeout(connect, delay);
@@ -438,13 +420,8 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
 
   useEffect(() => {
     fetchActiveOrders();
-
-    // Fallback poll only — the websocket above handles real-time updates.
-    // 60s here just guards against a missed/dropped socket event.
     const fetchInterval = setInterval(fetchActiveOrders, 60000);
-    const minuteTicker = setInterval(() => {
-      setNow(Date.now());
-    }, 60000);
+    const minuteTicker = setInterval(() => setNow(Date.now()), 60000);
     const mountTimer = setTimeout(() => setMounted(true), 60);
 
     return () => {
@@ -495,24 +472,18 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
       <DashboardStyles />
 
       {/* HEADER SECTION */}
-      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <h1 className="text-2xl font-bold text-slate-800">Welcome back, {restaurantName}! 👋</h1>
-            <span className="kb-ws-status" title={
-              wsStatus === 'live' ? 'Live updates connected' :
-              wsStatus === 'connecting' ? 'Connecting to live updates…' :
-              'Live updates offline — retrying, showing last known data'
-            }>
-              <span className={`kb-ws-dot ${wsStatus}`} />
-              {wsStatus === 'live' ? 'Live' : wsStatus === 'connecting' ? 'Connecting…' : 'Offline'}
-            </span>
-          </div>
-          <p className="text-sm text-slate-500">Here is what's happening in your kitchen today.</p>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <h1 className="text-2xl font-bold text-slate-800">Welcome back, {restaurantName}! 👋</h1>
+          <span className="kb-ws-status">
+            <span className={`kb-ws-dot ${wsStatus}`} />
+            {wsStatus === 'live' ? 'Live' : wsStatus === 'connecting' ? 'Connecting…' : 'Offline'}
+          </span>
         </div>
+        <p className="text-sm text-slate-500">Here is what's happening in your kitchen today.</p>
       </div>
 
-      {/* THE PASS: rail + kitchen status card */}
+      {/* THE PASS */}
       <div>
         <div className="mb-3 flex items-center justify-between px-1" style={{ flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -535,12 +506,26 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
               </button>
             )}
           </div>
-          <button onClick={() => onNavigate('pos')} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
-            Open POS →
-          </button>
+          
+          {/* EQUAL-STYLED ACTION BUTTONS */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleOpenDrawer}
+              disabled={isOpeningDrawer}
+              className="text-xs font-semibold text-amber-600 hover:text-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {isOpeningDrawer ? 'Opening Drawer...' : 'Open Cash Drawer 📥'}
+            </button>
+            <button 
+              onClick={() => onNavigate('pos')} 
+              className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+            >
+              Open POS →
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', items: 'flex-start' }}>
           <div style={{ flex: '1 1 560px', minWidth: 300 }} ref={railRef}>
             <div className="kb-rail-bar">
               {Array.from({ length: 14 }).map((_, i) => (
@@ -643,9 +628,8 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
         ))}
       </div>
 
-      {/* LOWER SECTION: RECEIPT REVENUE & STOCK */}
+      {/* LOWER SECTION */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Weekly revenue */}
         <div className="lg:col-span-2">
           <p className="kb-eyebrow" style={{ marginBottom: 8 }}>THIS WEEK</p>
           <div className="kb-receipt">
@@ -671,7 +655,6 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
           </div>
         </div>
 
-        {/* Stock Alerts */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-bold text-slate-800">Low Stock Alerts</h2>

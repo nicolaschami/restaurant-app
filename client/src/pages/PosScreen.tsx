@@ -31,7 +31,8 @@ import {
   MapPin,
   FileText,
   Mail,
-  Loader2
+  Loader2,
+  AlertTriangle
   } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -202,6 +203,8 @@ const flatKeyByOrderType: Record<OrderType, 'priceDineIn' | 'priceTakeaway' | 'p
   'Delivery': 'priceDelivery',
 };
 
+
+
 const resolveMinPrice = (raw: ApiMenuItem, orderType: OrderType): number => {
   if (raw.hasVariants && raw.variantPrices?.length) {
     const key = variantKeyByOrderType[orderType];
@@ -231,6 +234,11 @@ export default function PosScreen({onClose, onLogout, activeOrder, onResetOrder 
   const [isLoadingOrder, setIsLoadingOrder] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
+  const [silentPrintText, setSilentPrintText] = useState<string | null>(null);   // ← HERE
+  const [isPrinting, setIsPrinting] = useState(false);                            // ← AND HERE
+ const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+const [isDeleting, setIsDeleting] = useState(false);
+
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rawMenuItems, setRawMenuItems] = useState<ApiMenuItem[]>([]);
@@ -717,14 +725,71 @@ export default function PosScreen({onClose, onLogout, activeOrder, onResetOrder 
 
   /* ---------- HARDWARE ACTIONS ---------- */
 
-  const handleOpenDrawer = () => {
-    alert('Drawer signal sent');
-  };
+  const handleOpenDrawer = async () => {
+  try {
+    const selectedPrinter = localStorage.getItem('pos_printer_name') || 'POS-80';
+    console.log("printer name : ",selectedPrinter);
+    await api.post('/open-drawer', { printerName: selectedPrinter });
+  } catch (err: any) {
+    console.error('Drawer trigger failed:', err);
+    alert(err.response?.data?.error || 'Could not trigger drawer.');
+  }
+};
 
-  const handlePrintCopy = () => {
-    alert('Copy sent to printer');
-    setShowPrintPreview(false);
-  };
+
+const handleDeleteOrder = async () => {
+  if (!currentOrderId) return;
+  setIsDeleting(true);
+  setError(null);
+  try {
+    await api.delete(`/orders/${currentOrderId}`);
+    setBasket([]);
+    setDineInTable(null);
+    setDeliveryCustomer(null);
+    setDeliveryFee('0.00');
+    setCurrentOrderId(null);
+    setShowDeleteConfirm(false);
+    onClose?.(); // back to dashboard, same as a successful Hold/Pay
+  } catch (err: any) {
+    console.error('Failed to delete order:', err);
+    setError(err.response?.data?.error || 'Failed to delete the order. Please try again.');
+  } finally {
+    setIsDeleting(false);
+  }
+};
+
+  const handlePrintCopy = async () => {
+  if (basket.length === 0) return;
+  setIsPrinting(true);
+  try {
+    const payload = {
+      restaurantName: 'Fen & Larder',
+      ticketNo,
+      orderType,
+      tableLabel: orderType === 'Dine-In' ? dineInTable?.label : undefined,
+      customerName: orderType === 'Delivery' ? deliveryCustomer?.name : undefined,
+      items: basket.map((b) => ({
+        name: b.item.name,
+        quantity: b.quantity,
+        lineTotal: lineUnitPrice(b) * b.quantity,
+        variantSize: b.variantSize,
+        modifiers: (b.modifiers || []).map((m) => m.optionName),
+      })),
+      subtotal,
+      tax,
+      deliveryFee: orderType === 'Delivery' ? deliveryFeeNum : undefined,
+      total,
+    };
+
+    const response = await api.post('/silent-print', payload);
+    setSilentPrintText(response.data.ticketText);
+  } catch (err) {
+    console.error('Silent print failed:', err);
+    setError('Failed to generate the print ticket.');
+  } finally {
+    setIsPrinting(false);
+  }
+};
 
   const deliveryFeeNum = orderType === 'Delivery' ? parseFloat(deliveryFee) || 0 : 0;
 
@@ -2624,7 +2689,138 @@ const handleSaveOrder = async (isPayment: boolean) => {
   background: var(--brass-dim);
 }
 
+/* Backdrop Overlay with Blur */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
 
+/* Card Container & Entry Animation */
+.modal-card-danger {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: center;
+}
+
+/* Top Warning Icon Badge */
+.modal-alert-icon {
+  width: 48px;
+  height: 48px;
+  background-color: #fee2e2;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+}
+
+/* Typography Hierarchy */
+.modal-body-content h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.modal-sub {
+  margin: 0 0 24px 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.modal-sub strong {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* Button Layout */
+.modal-action-footer {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-modal-secondary,
+.btn-modal-danger {
+  flex: 1;
+  height: 44px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.btn-modal-secondary {
+  background-color: #f1f5f9;
+  color: #334155;
+}
+
+.btn-modal-secondary:hover:not(:disabled) {
+  background-color: #e2e8f0;
+}
+
+.btn-modal-danger {
+  background-color: #dc2626;
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+}
+
+.btn-modal-danger:hover:not(:disabled) {
+  background-color: #b91c1c;
+}
+
+.btn-modal-danger:disabled,
+.btn-modal-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Close Button (Top-Right) */
+.modal-close-corner {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.modal-close-corner:hover:not(:disabled) {
+  color: #334155;
+  background-color: #f1f5f9;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
       `}</style>
 
       {/* HEADER */}
@@ -2905,11 +3101,11 @@ const handleSaveOrder = async (isPayment: boolean) => {
               <span className="sum-total-value">${total.toFixed(2)}</span>
             </div>
 
-            <div className="quick-actions-row">
-              <button className="btn-icon-action" onClick={() => setShowPrintPreview(true)} title="Print a copy for the customer">
-                <Printer className="w-4 h-4" />
-                <span>Print</span>
-              </button>
+            {/* <div className="quick-actions-row">
+             <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
+  <Printer className="w-3.5 h-3.5" />
+  {isPrinting ? 'Generating…' : 'Print'}
+</button>
               <button className="btn-icon-action" onClick={handleOpenDrawer} title="Open cash drawer">
                 <Archive className="w-4 h-4" />
                 <span>Drawer</span>
@@ -2927,7 +3123,64 @@ const handleSaveOrder = async (isPayment: boolean) => {
            <button className="btn-pay" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(true)}>
   <CreditCard className="w-4 h-4" />
   {isSaving ? 'Processing...' : `Take Payment · $${total.toFixed(2)}`}
+           </button> */}
+
+
+<div className="pos-actions-container">
+  {/* Top Quick Actions Row: Print, Drawer, Clear, and Delete */}
+  <div className="quick-actions-row">
+    <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
+      <Printer className="w-3.5 h-3.5" />
+      <span>{isPrinting ? 'Generating…' : 'Print'}</span>
+    </button>
+
+    <button className="btn-icon-action" onClick={handleOpenDrawer} title="Open cash drawer">
+      <Archive className="w-4 h-4" />
+      <span>Drawer</span>
+    </button>
+
+    <button className="btn-icon-action clear" onClick={() => setBasket([])} title="Clear ticket">
+      <RotateCcw className="w-4 h-4" />
+      <span>Clear</span>
+    </button>
+
+    {/* Delete Order Button */}
+<button 
+  className="btn-icon-action danger" 
+  onClick={() => setShowDeleteConfirm(true)}
+  title="Delete order"
+  disabled={!currentOrderId || isSaving || isDeleting}
+>
+  <Trash2 className="w-4 h-4" />
+  <span>Delete</span>
 </button>
+  </div>
+
+  {/* Bottom Row: 50% Hold | 50% Take Payment */}
+  <div className="bottom-actions-row" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+    <button 
+      className="btn-icon-action hold" 
+      style={{ flex: 1, justifyContent: 'center' }}
+      disabled={basket.length === 0 || isSaving} 
+      onClick={() => handleSaveOrder(false)}
+    >
+      <Receipt className="w-4 h-4" />
+      <span>{isSaving ? 'Processing...' : 'Hold'}</span>
+    </button>
+
+    <button 
+      className="btn-pay" 
+      style={{ flex: 1, justifyContent: 'center' }}
+      disabled={basket.length === 0 || isSaving} 
+      onClick={() => handleSaveOrder(true)}
+    >
+      <CreditCard className="w-4 h-4" />
+      <span>{isSaving ? 'Processing...' : `Payment `}</span>
+    </button>
+  </div>
+</div>
+
+
           </div>
         </aside>
       </div>
@@ -3178,6 +3431,65 @@ const handleSaveOrder = async (isPayment: boolean) => {
           </div>
         </div>
       )}
+{/* DELETE ORDER CONFIRMATION */}
+{showDeleteConfirm && (
+  <div 
+    className="modal-overlay backdrop-blur-sm" 
+    onClick={() => !isDeleting && setShowDeleteConfirm(false)}
+  >
+    <div className="modal-card modal-card-danger" onClick={(e) => e.stopPropagation()}>
+      
+      {/* Visual Alert Icon Header */}
+      <div className="modal-alert-icon">
+        <AlertTriangle className="w-6 h-6 text-red-500" />
+      </div>
+
+      <div className="modal-body-content">
+        <h3>Delete Order #{ticketNo}?</h3>
+        <p className="modal-sub">
+          This action will permanently cancel   the ticket and release the assigned table. This step <strong>cannot be undone</strong>.
+        </p>
+      </div>
+
+      <div className="modal-action-footer">
+        <button 
+          className="btn-modal-secondary" 
+          onClick={() => setShowDeleteConfirm(false)} 
+          disabled={isDeleting}
+        >
+          Keep Order
+        </button>
+
+        <button 
+          className="btn-modal-danger" 
+          onClick={handleDeleteOrder} 
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <span className="flex items-center gap-2">
+              <span className="spinner-sm" /> Deleting…
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4" />
+              Delete Order
+            </span>
+          )}
+        </button>
+      </div>
+
+      <button 
+        className="modal-close-corner" 
+        onClick={() => setShowDeleteConfirm(false)} 
+        disabled={isDeleting}
+        title="Close"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  </div>
+)}
+
 
       {/* TABLE PICKER (Dine-In) */}
       {showTablePicker && (
