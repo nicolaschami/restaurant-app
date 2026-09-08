@@ -13,7 +13,7 @@ import KitchenStations from './pages/kitchenstation';
 import KDSContainer from './pages/Kdscontainer';
 import Printo from './pages/Printo';
 import RestaurantSettings from './pages/RestaurantSettings';
-
+import PurchaseReceiptForm from './pages/Purchasetransactionscreen';
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
   onResetOrder?: () => void;
@@ -80,6 +80,8 @@ export function App() {
             onClose={handleClosePos}
           />
         );
+      case 'purchase':
+        return <PurchaseReceiptForm />;  
       case 'categories':
         return <Categories />;
       case 'modifiers':

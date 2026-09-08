@@ -376,6 +376,66 @@ export const restaurants = pgTable('restaurants', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+
+
+// schema.ts
+
+
+// 1. Parent Table: stocktransactions
+export const stockTransactions = pgTable('stocktransactions', {
+  transactionId: serial('TransactionID').primaryKey(),
+  restaurantId: integer('RestaurantID'),
+  transactionNumber: varchar('TransactionNumber', { length: 50 }),
+  grnNumber: varchar('GRNNumber', { length: 50 }),
+  supplierName: varchar('SupplierName', { length: 255 }).notNull(),
+  transactionDate: timestamp('TransactionDate').defaultNow(),
+  reference: varchar('Reference', { length: 100 }),
+  comment: text('Comment'),
+  subtotal: numeric('Subtotal', { precision: 10, scale: 2 }).default('0.00'),
+  discountAmount: numeric('DiscountAmount', { precision: 10, scale: 2 }).default('0.00'),
+  taxableAmount: numeric('TaxableAmount', { precision: 10, scale: 2 }).default('0.00'),
+  taxAmount: numeric('TaxAmount', { precision: 10, scale: 2 }).default('0.00'),
+  netTotal: numeric('NetTotal', { precision: 10, scale: 2 }).default('0.00'),
+  attachmentPath: varchar('AttachmentPath', { length: 500 }),
+  status: varchar('Status', { length: 20 }).default('DRAFT'),
+  type: varchar('type', { length: 20 }).default('IN'),
+  createdAt: timestamp('CreatedAt').defaultNow(),
+  updatedAt: timestamp('UpdatedAt').defaultNow(),
+});
+
+// 2. Child Table: stockdetails
+export const stockDetails = pgTable('stockdetails', {
+  detailId: serial('detailid').primaryKey(),
+  transactionId: integer('transactionid').references(() => stockTransactions.transactionId, { onDelete: 'cascade' }),
+  itemname: varchar('itemname', { length: 255 }).notNull(),
+  unit: varchar('unit', { length: 50 }),
+  qty: numeric('qty', { precision: 10, scale: 2 }).default('0.00'),
+  unitCost: numeric('unitcost', { precision: 10, scale: 2 }).default('0.00'),
+  discountPct: numeric('discountpct', { precision: 5, scale: 2 }).default('0.00'),
+  lineTotal: numeric('linetotal', { precision: 10, scale: 2 }).default('0.00'),
+  type: varchar('type', { length: 20 }).default('IN'),
+});
+
+// 3. Table Relations
+export const stockTransactionsRelations = relations(stockTransactions, ({ many }) => ({
+  details: many(stockDetails),
+}));
+
+export const stockDetailsRelations = relations(stockDetails, ({ one }) => ({
+  transaction: one(stockTransactions, {
+    fields: [stockDetails.transactionId],
+    references: [stockTransactions.transactionId],
+  }),
+}));
+
+// Export Types for Request/Response usage
+export type StockTransaction = typeof stockTransactions.$inferSelect;
+export type NewStockTransaction = typeof stockTransactions.$inferInsert;
+export type StockDetail = typeof stockDetails.$inferSelect;
+export type NewStockDetail = typeof stockDetails.$inferInsert;
+export interface CreateStockTransactionPayload extends Omit<NewStockTransaction, 'transactionId'> {
+  items: Omit<NewStockDetail, 'detailId' | 'transactionId'>[];
+}
 // ==========================================
 // TYPE EXPORTS
 // ==========================================

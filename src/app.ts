@@ -34,7 +34,7 @@ import customerRoutes from './routes/customers.js';
 import orderRoutes from './routes/orders.js';
 import { kdsRoutes} from './routes/kds.js'
 import printerRoutes from './routes/silent-print.js';
-
+import  stockTransactionRoutes from './routes/stock-transactions.js';
 import restaurantRoutes from './routes/restaurants.js';
 
 
@@ -738,6 +738,9 @@ fastify.register(orderRoutes);
 fastify.register(kdsRoutes);
 fastify.register(drawerRoutes);
 fastify.register(restaurantRoutes);
+fastify.register(stockTransactionRoutes);
+
+
 
 // --- Start Server ---
 const start = async () => {

@@ -110,7 +110,7 @@ export default function SidebarLayout({
     { id: 'menu-items', label: 'Menu Items', icon: Utensils },
     { id: 'modifiers', label: 'Modifiers', icon: SlidersHorizontal },
     { id: 'raw-materials', label: 'Raw Materials', icon: Wheat },
-    { id: 'kitchenscreen', label: 'Kitchen screen', icon: Wheat },
+    { id: 'purchase', label: 'Purchase Transaction', icon: Receipt },
   ];
 
   // Full Reports Hierarchy
