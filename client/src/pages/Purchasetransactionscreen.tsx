@@ -192,6 +192,50 @@ const ReceiptStyles = () => (
     .pr-success-title { margin: 0; color: var(--ink); font-size: 25px; font-weight: 800; letter-spacing: -.04em; }
     .pr-success-copy { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
     .pr-success-card .pr-btn { margin-top: 24px; }
+    .pr-success-backdrop {
+      position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 24px;
+      background: rgba(23, 35, 30, .48); backdrop-filter: blur(8px);
+      animation: pr-success-fade-in .2s ease-out;
+    }
+    .pr-success-modal {
+      position: relative; width: min(100%, 470px); overflow: hidden; padding: 38px 34px 30px;
+      border: 1px solid rgba(255,255,255,.72); border-radius: 26px; background: #fff;
+      box-shadow: 0 28px 80px rgba(23,35,30,.26), 0 8px 24px rgba(23,35,30,.12);
+      text-align: center; animation: pr-success-pop-in .25s cubic-bezier(.23,1,.32,1);
+    }
+    .pr-success-modal::before {
+      content: ''; position: absolute; inset: 0 0 auto; height: 7px;
+      background: linear-gradient(90deg, #24843b, #69bb70, #a9521b);
+    }
+    .pr-success-modal::after {
+      content: ''; position: absolute; width: 220px; height: 220px; border-radius: 50%;
+      top: -145px; right: -70px; background: rgba(91,187,102,.12); pointer-events: none;
+    }
+    .pr-success-modal-icon {
+      position: relative; z-index: 1; display: grid; place-items: center; width: 76px; height: 76px;
+      margin: 0 auto 20px; border: 7px solid #f1fbf2; border-radius: 50%;
+      background: linear-gradient(145deg, #dff6e3, #edfbee); color: #24843b;
+      box-shadow: 0 10px 24px rgba(36,132,59,.18), 0 0 0 1px #ccebd1;
+    }
+    .pr-success-modal-icon svg { width: 35px; height: 35px; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+    .pr-success-kicker { margin: 0 0 7px; color: #24843b; font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .pr-success-modal-title { margin: 0; color: #17231e; font-size: 28px; font-weight: 800; letter-spacing: -.055em; }
+    .pr-success-modal-copy { max-width: 300px; margin: 10px auto 0; color: #6e7b73; font-size: 12px; line-height: 1.6; }
+    .pr-success-actions { display: grid; grid-template-columns: 1.15fr .85fr; gap: 10px; margin-top: 28px; }
+    .pr-success-action { min-height: 44px; border-radius: 11px; padding: 0 14px; font: 800 11px/1 'Manrope', sans-serif; cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, background .16s ease; }
+    .pr-success-action:hover { transform: translateY(-1px); }
+    .pr-success-action-primary { border: 1px solid #a9521b; background: #a9521b; color: #fff; box-shadow: 0 8px 16px rgba(169,82,27,.2); }
+    .pr-success-action-primary:hover { background: #853d13; box-shadow: 0 10px 20px rgba(169,82,27,.26); }
+    .pr-success-action-secondary { border: 1px solid #dce5dd; background: #fff; color: #536159; }
+    .pr-success-action-secondary:hover { background: #f7faf7; border-color: #c4d2c6; }
+    .pr-success-action:focus-visible { outline: 3px solid rgba(240,161,94,.72); outline-offset: 2px; }
+    @keyframes pr-success-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes pr-success-pop-in { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @media (max-width: 520px) {
+      .pr-success-backdrop { padding: 16px; }
+      .pr-success-modal { padding: 34px 20px 22px; border-radius: 22px; }
+      .pr-success-actions { grid-template-columns: 1fr; }
+    }
 
     .pr-page {
       --ink: #17231e;
@@ -238,13 +282,13 @@ const ReceiptStyles = () => (
     .pr-btn-primary:hover { background: var(--forest-dark); box-shadow: 0 10px 22px rgba(169, 82, 27, .28); }
 
     .pr-card {
-      overflow: hidden; border: 1px solid rgba(203, 215, 205, .9); border-radius: 20px;
+      overflow: visible; border: 1px solid rgba(203, 215, 205, .9); border-radius: 20px;
       background: rgba(255, 255, 255, .86); box-shadow: 0 20px 56px rgba(34, 54, 42, .11);
       backdrop-filter: blur(12px);
     }
 
     .pr-hero {
-      position: relative; overflow: hidden; padding: 18px 30px 16px;
+      position: relative; overflow: visible; z-index: 5; padding: 18px 30px 16px;
       background: linear-gradient(115deg, #ffffff 0%, #fafbfc 68%, #f8f4f0 100%); color: var(--ink);
     }
     .pr-hero::after {
@@ -273,6 +317,30 @@ const ReceiptStyles = () => (
       background: #f8f9fa; color: var(--ink); font: 600 12px/1 'Manrope', sans-serif;
       transition: background .16s ease, border-color .16s ease;
     }
+    .pr-supplier-input { height: 34px; text-align: left; direction: ltr; padding-right: 38px; }
+    .pr-supplier-chevron {
+      position: absolute; top: 35px; right: 8px; display: grid; place-items: center;
+      width: 25px; height: 25px; border: 0; border-radius: 7px; background: transparent;
+      color: #536159; cursor: pointer; transform: translateY(-50%); transition: background .15s ease, color .15s ease, transform .15s ease;
+    }
+    .pr-supplier-chevron:hover { background: var(--soft-green); color: var(--forest); }
+    .pr-supplier-chevron:focus-visible { outline: 3px solid rgba(240,161,94,.72); outline-offset: 1px; }
+    .pr-supplier-chevron svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s ease; }
+    .pr-supplier-chevron-open svg { transform: rotate(180deg); }
+    .pr-supplier-field { position: relative; }
+    .pr-supplier-menu {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 100;
+      max-height: 230px; overflow-y: auto; padding: 6px; border: 1px solid #dce5dd;
+      border-radius: 11px; background: #fff; box-shadow: 0 16px 34px rgba(23,35,30,.16), 0 3px 8px rgba(23,35,30,.08);
+    }
+    .pr-supplier-option {
+      display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 7px;
+      background: transparent; color: var(--ink); text-align: left; cursor: pointer;
+    }
+    .pr-supplier-option:hover, .pr-supplier-option:focus, .pr-supplier-option[aria-selected='true'] { background: var(--soft-green); outline: none; }
+    .pr-supplier-option-main { display: block; font-size: 11px; font-weight: 800; line-height: 1.35; }
+    .pr-supplier-option-details { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .pr-supplier-empty { padding: 10px; color: var(--muted); font-size: 11px; text-align: left; }
     .pr-input::placeholder { color: #8b949b; }
     .pr-input:hover { background: #fff; border-color: #cbd3d8; }
     .pr-input:focus { border-color: #c87942; background: #fff; outline: none; box-shadow: 0 0 0 3px rgba(169,82,27,.10); }
@@ -522,7 +590,10 @@ const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const popoverContentRef = useRef<HTMLDivElement>(null);
   const dateTriggerRef = useRef<HTMLInputElement>(null);
+  const supplierInputRef = useRef<HTMLInputElement>(null);
 const [supplierName, setSupplierName] = useState('');
+const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
+const [activeSupplierIndex, setActiveSupplierIndex] = useState(0);
 
 const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   useEffect(() => {
@@ -566,13 +637,19 @@ const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
 
 const handleCreateAnotherReceipt = () => {
   // 1. Reset all header input states back to empty/defaults
-  
-  console.log('here we are');
+  const resetDate = todayISO();
+  const nextGrnNumber = `GRN-${Date.now().toString().slice(-6)}`;
+
   setSupplierName('');
-  setGrnNumber('');
+  setSupplier('');
+  setSelectedSupplierDetails(null);
+  setGrnNumber(nextGrnNumber);
   setReference('');
   setComment('');
-  //setReceivedAt(new Date().toISOString().split('T')[0]); // or your default date
+  setDate(resetDate);
+  setDateInput(formatDateSlash(resetDate));
+  setCalendarCursor(parseISODate(resetDate));
+  setIsDatePickerOpen(false);
 
   // 2. Clear the line items array in your table
   setItems([]);
@@ -585,12 +662,32 @@ const handleCreateAnotherReceipt = () => {
 
   // 4. Finally, hide the modal & reveal the form again
   setIsSaved(false);
+  window.requestAnimationFrame(() => supplierInputRef.current?.focus());
+};
+
+useEffect(() => {
+  supplierInputRef.current?.focus();
+}, []);
+
+const handleBackToDashboard = () => {
+  setIsSaved(false);
+  onCancel?.();
+  window.location.assign('/dashboard');
 };
 
 
 
 const handleSupplierChange = (value: string) => {
   setSupplier(value);
+  setActiveSupplierIndex(0);
+
+  // Open the dropdown ONLY if the user has typed something
+  if (value.trim().length > 0) {
+    setIsSupplierMenuOpen(true);
+  } else {
+    setIsSupplierMenuOpen(false);
+  }
+
   const matched = suppliersList.find(
     (s) =>
       s.supplierName.toLowerCase() === value.trim().toLowerCase() ||
@@ -598,6 +695,39 @@ const handleSupplierChange = (value: string) => {
   );
   setSelectedSupplierDetails(matched || null);
 };
+const handleSupplierKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+  const query = supplier.trim().toLowerCase();
+  const filteredSuppliers = suppliersList.filter((s) =>
+    !query || `${s.supplierCode} ${s.supplierName}`.toLowerCase().includes(query)
+  );
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setIsSupplierMenuOpen(false);
+    return;
+  }
+  if (event.key === 'ArrowDown' && filteredSuppliers.length) {
+    event.preventDefault();
+    setIsSupplierMenuOpen(true);
+    setActiveSupplierIndex((index) => (index + 1) % filteredSuppliers.length);
+    return;
+  }
+  if (event.key === 'ArrowUp' && filteredSuppliers.length) {
+    event.preventDefault();
+    setIsSupplierMenuOpen(true);
+    setActiveSupplierIndex((index) => (index - 1 + filteredSuppliers.length) % filteredSuppliers.length);
+    return;
+  }
+  if (event.key === 'Enter' && isSupplierMenuOpen && filteredSuppliers.length) {
+    event.preventDefault();
+    const selected = filteredSuppliers[activeSupplierIndex] || filteredSuppliers[0];
+    handleSupplierChange(`${selected.supplierCode} - ${selected.supplierName}`);
+    setIsSupplierMenuOpen(false);
+    return;
+  }
+  handleEnterAsTab(event);
+};
+
 const handleSave = async () => {
   // 1. Validation checks
   if (!selectedSupplierDetails) {
@@ -673,12 +803,20 @@ const payload = {
       if (popoverContentRef.current?.contains(target)) return;
       setIsDatePickerOpen(false);
     };
+    const handleFocusOutside = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (datePickerRef.current?.contains(target)) return;
+      if (popoverContentRef.current?.contains(target)) return;
+      setIsDatePickerOpen(false);
+    };
     const handleDismiss = () => setIsDatePickerOpen(false);
     document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('focusin', handleFocusOutside);
     window.addEventListener('scroll', handleDismiss, true);
     window.addEventListener('resize', handleDismiss);
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('focusin', handleFocusOutside);
       window.removeEventListener('scroll', handleDismiss, true);
       window.removeEventListener('resize', handleDismiss);
     };
@@ -901,26 +1039,35 @@ const payload = {
     return (
       <main className="pr-page">
         <ReceiptStyles />
-     <div className="fixed inset-0 flex items-center justify-center bg-black/50">
-  <div className="bg-white rounded-2xl p-8 max-w-md text-center shadow-xl">
+     <div className="pr-success-backdrop">
+  <div className="pr-success-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-success-title">
     {/* Checkmark Icon */}
-    <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-6">
-      <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="pr-success-modal-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
       </svg>
     </div>
 
-    <h3 className="text-2xl font-bold text-gray-900 mb-2">Successfully done</h3>
-    <p className="text-gray-500 mb-6">The goods receipt has been saved successfully.</p>
+    <p className="pr-success-kicker">Receipt saved</p>
+    <h3 id="receipt-success-title" className="pr-success-modal-title">Successfully done</h3>
+    <p className="pr-success-modal-copy">The goods receipt has been saved successfully and is ready for review.</p>
 
-    {/* 👈 ATTACH THE HANDLER HERE */}
-    <button
-      type="button"
-      onClick={handleCreateAnotherReceipt}
-      className="w-full bg-[#A34313] hover:bg-[#8B380F] text-white font-medium py-3 px-6 rounded-xl transition-colors"
-    >
-      Create another receipt
-    </button>
+    <div className="pr-success-actions">
+      <button
+        type="button"
+        onClick={handleCreateAnotherReceipt}
+        className="pr-success-action pr-success-action-primary"
+      >
+        Create another Transaction
+      </button>
+      <button
+        type="button"
+        onClick={handleBackToDashboard}
+        className="pr-success-action pr-success-action-secondary"
+      >
+        Back
+      </button>
+    </div>
   </div>
 </div>
       </main>
@@ -968,18 +1115,73 @@ const payload = {
             </div>
 
             <div className="pr-details">
-              <label className="pr-field">
+              <label className="pr-field pr-supplier-field">
                 <span className="pr-field-label">
                   Supplier {isLoadingSuppliers && '(Loading...)'}
                 </span>
                 <input
-                  className="pr-input"
-                  list="pr-supplier-list"
-                  value={supplier}
-                  onChange={(event) => handleSupplierChange(event.target.value)}
-                  onKeyDown={handleEnterAsTab}
-                  placeholder={isLoadingSuppliers ? 'Loading suppliers...' : 'Search or enter supplier…'}
-                />
+  ref={supplierInputRef}
+  className="pr-input pr-supplier-input"
+  value={supplier}
+  onChange={(event) => handleSupplierChange(event.target.value)}
+  onFocus={() => {
+    // Keep focus logic without opening menu automatically
+    setActiveSupplierIndex(0);
+    if (supplier.trim().length > 0) {
+      setIsSupplierMenuOpen(true);
+    }
+  }}
+  onBlur={() => window.setTimeout(() => setIsSupplierMenuOpen(false), 120)}
+  onKeyDown={handleSupplierKeyDown}
+  placeholder={isLoadingSuppliers ? 'Loading suppliers...' : 'Search or enter supplier…'}
+/>
+                <button
+                  type="button"
+                  className={`pr-supplier-chevron${isSupplierMenuOpen ? ' pr-supplier-chevron-open' : ''}`}
+                  aria-label={isSupplierMenuOpen ? 'Close supplier list' : 'Open supplier list'}
+                  aria-expanded={isSupplierMenuOpen}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    supplierInputRef.current?.focus();
+                    setIsSupplierMenuOpen((open) => !open);
+                    setActiveSupplierIndex(0);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                </button>
+                {isSupplierMenuOpen && (
+                  <div className="pr-supplier-menu" role="listbox" aria-label="Supplier suggestions">
+                    {suppliersList
+                      .filter((s) => {
+                        const query = supplier.trim().toLowerCase();
+                        return !query || `${s.supplierCode} ${s.supplierName}`.toLowerCase().includes(query);
+                      })
+                      .map((s, index) => (
+                        <button
+                          key={s.supplierCode}
+                          type="button"
+                          className="pr-supplier-option"
+                          role="option"
+                          aria-selected={index === activeSupplierIndex}
+                          onMouseEnter={() => setActiveSupplierIndex(index)}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            handleSupplierChange(`${s.supplierCode} - ${s.supplierName}`);
+                            setIsSupplierMenuOpen(false);
+                          }}
+                        >
+                          <span className="pr-supplier-option-main">{s.supplierCode} - {s.supplierName}</span>
+                          <span className="pr-supplier-option-details">
+                            {[s.contactPerson, s.phone, s.email].filter(Boolean).join(' · ')}
+                          </span>
+                        </button>
+                      ))}
+                    {!suppliersList.some((s) => {
+                      const query = supplier.trim().toLowerCase();
+                      return !query || `${s.supplierCode} ${s.supplierName}`.toLowerCase().includes(query);
+                    }) && <div className="pr-supplier-empty">No suppliers found</div>}
+                  </div>
+                )}
               </label>
               <div className="pr-field pr-datefield" ref={datePickerRef}>
                 <span className="pr-field-label">Received on</span>
@@ -1125,13 +1327,7 @@ const payload = {
               </label>
             </div>
 
-            <datalist id="pr-supplier-list">
-              {suppliersList.map((s) => (
-                <option key={s.supplierCode} value={`${s.supplierCode} - ${s.supplierName}`}>
-                  {s.contactPerson} • {s.phone}.{s.email} 
-                </option>
-              ))}
-            </datalist>
+
           </div>
 
           <div className="pr-content">

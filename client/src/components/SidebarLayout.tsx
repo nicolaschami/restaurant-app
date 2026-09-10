@@ -65,6 +65,8 @@ import {
   User,
   Crown,
   UserPlus,
+  ArrowRightLeft, // Added icon for Transaction header
+  ListFilter,     // Added icon for Purchase List subitem
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -85,6 +87,7 @@ export default function SidebarLayout({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isPartnersOpen, setIsPartnersOpen] = useState(false);
+  const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -110,7 +113,26 @@ export default function SidebarLayout({
     { id: 'menu-items', label: 'Menu Items', icon: Utensils },
     { id: 'modifiers', label: 'Modifiers', icon: SlidersHorizontal },
     { id: 'raw-materials', label: 'Raw Materials', icon: Wheat },
-    { id: 'purchase', label: 'Purchase Transaction', icon: Receipt },
+  ];
+
+  const partnerSubItems = [
+    { id: 'users', label: 'Users', icon: UserCheck },
+    { id: 'employees', label: 'Employees', icon: Briefcase },
+    { id: 'suppliers', label: 'Suppliers', icon: Truck },
+    { id: 'customers', label: 'Customers', icon: CircleUserRound },
+  ];
+
+  // Transaction Sub-items
+  const transactionSubItems = [
+    { id: 'purchase', label: 'Purchase', icon: Receipt },
+    { id: 'purchaselist', label: 'Purchase List', icon: ListFilter },
+  ];
+
+  const settingSubItems = [
+    { id: 'tables', label: 'Tables', icon: Table2 },
+    { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents },
+    { id: 'print', label: 'Print Test page', icon: Printer },
+    { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
   ];
 
   // Full Reports Hierarchy
@@ -237,20 +259,6 @@ export default function SidebarLayout({
     },
   ];
 
-  const partnerSubItems = [
-    { id: 'users', label: 'Users', icon: UserCheck },
-    { id: 'employees', label: 'Employees', icon: Briefcase },
-    { id: 'suppliers', label: 'Suppliers', icon: Truck },
-    { id: 'customers', label: 'Customers', icon: CircleUserRound },
-  ];
-
-  const settingSubItems = [
-    { id: 'tables', label: 'Tables', icon: Table2 },
-    { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents },
-    { id: 'print', label: 'Print Test page', icon: Printer },
-    { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
-  ];
-
   // Auto-expand groups when activeTab matches
   useEffect(() => {
     if (productSubItems.some((item) => item.id === activeTab)) {
@@ -258,6 +266,9 @@ export default function SidebarLayout({
     }
     if (partnerSubItems.some((item) => item.id === activeTab)) {
       setIsPartnersOpen(true);
+    }
+    if (transactionSubItems.some((item) => item.id === activeTab)) {
+      setIsTransactionOpen(true);
     }
     if (settingSubItems.some((item) => item.id === activeTab)) {
       setIsSettingsOpen(true);
@@ -400,7 +411,6 @@ export default function SidebarLayout({
             )}
           </div>
 
-
           {/* Partners Group */}
           <div>
             <button
@@ -429,6 +439,55 @@ export default function SidebarLayout({
             {isPartnersOpen && !isCollapsed && (
               <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
                 {partnerSubItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleTabChange(item.id)}
+                      className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
+                        isActive
+                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Transaction Group (Added here before Settings) */}
+          <div>
+            <button
+              onClick={() => {
+                if (isCollapsed) setIsCollapsed(false);
+                setIsTransactionOpen(!isTransactionOpen);
+              }}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'justify-between px-2.5'
+              } py-2 rounded-md text-xs font-medium text-slate-300 hover:bg-white/5 transition`}
+              title="Transaction"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <ArrowRightLeft className="w-4 h-4 text-[#c2621f] shrink-0" />
+                {!isCollapsed && <span className="truncate">Transaction</span>}
+              </div>
+              {!isCollapsed && (
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
+                    isTransactionOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                  }`}
+                />
+              )}
+            </button>
+
+            {isTransactionOpen && !isCollapsed && (
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+                {transactionSubItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
                   return (
@@ -499,8 +558,6 @@ export default function SidebarLayout({
             )}
           </div>
 
-
-          
           {/* Nested Reports Group */}
           <div>
             <button

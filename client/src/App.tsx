@@ -14,6 +14,8 @@ import KDSContainer from './pages/Kdscontainer';
 import Printo from './pages/Printo';
 import RestaurantSettings from './pages/RestaurantSettings';
 import PurchaseReceiptForm from './pages/Purchasetransactionscreen';
+import PurchaseList from './pages/PurchaseTransactionsList';
+
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
   onResetOrder?: () => void;
@@ -38,9 +40,7 @@ export function App() {
     setActiveTab('dashboard');
   };
 
-  // Renders the appropriate view based on activeTab
   const renderContent = () => {
-    // Handle all reports dynamically with an Under Construction fallback view
     if (activeTab.startsWith('report-')) {
       const reportTitle = activeTab
         .replace('report-', '')
@@ -81,7 +81,17 @@ export function App() {
           />
         );
       case 'purchase':
-        return <PurchaseReceiptForm />;  
+        return (
+          <PurchaseReceiptForm
+            onCancel={() => setActiveTab('purchaselist')}
+          />
+        );
+      case 'purchaselist':
+        return (
+          <PurchaseList
+            onNewPurchase={() => setActiveTab('purchase')}
+          />
+        );
       case 'categories':
         return <Categories />;
       case 'modifiers':

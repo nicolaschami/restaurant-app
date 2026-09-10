@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and,sql ,desc,inArray} from 'drizzle-orm';
 import { db } from "../db";
 import { stockTransactions, stockDetails } from '../db/schema';
 import type { CreateStockTransactionPayload } from '../db/schema';
@@ -10,7 +10,80 @@ export default async function stockTransactionRoutes(fastify: FastifyInstance) {
   // 1. GET /api/stock-transactions?restaurantId=1
   // Filter all transactions by restaurantId
   // ==========================================
-  fastify.get<{ Querystring: { restaurantId: string } }>(
+  // fastify.get<{ Querystring: { restaurantId: string } }>(
+  //   '/api/stock-transactions',
+  //   async (request, reply) => {
+  //     const { restaurantId } = request.query;
+
+  //     if (!restaurantId) {
+  //       return reply.code(400).send({ error: 'restaurantId query parameter is required.' });
+  //     }
+
+  //     const parsedRestaurantId = parseInt(restaurantId, 10);
+
+  //     try {
+  //       const transactions = await db.query.stockTransactions.findMany({
+  //         where: eq(stockTransactions.restaurantId, parsedRestaurantId),
+  //         with: {
+  //           details: true,
+  //         },
+  //         orderBy: (transactions, { desc }) => [desc(transactions.transactionId)],
+  //       });
+
+  //       return reply.code(200).send(transactions);
+  //     } catch (error) {
+  //       request.log.error(error);
+  //       return reply.code(500).send({ error: 'Failed to fetch stock transactions' });
+  //     }
+  //   }
+  // );
+
+
+
+// fastify.get<{ Querystring: { restaurantId: string } }>(
+//   '/api/stock-transactions',
+//   async (request, reply) => {
+//     const { restaurantId } = request.query;
+
+//     if (!restaurantId) {
+//       return reply.code(400).send({ error: 'restaurantId query parameter is required.' });
+//     }
+
+//     const parsedRestaurantId = parseInt(restaurantId, 10);
+
+//     try {
+//       const transactions = await db.query.stockTransactions.findMany({
+//         where: eq(stockTransactions.restaurantId, parsedRestaurantId),
+//         // Select extra computed field or cast field as text
+//         extras: {
+//           transactionDateFormatted: sql<string>`"TransactionDate"::text`.as('transactionDateFormatted'),
+//         },
+//         with: {
+//           details: true,
+//         },
+//         orderBy: (transactions, { desc }) => [desc(transactions.transactionId)],
+//       });
+
+//       // Replace null transactionDate with the formatted raw text from SQL
+//       const response = transactions.map((tx) => ({
+//         ...tx,
+//         transactionDate: tx.transactionDate || tx.transactionDateFormatted,
+//       }));
+
+//       return reply.code(200).send(response);
+//     } catch (error) {
+//       request.log.error(error);
+//       return reply.code(500).send({ error: 'Failed to fetch stock transactions' });
+//     }
+//   }
+// );
+
+
+  // ==========================================
+  // 2. GET /api/stock-transactions/:id?restaurantId=1
+  // Fetch a single transaction ensuring it belongs to the restaurant
+  // ==========================================
+fastify.get<{ Querystring: { restaurantId: string } }>(
     '/api/stock-transactions',
     async (request, reply) => {
       const { restaurantId } = request.query;
@@ -22,57 +95,50 @@ export default async function stockTransactionRoutes(fastify: FastifyInstance) {
       const parsedRestaurantId = parseInt(restaurantId, 10);
 
       try {
-        const transactions = await db.query.stockTransactions.findMany({
-          where: eq(stockTransactions.restaurantId, parsedRestaurantId),
-          with: {
-            details: true,
-          },
-          orderBy: (transactions, { desc }) => [desc(transactions.transactionId)],
-        });
+        // 1. Fetch main stock transactions with date cast as raw string
+        const transactions = await db
+          .select({
+            transactionId: stockTransactions.transactionId,
+            restaurantId: stockTransactions.restaurantId,
+            transactionNumber: stockTransactions.transactionNumber,
+            grnNumber: stockTransactions.grnNumber,
+            supplierName: stockTransactions.supplierName,
+            transactionDate: sql<string>`"TransactionDate"::text`,
+            reference: stockTransactions.reference,
+            comment: stockTransactions.comment,
+            subtotal: stockTransactions.subtotal,
+            discountAmount: stockTransactions.discountAmount,
+            taxableAmount: stockTransactions.taxableAmount,
+            taxAmount: stockTransactions.taxAmount,
+            netTotal: stockTransactions.netTotal,
+            status: stockTransactions.status,
+            type: stockTransactions.type,
+          })
+          .from(stockTransactions)
+          .where(eq(stockTransactions.restaurantId, parsedRestaurantId))
+          .orderBy(desc(stockTransactions.transactionId));
 
-        return reply.code(200).send(transactions);
+        if (!transactions.length) {
+          return reply.code(200).send([]);
+        }
+
+        // 2. Fetch details ONLY for the returned transactions
+        const transactionIds = transactions.map((t) => t.transactionId);
+        const details = await db
+          .select()
+          .from(stockDetails)
+          .where(inArray(stockDetails.transactionId, transactionIds));
+
+        // 3. Attach details array to each transaction
+        const result = transactions.map((tx) => ({
+          ...tx,
+          details: details.filter((d) => d.transactionId === tx.transactionId),
+        }));
+
+        return reply.code(200).send(result);
       } catch (error) {
         request.log.error(error);
         return reply.code(500).send({ error: 'Failed to fetch stock transactions' });
-      }
-    }
-  );
-
-  // ==========================================
-  // 2. GET /api/stock-transactions/:id?restaurantId=1
-  // Fetch a single transaction ensuring it belongs to the restaurant
-  // ==========================================
-  fastify.get<{ Params: { id: string }; Querystring: { restaurantId: string } }>(
-    '/api/stock-transactions/:id',
-    async (request, reply) => {
-      const transactionId = parseInt(request.params.id, 10);
-      const { restaurantId } = request.query;
-
-      if (!restaurantId) {
-        return reply.code(400).send({ error: 'restaurantId query parameter is required.' });
-      }
-
-      const parsedRestaurantId = parseInt(restaurantId, 10);
-
-      try {
-        const transaction = await db.query.stockTransactions.findFirst({
-          where: and(
-            eq(stockTransactions.transactionId, transactionId),
-            eq(stockTransactions.restaurantId, parsedRestaurantId)
-          ),
-          with: {
-            details: true,
-          },
-        });
-
-        if (!transaction) {
-          return reply.code(404).send({ error: 'Stock transaction not found for this restaurant' });
-        }
-
-        return reply.code(200).send(transaction);
-      } catch (error) {
-        request.log.error(error);
-        return reply.code(500).send({ error: 'Failed to fetch stock transaction' });
       }
     }
   );
@@ -171,7 +237,7 @@ const detailsPayload = items.map((item: any) => ({
   qty: Number(item.quantity ?? item.qty ?? 0),
   unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
   discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
-  lineTotal: String(item.lineTotal ?? item.line_total ?? 0),
+  lineTotal : String(item.lineTotal ?? item.line_total ?? 0),
   type: 'PUR',
 }));
 
