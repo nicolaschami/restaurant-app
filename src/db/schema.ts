@@ -407,6 +407,10 @@ export const stockTransactions = pgTable('stocktransactions', {
 export const stockDetails = pgTable('stockdetails', {
   detailId: serial('detailid').primaryKey(),
   transactionId: integer('transactionid').references(() => stockTransactions.transactionId, { onDelete: 'cascade' }),
+  RawMaterialId: integer('RawMaterialID')
+    .notNull()
+    .references(() => rawMaterials.id),
+
   itemname: varchar('itemname', { length: 255 }).notNull(),
   unit: varchar('unit', { length: 50 }),
   qty: numeric('qty', { precision: 10, scale: 2 }).default('0.00'),

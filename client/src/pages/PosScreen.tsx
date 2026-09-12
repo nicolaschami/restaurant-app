@@ -203,8 +203,6 @@ const flatKeyByOrderType: Record<OrderType, 'priceDineIn' | 'priceTakeaway' | 'p
   'Delivery': 'priceDelivery',
 };
 
-
-
 const resolveMinPrice = (raw: ApiMenuItem, orderType: OrderType): number => {
   if (raw.hasVariants && raw.variantPrices?.length) {
     const key = variantKeyByOrderType[orderType];
@@ -737,7 +735,6 @@ const [orderNotes, setOrderNotes] = useState<string>('');
   }
 };
 
-
 const handleDeleteOrder = async () => {
   if (!currentOrderId) return;
   setIsDeleting(true);
@@ -911,20 +908,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
 };
 /* ---------- Update order  ---------- */
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* ---------- End Update order  ---------- */
-
 
   /* ---------- ORDER TYPE SWITCHING ---------- */
 
@@ -1038,8 +1022,6 @@ const handleSaveOrder = async (isPayment: boolean) => {
   flex-shrink: 0;
   color: var(--brass-soft);
 }
-
-
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -1227,31 +1209,31 @@ const handleSaveOrder = async (isPayment: boolean) => {
         }
 
         /* ---------- BODY GRID ---------- */
-        .pos-body {
-          flex: 1;
-          display: grid;
-          grid-template-columns: 230px 1fr 400px;
-          overflow: hidden;
-        }
-
-        /* ---------- CATEGORY RAIL ---------- */
-        .cat-rail {
-          background: var(--bg-deep);
-          border-right: 1px solid var(--hairline);
-          padding: 20px 12px;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          transition: background 0.25s ease, border-color 0.25s ease;
-        }
+        /* ORDER: Basket (left) | Menu (middle, flexible) | Category (right) */
+.pos-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px 1fr 220px;
+  overflow: hidden;
+}
+        /* ---------- CATEGORY RAIL (rightmost, column 3) ---------- */
+       .cat-rail {
+  background: var(--bg-deep);
+  border-left: 0px solid var(--hairline);
+  padding: 10px 0px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
         .cat-label {
-          font-size: 10px;
+          font-size: 8px;
           font-weight: 700;
           letter-spacing: 0.16em;
           text-transform: uppercase;
           color: var(--muted-2);
-          padding: 0 10px 10px;
+          padding: 0 5px 5px;
         }
         .cat-btn {
           display: flex;
@@ -1269,7 +1251,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         }
         .cat-btn:hover {
           background: var(--panel-2);
-          transform: translateX(2px);
+          transform: translateX(-2px);
         }
         .cat-btn.active {
           background: var(--panel-2);
@@ -1435,6 +1417,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
           opacity: 0.6;
         }
 
+        /* ✅ Badge back on top-RIGHT (default) */
         .variant-badge {
           position: absolute;
           top: 8px;
@@ -1451,12 +1434,15 @@ const handleSaveOrder = async (isPayment: boolean) => {
           backdrop-filter: blur(4px);
         }
 
+        /* ✅ Content is back to LTR — text hugs the LEFT edge */
         .item-content {
           padding: 10px 12px 12px;
           display: flex;
           flex-direction: column;
           flex: 1;
           justify-content: space-between;
+          direction: ltr;
+          text-align: left;
         }
         .item-name {
           font-family: 'Fraunces', serif;
@@ -1464,6 +1450,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
           font-size: 13.5px;
           color: var(--text-heading);
           line-height: 1.25;
+          text-align: left;
         }
         .item-desc {
           font-size: 10.5px;
@@ -1474,8 +1461,10 @@ const handleSaveOrder = async (isPayment: boolean) => {
           -webkit-line-clamp: 1;
           -webkit-box-orient: vertical;
           overflow: hidden;
+          text-align: left;
         }
 
+        /* ✅ Footer: price on LEFT, + button on RIGHT */
         .item-footer {
           display: flex;
           align-items: center;
@@ -1483,12 +1472,16 @@ const handleSaveOrder = async (isPayment: boolean) => {
           margin-top: 10px;
           padding-top: 8px;
           border-top: 1px dashed var(--hairline);
+          flex-direction: row;
         }
         .item-price {
           font-family: 'IBM Plex Mono', monospace;
           font-weight: 600;
           font-size: 14px;
           color: var(--brass-soft);
+          direction: ltr;
+          unicode-bidi: embed;
+          text-align: left;
         }
         .item-price .from {
           font-size: 10px;
@@ -1496,6 +1489,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
           letter-spacing: 0.06em;
           color: var(--muted-2);
           margin-right: 4px;
+          margin-left: 0;
         }
         .item-add {
           width: 28px;
@@ -1530,15 +1524,15 @@ const handleSaveOrder = async (isPayment: boolean) => {
           font-style: italic;
         }
 
-        /* ---------- TICKET / BASKET ---------- */
+        /* ---------- TICKET / BASKET (leftmost, column 1) ---------- */
         .ticket-col {
           background: var(--bg-deep);
-          border-left: 1px solid var(--hairline);
+          border-right: 1px solid var(--hairline);
           display: flex;
           flex-direction: column;
           overflow: hidden;
           transition: background 0.25s ease, border-color 0.25s ease;
-          box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+          box-shadow: 4px 0 15px rgba(0,0,0,0.05);
         }
         .ticket-head {
           padding: 14px 22px 10px;
@@ -2303,8 +2297,6 @@ const handleSaveOrder = async (isPayment: boolean) => {
         ::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 6px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); }
 
-
-
         /* ---------- CUSTOMER PICKER - UPDATED ---------- */
 .customer-modal { 
   width: 440px; 
@@ -2833,8 +2825,6 @@ const handleSaveOrder = async (isPayment: boolean) => {
   to { opacity: 1; transform: scale(1); }
 }
 
-
-
 /* ---------- ORDER NOTES (Summary Row) ---------- */
 .sum-row.notes-row {
   margin-top: 6px;
@@ -2884,14 +2874,14 @@ const handleSaveOrder = async (isPayment: boolean) => {
       {/* HEADER */}
       <header className="pos-header">
         <div className="brand">
-          <div className="brand-mark serif">FL</div>
+          <div className="brand-mark serif">RES</div>
           <div className="brand-text">
-            <h1>Fen &amp; Larder</h1>
-            <p>Front of House Terminal</p>
+            <h1>{}</h1>
+            <p>A product from NRSoftware </p>
           </div>
         </div>
         <div className="header-right">
-          <div className="order-switch">
+          <div className="order-switch" dir='rtl'>
             {(['Dine-In', 'Takeaway', 'Delivery'] as const).map((type) => (
               <button
                 key={type}
@@ -2913,95 +2903,11 @@ const handleSaveOrder = async (isPayment: boolean) => {
         </div>
       </header>
 
+      {/* pos-body children: BASKET → MENU → CATEGORY */}
       <div className="pos-body">
-        {/* CATEGORY RAIL */}
-        <aside className="cat-rail">
-          <span className="cat-label">Categories</span>
 
-          {isLoadingCategories && <div className="cat-state-msg">Loading categories…</div>}
-          {error && <div className="cat-state-msg" style={{ color: 'var(--rust)' }}>{error}</div>}
-
-          {!isLoadingCategories && !error && categories.map((cat) => {
-            const Icon = cat.icon;
-            const isActive = activeCat === cat.id;
-            return (
-              <button
-                key={cat.id}
-                className={`cat-btn ${isActive ? 'active' : ''}`}
-                onClick={() => setActiveCat(cat.id)}
-              >
-                <span className="cat-no mono">{cat.no}</span>
-                <span className="cat-icon-wrap">
-                  <Icon
-                    className="w-4 h-4"
-                    color={isActive ? iconColor : undefined}
-                    style={!isActive ? { color: inactiveIconColor } : undefined}
-                  />
-                </span>
-                <span className="label" title={cat.label}>{cat.label}</span>
-              </button>
-            );
-          })}
-        </aside>
-
-        {/* MENU */}
-        <main className="menu-col">
-          <div className="menu-heading">
-            <h2>{activeCategory?.label || 'All Items'}</h2>
-            <span className="mono">{String(filteredItems.length).padStart(2, '0')} items available</span>
-          </div>
-
-          <div className="search-wrap">
-            <Search className="w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search items by name or keywords…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="items-scroll">
-            {isLoadingItems ? (
-              <div className="items-state-msg">Loading the menu…</div>
-            ) : filteredItems.length === 0 ? (
-              <div className="items-state-msg">No items found matching your search</div>
-            ) : (
-              <div className="items-grid">
-                {filteredItems.map((item) => (
-                  <div key={item.id} className="item-card" onClick={() => handleItemClick(item)}>
-                    <div className="item-img-wrap">
-                      {item.image ? (
-                        <img src={item.image} alt={item.name} loading="lazy" />
-                      ) : (
-                        <Sparkles className="w-6 h-6 item-placeholder-icon" />
-                      )}
-                      {item.hasVariants && <span className="variant-badge">Options</span>}
-                    </div>
-                    <div className="item-content">
-                      <div>
-                        <div className="item-name">{item.name}</div>
-                        {item.description && <div className="item-desc">{item.description}</div>}
-                      </div>
-                      <div className="item-footer">
-                        <span className="item-price">
-                          {item.hasVariants && <span className="from">From</span>}
-                          ${item.price.toFixed(2)}
-                        </span>
-                        <span className="item-add">
-                          <Plus className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </main>
-
-        {/* TICKET */}
-        <aside className="ticket-col" style={{ position: 'relative' }}>
+        {/* ---------- BASKET / TICKET (leftmost, column 1) ---------- */}
+        <aside className="ticket-col" dir='rtl' style={{ position: 'relative' }}>
           {isLoadingOrder && (
             <div
               style={{
@@ -3191,7 +3097,6 @@ const handleSaveOrder = async (isPayment: boolean) => {
   {isSaving ? 'Processing...' : `Take Payment · $${total.toFixed(2)}`}
            </button> */}
 
-
 <div className="pos-actions-container">
   {/* Top Quick Actions Row: Print, Drawer, Clear, and Delete */}
   <div className="quick-actions-row">
@@ -3246,8 +3151,93 @@ const handleSaveOrder = async (isPayment: boolean) => {
   </div>
 </div>
 
-
           </div>
+        </aside>
+
+        {/* ---------- MENU (middle, flexible column 2) ---------- */}
+        <main className="menu-col" dir='rtl'>
+          <div className="menu-heading">
+            <h2>{activeCategory?.label || 'All Items'}</h2>
+            <span className="mono">{String(filteredItems.length).padStart(2, '0')} items available</span>
+          </div>
+
+          <div className="search-wrap">
+            <Search className="w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Search items by name or keywords…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="items-scroll">
+            {isLoadingItems ? (
+              <div className="items-state-msg">Loading the menu…</div>
+            ) : filteredItems.length === 0 ? (
+              <div className="items-state-msg">No items found matching your search</div>
+            ) : (
+              <div className="items-grid">
+                {filteredItems.map((item) => (
+                  <div key={item.id} className="item-card" onClick={() => handleItemClick(item)}>
+                    <div className="item-img-wrap">
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} loading="lazy" />
+                      ) : (
+                        <Sparkles className="w-6 h-6 item-placeholder-icon" />
+                      )}
+                      {item.hasVariants && <span className="variant-badge">Options</span>}
+                    </div>
+                    <div className="item-content">
+                      <div>
+                        <div className="item-name">{item.name}</div>
+                        {item.description && <div className="item-desc">{item.description}</div>}
+                      </div>
+                      <div className="item-footer">
+                        <span className="item-price">
+                          {item.hasVariants && <span className="from">From</span>}
+                          ${item.price.toFixed(2)}
+                        </span>
+                        <span className="item-add">
+                          <Plus className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+
+        {/* ---------- CATEGORY RAIL (rightmost, column 3) ---------- */}
+        <aside className="cat-rail" dir='rtl'>
+          <span className="cat-label">Categories</span>
+
+          {isLoadingCategories && <div className="cat-state-msg">Loading categories…</div>}
+          {error && <div className="cat-state-msg" style={{ color: 'var(--rust)' }}>{error}</div>}
+
+          {!isLoadingCategories && !error && categories.map((cat) => {
+            const Icon = cat.icon;
+            const isActive = activeCat === cat.id;
+            return (
+              <button
+                key={cat.id}
+                className={`cat-btn ${isActive ? 'active' : ''}`}
+                onClick={() => setActiveCat(cat.id)}
+              >
+                <span className="cat-no mono">{cat.no}</span>
+                <span className="cat-icon-wrap">
+                  <Icon
+                    className="w-4 h-4"
+                    color={isActive ? iconColor : undefined}
+                    style={!isActive ? { color: inactiveIconColor } : undefined}
+                  />
+                </span>
+                <span className="label" title={cat.label}>{cat.label}</span>
+              </button>
+            );
+          })}
         </aside>
       </div>
 
@@ -3556,7 +3546,6 @@ const handleSaveOrder = async (isPayment: boolean) => {
   </div>
 )}
 
-
       {/* TABLE PICKER (Dine-In) */}
       {showTablePicker && (
         <div 
@@ -3641,7 +3630,6 @@ const handleSaveOrder = async (isPayment: boolean) => {
         </div>
       )}
 
-      
 {/* CUSTOMER PICKER (Delivery) */}
 {showCustomerPicker && (
   <div className="modal-overlay" onClick={() => setShowCustomerPicker(false)}>

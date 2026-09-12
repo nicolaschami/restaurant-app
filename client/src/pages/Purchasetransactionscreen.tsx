@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type FC } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
+
 // ==========================================
 // TYPES
 // ==========================================
-// 🔴 RED COMMENT:  1. define the structure
 interface Supplier {
   supplierCode: string;
   supplierName: string;
-  contactPerson :string | null;
-  phone : string | null ; 
-  email: string |null;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
 }
 
 export interface Product {
@@ -46,6 +46,9 @@ interface PurchaseLineItem {
 }
 
 interface PurchaseReceiptFormProps {
+  mode?: 'create' | 'edit';
+  transactionId?: number;
+  restaurantId?: number;
   onCancel?: () => void;
   onSave?: (payload: {
     grnNumber: string;
@@ -65,7 +68,7 @@ interface PurchaseReceiptFormProps {
 }
 
 // ==========================================
-// MOCK DATA
+// MOCK DATA / HELPERS
 // ==========================================
 const MOCK_UNITS = ['kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'case'];
 
@@ -508,6 +511,20 @@ const ReceiptStyles = () => (
     .pr-attachment-remove svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
     .pr-sidebar-date { margin: 18px 0 0; color: #839087; font: 500 9px/1.5 'DM Mono', monospace; }
 
+    /* ✅ FIX: Loading screen styles */
+    .pr-loading-screen {
+      display: grid; place-items: center; min-height: 60vh; text-align: center; gap: 14px;
+    }
+    .pr-loading-spinner {
+      width: 46px; height: 46px; border-radius: 50%;
+      border: 4px solid #f0e2d5; border-top-color: #a9521b;
+      animation: pr-spin .8s linear infinite;
+    }
+    .pr-loading-copy {
+      margin: 0; color: #6e7b73; font-size: 13px; font-weight: 700; letter-spacing: -.01em;
+    }
+    @keyframes pr-spin { to { transform: rotate(360deg); } }
+
     @media (max-width: 820px) {
       .pr-page { padding: 16px; }
       .pr-content { grid-template-columns: 1fr; }
@@ -543,7 +560,6 @@ const ReceiptStyles = () => (
 // ==========================================
 // COMPONENT
 // ==========================================
-
 const initialHeaderState = {
   supplierName: '',
   supplierId: '',
@@ -557,20 +573,40 @@ const initialHeaderState = {
   netTotal: 0,
 };
 
-const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({ onCancel, onSave }) => {
-const [isSubmitting, setIsSubmitting] = useState(false);
-const [errorMessage, setErrorMessage] = useState<string | null>(null);
+const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
+  mode = 'create',
+  transactionId,
+  restaurantId = 1,
+  onCancel,
+  onSave,
+}) => {
+  console.log('[PurchaseReceiptForm]', {
+    mode,
+    transactionId,
+    restaurantId,
+  });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [grnNumber, setGrnNumber] = useState('GRN-0148');
-  const [IsLoading, setIsLoading] = useState(false);
+
+  // ✅ FIX: Split into two independent loading flags. Never initialize to `true`
+  // (the transaction effect will raise it as soon as it actually starts fetching).
+  const [isLoadingTransaction, setIsLoadingTransaction] = useState(false);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(false);
+  const isLoading = isLoadingTransaction || isLoadingInitial;
+
   const [supplier, setSupplier] = useState('');
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<Supplier | null>(null);
   const [suppliersList, setSuppliersList] = useState<Supplier[]>([]);
   const [isLoadingSuppliers, setIsLoadingSuppliers] = useState<boolean>(false);
+
   const [product, setproduct] = useState('');
   const [selectedProductdetaisl, setselectedProductdetaisl] = useState<Product | null>(null);
   const [ProductList, setProductList] = useState<Product[]>([]);
   const [isLoadingProducts, setsLoadingProducts] = useState<boolean>(false);
+
   const [date, setDate] = useState(todayISO());
   const [dateInput, setDateInput] = useState(() => formatDateSlash(todayISO()));
   const [reference, setReference] = useState('');
@@ -583,6 +619,7 @@ const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [calendarCursor, setCalendarCursor] = useState<Date>(() => parseISODate(date || todayISO()));
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const itemNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const addButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -591,210 +628,328 @@ const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const popoverContentRef = useRef<HTMLDivElement>(null);
   const dateTriggerRef = useRef<HTMLInputElement>(null);
   const supplierInputRef = useRef<HTMLInputElement>(null);
-const [supplierName, setSupplierName] = useState('');
-const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
-const [activeSupplierIndex, setActiveSupplierIndex] = useState(0);
 
-const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [supplierName, setSupplierName] = useState('');
+  const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
+  const [activeSupplierIndex, setActiveSupplierIndex] = useState(0);
+
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+
+  // ==========================================================
+  // ✅ FIX: Transaction loader — single source of truth for
+  // isLoadingTransaction. No stray setIsLoading(false) after.
+  // ==========================================================
+  useEffect(() => {
+    if (mode !== 'edit' || !transactionId) {
+      // Ensure we're never stuck "true" if we bail out early.
+      setIsLoadingTransaction(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const loadTransaction = async () => {
+      setIsLoadingTransaction(true);
+      try {
+        console.log(
+          '[PurchaseReceiptForm] Loading transaction:',
+          transactionId,
+        );
+
+        const res = await api.get(
+          `/stock-transactions/${transactionId}`,
+          {
+            params: { restaurantId },
+            signal: controller.signal,
+          },
+        );
+
+        if (cancelled) return;
+
+        const transaction = res.data;
+
+        console.log(
+          '[PurchaseReceiptForm] Transaction response:',
+          transaction,
+        );
+
+        // Header fields
+        setGrnNumber(transaction.grnNumber ?? '');
+
+        const loadedSupplier = transaction.supplierName ?? '';
+        setSupplier(loadedSupplier);
+
+        // Extract supplier code + name from "SUP-102 - Ocean Catch Seafoods"
+        const supplierParts = loadedSupplier.split(' - ');
+        const loadedSupplierCode = supplierParts[0]?.trim() ?? '';
+        const loadedSupplierName = supplierParts.slice(1).join(' - ').trim();
+
+        setSelectedSupplierDetails({
+          supplierCode: loadedSupplierCode,
+          supplierName: loadedSupplierName,
+          contactPerson: null,
+          phone: null,
+          email: null,
+        });
+
+        setReference(transaction.reference ?? '');
+        setComment(transaction.comment ?? '');
+
+        // Date
+        const loadedDate = transaction.transactionDate ?? todayISO();
+        setDate(loadedDate);
+        setDateInput(formatDateSlash(loadedDate));
+        setCalendarCursor(parseISODate(loadedDate));
+
+        // Order discount
+        setOrderDiscount(Number(transaction.discountAmount ?? 0));
+
+        // Item rows
+        const details = Array.isArray(transaction.details)
+          ? transaction.details
+          : [];
+
+        setItems(
+          details.map((detail: any, index: number) => {
+            // ✅ FIX: compute the id once, then actually USE it below.
+            const rawMaterialId =
+              detail.RawMaterialId ??
+              detail.RawMaterialID ??
+              detail.rawMaterialId ??
+              detail.raw_material_id ??
+              null;
+
+            return {
+              id: String(detail.detailId ?? `${transactionId}-${index}`),
+              name: detail.itemname ?? '',
+              raw_material_id: rawMaterialId, // ✅ was `detail.RawMaterialId ?? ''`
+              unit: detail.unit ?? 'kg',
+              qty: Number(detail.qty ?? detail.quantity ?? 0),
+              unitCost: Number(detail.unitCost ?? detail.unit_cost ?? 0),
+              discountPct: Number(detail.discountPct ?? detail.discount_pct ?? 0),
+            };
+          }),
+        );
+      } catch (error: any) {
+        if (error?.name === 'CanceledError' || cancelled) return;
+        console.error(
+          '[PurchaseReceiptForm] Failed to load transaction:',
+          error,
+        );
+      } finally {
+        if (!cancelled) setIsLoadingTransaction(false);
+      }
+    };
+
+    loadTransaction();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [mode, transactionId, restaurantId]);
+
+  // ==========================================================
+  // ✅ FIX: Initial data loader — uses its OWN flag so it can
+  // never stomp on the transaction loader.
+  // ==========================================================
   useEffect(() => {
     const fetchInitialData = async () => {
-      setIsLoading(true);
+      setIsLoadingInitial(true);
       try {
         const [suppliersRes, rawMaterialsRes] = await Promise.all([
-          api.get('/suppliers', { params: { restaurantId: 1 } }),
-          api.get('/raw-materials', { params: { restaurantId: 1 } }),
+          api.get('/suppliers', { params: { restaurantId } }),
+          api.get('/raw-materials', { params: { restaurantId } }),
         ]);
 
-        console.log("==============================================");
+        console.log('==============================================');
         console.log('Suppliers:', suppliersRes.data);
         console.log('Raw Materials:', rawMaterialsRes.data);
-        console.log("==============================================");
-        
+        console.log('==============================================');
+
         setSuppliersList(suppliersRes.data);
-        
-        // Handle different API response structures
-        let rawMaterials = [];
+
+        let rawMaterials: Product[] = [];
         if (Array.isArray(rawMaterialsRes.data)) {
           rawMaterials = rawMaterialsRes.data;
         } else if (rawMaterialsRes.data.rawMaterials) {
           rawMaterials = rawMaterialsRes.data.rawMaterials;
         } else if (rawMaterialsRes.data.data) {
           rawMaterials = rawMaterialsRes.data.data;
-        } else {
-          rawMaterials = [];
         }
-        
+
         setProductList(rawMaterials);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
-        setIsLoading(false);
+        setIsLoadingInitial(false);
       }
     };
 
     fetchInitialData();
+  }, [restaurantId]);
+
+  const handleCreateAnotherReceipt = () => {
+    const resetDate = todayISO();
+    const nextGrnNumber = `GRN-${Date.now().toString().slice(-6)}`;
+
+    setSupplierName('');
+    setSupplier('');
+    setSelectedSupplierDetails(null);
+    setGrnNumber(nextGrnNumber);
+    setReference('');
+    setComment('');
+    setDate(resetDate);
+    setDateInput(formatDateSlash(resetDate));
+    setCalendarCursor(parseISODate(resetDate));
+    setIsDatePickerOpen(false);
+
+    setItems([]);
+
+    setIsSaved(false);
+    window.requestAnimationFrame(() => supplierInputRef.current?.focus());
+  };
+
+  useEffect(() => {
+    supplierInputRef.current?.focus();
   }, []);
 
-const handleCreateAnotherReceipt = () => {
-  // 1. Reset all header input states back to empty/defaults
-  const resetDate = todayISO();
-  const nextGrnNumber = `GRN-${Date.now().toString().slice(-6)}`;
+  const handleBackToDashboard = () => {
+    setIsSaved(false);
+    onCancel?.();
+    window.location.assign('/dashboard');
+  };
 
-  setSupplierName('');
-  setSupplier('');
-  setSelectedSupplierDetails(null);
-  setGrnNumber(nextGrnNumber);
-  setReference('');
-  setComment('');
-  setDate(resetDate);
-  setDateInput(formatDateSlash(resetDate));
-  setCalendarCursor(parseISODate(resetDate));
-  setIsDatePickerOpen(false);
+  const handleSupplierChange = (value: string) => {
+    setSupplier(value);
+    setActiveSupplierIndex(0);
+    setIsSupplierMenuOpen(value.trim().length > 0);
+    const matched = suppliersList.find(
+      (s) =>
+        s.supplierName.toLowerCase() === value.trim().toLowerCase() ||
+        `${s.supplierCode} - ${s.supplierName}`.toLowerCase() === value.trim().toLowerCase()
+    );
+    setSelectedSupplierDetails(matched || null);
+  };
 
-  // 2. Clear the line items array in your table
-  setItems([]);
+  const handleSupplierKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const query = supplier.trim().toLowerCase();
+    const filteredSuppliers = suppliersList.filter((s) =>
+      !query || `${s.supplierCode} ${s.supplierName}`.toLowerCase().includes(query)
+    );
 
-  // 3. Reset financial summary totals (if stored in state)
- // setSubtotal(0);
-  //setTaxAmount(0);
-  //setDiscountAmount(0);
-  //setNetTotal(0);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsSupplierMenuOpen(false);
+      return;
+    }
+    if (event.key === 'ArrowDown' && filteredSuppliers.length) {
+      event.preventDefault();
+      setIsSupplierMenuOpen(true);
+      setActiveSupplierIndex((index) => (index + 1) % filteredSuppliers.length);
+      return;
+    }
+    if (event.key === 'ArrowUp' && filteredSuppliers.length) {
+      event.preventDefault();
+      setIsSupplierMenuOpen(true);
+      setActiveSupplierIndex((index) => (index - 1 + filteredSuppliers.length) % filteredSuppliers.length);
+      return;
+    }
+    if (event.key === 'Enter' && isSupplierMenuOpen && filteredSuppliers.length) {
+      event.preventDefault();
+      const selected = filteredSuppliers[activeSupplierIndex] || filteredSuppliers[0];
+      handleSupplierChange(`${selected.supplierCode} - ${selected.supplierName}`);
+      setIsSupplierMenuOpen(false);
+      return;
+    }
+    handleEnterAsTab(event);
+  };
 
-  // 4. Finally, hide the modal & reveal the form again
-  setIsSaved(false);
-  window.requestAnimationFrame(() => supplierInputRef.current?.focus());
-};
+  const handleSave = async () => {
+    if (!selectedSupplierDetails) {
+      alert('Please select a valid supplier from the dropdown list.');
+      return;
+    }
 
-useEffect(() => {
-  supplierInputRef.current?.focus();
-}, []);
+    if (!items.length) {
+      alert('Please add at least one item before saving.');
+      return;
+    }
 
-const handleBackToDashboard = () => {
-  setIsSaved(false);
-  onCancel?.();
-  window.location.assign('/dashboard');
-};
+    const hasInvalidItem = items.some((item) => !item.raw_material_id);
+    if (hasInvalidItem) {
+      alert('One or more items do not have a valid raw material ID. Please select them from the suggestion list.');
+      return;
+    }
 
+    setIsSubmitting(true);
+    setErrorMessage(null);
 
+    try {
+      const supplierId = selectedSupplierDetails?.supplierCode
+        ?? selectedSupplierDetails?.supplierCode
+        ?? 1;
 
-const handleSupplierChange = (value: string) => {
-  setSupplier(value);
-  setActiveSupplierIndex(0);
+      const payload = {
+        restaurantId: 1,
 
-  // Open the dropdown ONLY if the user has typed something
-  if (value.trim().length > 0) {
-    setIsSupplierMenuOpen(true);
-  } else {
-    setIsSupplierMenuOpen(false);
-  }
+        supplierName: supplier.trim() || selectedSupplierDetails?.supplierName || "Prime Meats & Produce Co.",
 
-  const matched = suppliersList.find(
-    (s) =>
-      s.supplierName.toLowerCase() === value.trim().toLowerCase() ||
-      `${s.supplierCode} - ${s.supplierName}`.toLowerCase() === value.trim().toLowerCase()
-  );
-  setSelectedSupplierDetails(matched || null);
-};
-const handleSupplierKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-  const query = supplier.trim().toLowerCase();
-  const filteredSuppliers = suppliersList.filter((s) =>
-    !query || `${s.supplierCode} ${s.supplierName}`.toLowerCase().includes(query)
-  );
+        supplierId: 1,
+        grnNumber: grnNumber,
+        receivedAt: date,
+        reference: reference,
+        comment: comment,
 
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    setIsSupplierMenuOpen(false);
-    return;
-  }
-  if (event.key === 'ArrowDown' && filteredSuppliers.length) {
-    event.preventDefault();
-    setIsSupplierMenuOpen(true);
-    setActiveSupplierIndex((index) => (index + 1) % filteredSuppliers.length);
-    return;
-  }
-  if (event.key === 'ArrowUp' && filteredSuppliers.length) {
-    event.preventDefault();
-    setIsSupplierMenuOpen(true);
-    setActiveSupplierIndex((index) => (index - 1 + filteredSuppliers.length) % filteredSuppliers.length);
-    return;
-  }
-  if (event.key === 'Enter' && isSupplierMenuOpen && filteredSuppliers.length) {
-    event.preventDefault();
-    const selected = filteredSuppliers[activeSupplierIndex] || filteredSuppliers[0];
-    handleSupplierChange(`${selected.supplierCode} - ${selected.supplierName}`);
-    setIsSupplierMenuOpen(false);
-    return;
-  }
-  handleEnterAsTab(event);
-};
+        subtotal: Number(subtotal.toFixed(2)),
+        discount: Number(discount.toFixed(2)),
+        tax: Number(tax.toFixed(2)),
+        netTotal: Number(netTotal.toFixed(2)),
 
-const handleSave = async () => {
-  // 1. Validation checks
-  if (!selectedSupplierDetails) {
-    alert('Please select a valid supplier from the dropdown list.');
-    return;
-  }
+        items: items.map((item) => ({
+          rawMaterialId: Number(item.raw_material_id),
+          name: item.name.trim(),
+          quantity: Number(item.qty),
+          unit: item.unit,
+          unitCost: Number(item.unitCost),
+          discountPct: Number(item.discountPct || 0),
+          lineTotal: Number(lineTotalOf(item).toFixed(2)),
+        })),
+      };
 
-  if (!items.length) {
-    alert('Please add at least one item before saving.');
-    return;
-  }
+      console.log('NUEVO Clean Payload 001:', JSON.stringify(payload, null, 2));
 
-  // Ensure every item has a raw_material_id
-  const hasInvalidItem = items.some((item) => !item.raw_material_id);
-  if (hasInvalidItem) {
-    alert('One or more items do not have a valid raw material ID. Please select them from the suggestion list.');
-    return;
-  }
+      if (mode === 'edit' && transactionId) {
+        await api.put(
+          `/stock-transactions/${transactionId}`,
+          payload,
+          { params: { restaurantId } },
+        );
 
-  setIsSubmitting(true);
-  setErrorMessage(null);
+        console.log(
+          '[PurchaseReceiptForm] Transaction updated:',
+          transactionId,
+        );
 
-  try {
-    const supplierId = selectedSupplierDetails?.supplierCode
-  ?? selectedSupplierDetails?.supplierCode 
-  ?? 1; // Ensure this is a valid ID number, not null
-    // 2. Format precision-safe payload
-const payload = {
-  restaurantId: 1,
-  
-  // Required string validation on backend
-  supplierName: supplier.trim() || selectedSupplierDetails?.supplierName || "Prime Meats & Produce Co.",
-  
-  // Optional / standard schema fields
-  supplierId: 1,
-  grnNumber: grnNumber,
-  receivedAt: date,
-  reference: reference,
-  comment: comment,
-  
-  subtotal: Number(subtotal.toFixed(2)),
-  discount: Number(discount.toFixed(2)),
-  tax: Number(tax.toFixed(2)),
-  netTotal: Number(netTotal.toFixed(2)),
-  
-  items: items.map((item) => ({
-    rawMaterialId: Number(item.raw_material_id),
-    name: item.name.trim(),
-    quantity: Number(item.qty),
-    unit: item.unit,
-    unitCost: Number(item.unitCost),
-    discountPct: Number(item.discountPct || 0),
-    lineTotal: Number(lineTotalOf(item).toFixed(2)),
-  })),
-};
+        onCancel?.();
+      } else {
+        await api.post('/stock-transactions', payload);
 
-    console.log('NUEVO Clean Payload 001:', JSON.stringify(payload, null, 2));
+        console.log(
+          '[PurchaseReceiptForm] New transaction created',
+        );
 
-    await api.post('/stock-transactions', payload);
-    setIsSaved(true);
-  } catch (error: any) {
-    console.error('Backend Error Response:', error.response?.data);
-    setErrorMessage(error.response?.data?.message || 'Failed to save transaction.');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+        setIsSaved(true);
+      }
+    } catch (error: any) {
+      console.error('Backend Error Response:', error.response?.data);
+      setErrorMessage(error.response?.data?.message || 'Failed to save transaction.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     if (!isDatePickerOpen) return;
     const handleOutsideClick = (event: MouseEvent) => {
@@ -975,54 +1130,28 @@ const payload = {
   const netTotal = taxableAmount + tax;
   const itemCount = items.length;
 
-  // const handleSave = () => {
-  //   onSave?.({
-  //     grnNumber,
-  //     supplier,
-  //     supplierDetails: selectedSupplierDetails,
-  //     date,
-  //     reference,
-  //     comment,
-  //     items,
-  //     subtotal,
-  //     discount,
-  //     taxableAmount,
-  //     tax,
-  //     netTotal,
-  //     attachmentName: attachedFile?.name ?? null,
-  //   });
-  //   setIsSaved(true);
-  // };
-
-  // Helper function to handle product selection from datalist
   const handleProductSelect = (itemId: string, value: string) => {
-    // Find the product by name (case-insensitive)
     const matchedProduct = ProductList.find(
       (product) => product.name.toLowerCase() === value.trim().toLowerCase()
     );
 
     if (matchedProduct) {
-      // Access the product data with proper property names
-      // The API might return camelCase or snake_case
       const productData = matchedProduct as any;
-      
-      // Get unit - try both property names
+
       const unit = productData.unit || productData.Unit || 'kg';
-      
-      // Get cost price - try both property names and handle string/number
+
       let costPrice = productData.cost_price || productData.costPrice || 0;
       if (typeof costPrice === 'string') {
         costPrice = parseFloat(costPrice) || 0;
       }
-      
+
       console.log('Selected product:', {
         name: matchedProduct.name,
         unit: unit,
         costPrice: costPrice,
-        rawData: productData
+        rawData: productData,
       });
-      
-      // Update all fields
+
       updateItem(itemId, {
         name: matchedProduct.name,
         raw_material_id: matchedProduct.id,
@@ -1030,46 +1159,61 @@ const payload = {
         unitCost: costPrice,
       });
     } else {
-      // If not matched, just update the name
       updateItem(itemId, { name: value });
     }
   };
+
+  // ==========================================================
+  // ✅ FIX: Show a loading screen while either fetch is running.
+  // ==========================================================
+  if (isLoading) {
+    return (
+      <main className="pr-page">
+        <ReceiptStyles />
+        <div className="pr-loading-screen">
+          <div className="pr-loading-spinner" aria-hidden="true" />
+          <p className="pr-loading-copy">
+            {isLoadingTransaction ? 'Loading Transaction .... ' : 'Loading suppliers…'}
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   if (isSaved) {
     return (
       <main className="pr-page">
         <ReceiptStyles />
-     <div className="pr-success-backdrop">
-  <div className="pr-success-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-success-title">
-    {/* Checkmark Icon */}
-    <div className="pr-success-modal-icon">
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-      </svg>
-    </div>
+        <div className="pr-success-backdrop">
+          <div className="pr-success-modal" role="dialog" aria-modal="true" aria-labelledby="receipt-success-title">
+            <div className="pr-success-modal-icon">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
 
-    <p className="pr-success-kicker">Receipt saved</p>
-    <h3 id="receipt-success-title" className="pr-success-modal-title">Successfully done</h3>
-    <p className="pr-success-modal-copy">The goods receipt has been saved successfully and is ready for review.</p>
+            <p className="pr-success-kicker">Receipt saved</p>
+            <h3 id="receipt-success-title" className="pr-success-modal-title">Successfully done</h3>
+            <p className="pr-success-modal-copy">The goods receipt has been saved successfully and is ready for review.</p>
 
-    <div className="pr-success-actions">
-      <button
-        type="button"
-        onClick={handleCreateAnotherReceipt}
-        className="pr-success-action pr-success-action-primary"
-      >
-        Create another Transaction
-      </button>
-      <button
-        type="button"
-        onClick={handleBackToDashboard}
-        className="pr-success-action pr-success-action-secondary"
-      >
-        Back
-      </button>
-    </div>
-  </div>
-</div>
+            <div className="pr-success-actions">
+              <button
+                type="button"
+                onClick={handleCreateAnotherReceipt}
+                className="pr-success-action pr-success-action-primary"
+              >
+                Create another Transaction
+              </button>
+              <button
+                type="button"
+                onClick={handleBackToDashboard}
+                className="pr-success-action pr-success-action-secondary"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
@@ -1078,25 +1222,6 @@ const payload = {
     <main className="pr-page">
       <ReceiptStyles />
       <div className="pr-shell" ref={formRef}>
-        <header className="pr-topbar">
-          <div className="pr-breadcrumb" aria-label="Breadcrumb">
-            <span className="pr-breadcrumb-kicker">Inventory</span>
-            <span className="pr-breadcrumb-sep">/</span>
-            <span className="pr-breadcrumb-title">New goods receipt</span>
-          </div>
-          <div className="pr-topbar-actions">
-            <button className="pr-btn pr-btn-quiet" type="button" onClick={onCancel}>Cancel</button>
-            <button
-  className="pr-btn pr-btn-primary"
-  type="button"
-  onClick={handleSave}
-  disabled={isSubmitting}
->
-  {isSubmitting ? 'Saving...' : 'Save receipt'}
-</button>
-          </div>
-        </header>
-
         <section className="pr-card" aria-label="Goods receipt form">
           <div className="pr-hero">
             <div className="pr-hero-top">
@@ -1108,9 +1233,16 @@ const payload = {
                 </div>
                 <p className="pr-receipt-id">RECEIPT / {grnNumber || 'UNASSIGNED'}</p>
               </div>
-              <div className="pr-status" aria-label="Receipt status: ready for review">
-                <span className="pr-status-dot" />
-                <span className="pr-status-copy">Ready for review</span>
+              <div className="pr-topbar-actions">
+                <button className="pr-btn pr-btn-quiet" type="button" onClick={onCancel}>Cancel</button>
+                <button
+                  className="pr-btn pr-btn-primary"
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save receipt'}
+                </button>
               </div>
             </div>
 
@@ -1120,21 +1252,15 @@ const payload = {
                   Supplier {isLoadingSuppliers && '(Loading...)'}
                 </span>
                 <input
-  ref={supplierInputRef}
-  className="pr-input pr-supplier-input"
-  value={supplier}
-  onChange={(event) => handleSupplierChange(event.target.value)}
-  onFocus={() => {
-    // Keep focus logic without opening menu automatically
-    setActiveSupplierIndex(0);
-    if (supplier.trim().length > 0) {
-      setIsSupplierMenuOpen(true);
-    }
-  }}
-  onBlur={() => window.setTimeout(() => setIsSupplierMenuOpen(false), 120)}
-  onKeyDown={handleSupplierKeyDown}
-  placeholder={isLoadingSuppliers ? 'Loading suppliers...' : 'Search or enter supplier…'}
-/>
+                  ref={supplierInputRef}
+                  className="pr-input pr-supplier-input"
+                  value={supplier}
+                  onChange={(event) => handleSupplierChange(event.target.value)}
+                  onFocus={() => { setActiveSupplierIndex(0); }}
+                  onBlur={() => window.setTimeout(() => setIsSupplierMenuOpen(false), 120)}
+                  onKeyDown={handleSupplierKeyDown}
+                  placeholder={isLoadingSuppliers ? 'Loading suppliers...' : 'Search or enter supplier…'}
+                />
                 <button
                   type="button"
                   className={`pr-supplier-chevron${isSupplierMenuOpen ? ' pr-supplier-chevron-open' : ''}`}
@@ -1326,8 +1452,6 @@ const payload = {
                 />
               </label>
             </div>
-
-
           </div>
 
           <div className="pr-content">

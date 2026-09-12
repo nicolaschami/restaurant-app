@@ -229,19 +229,48 @@ const headerPayload: any = {
   (newTransaction as any).id
 );
 console.log('=== RAW NEW TRANSACTION RETURNED ===>>>>>>>', headerId);
-const detailsPayload = items.map((item: any) => ({
-  // Map to the exact schema key (lowercase 'transactionid' as shown in your query log)
-  transactionId: headerId,
-  itemname: String(item.name || item.itemName || item.rawMaterialName || ''),
-  unit: String(item.unit || ''),
-  qty: Number(item.quantity ?? item.qty ?? 0),
-  unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
-  discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
-  lineTotal : String(item.lineTotal ?? item.line_total ?? 0),
-  type: 'PUR',
-}));
+// const detailsPayload = items.map((item: any) => ({  
+//     console.log("Current item:", item);
+//   return{
+//   // Map to the exact schema key (lowercase 'transactionid' as shown in your query log)
+//   transactionId: headerId,
+//   RawMaterialID : item.id,
+//   itemname: String(item.name || item.itemName || item.rawMaterialName || ''),
+  
+  
+//   unit: String(item.unit || ''),
+//   qty: Number(item.quantity ?? item.qty ?? 0),
+//   unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
+//   discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
+//   lineTotal : String(item.lineTotal ?? item.line_total ?? 0),
+//   type: 'PUR',
+//   }
+// }));
 
-console.log('=== EXECUTING DETAILS INSERT ===', detailsPayload);
+
+const detailsPayload = items.map((item: any) => {
+  console.log("====Current item:===============", item);
+
+  return {
+    transactionId: headerId,
+    RawMaterialId: item.rawMaterialId,
+    itemname: String(
+      item.name ||
+      item.itemName ||
+      item.rawMaterialName ||
+      ''
+    ),
+    unit: String(item.unit || ''),
+    qty: Number(item.quantity ?? item.qty ?? 0),
+    unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
+    discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
+    lineTotal: String(item.lineTotal ?? item.line_total ?? 0),
+    type: 'PUR',
+  };
+});
+
+
+console.log('***** EXECUTING DETAILS INSERT ===', detailsPayload,"  ****************");
 
 const insertedDetails = await tx
   .insert(stockDetails)
@@ -262,76 +291,333 @@ const insertedDetails = await tx
   // 4. PUT /api/stock-transactions/:id (Update Existing)
   // Ensures transaction being updated matches the restaurantId
   // ==========================================
-  fastify.put<{ Params: { id: string }; Body: CreateStockTransactionPayload }>(
-    '/api/stock-transactions/:id',
-    async (request, reply) => {
-      const transactionId = parseInt(request.params.id, 10);
-      const { items, ...headerData } = request.body;
+//   fastify.put<{ Params: { id: string }; Body: CreateStockTransactionPayload }>(
+//     '/api/stock-transactions/:id',
+//     async (request, reply) => {
+//       const transactionId = parseInt(request.params.id, 10);
+//       const { items, ...headerData } = request.body;
 
-      if (!headerData.restaurantId) {
-        return reply.code(400).send({ error: 'restaurantId is required.' });
-      }
+//       if (!headerData.restaurantId) {
+//         return reply.code(400).send({ error: 'restaurantId is required.' });
+//       }
 
-      if (!headerData.supplierName?.trim()) {
-        return reply.code(400).send({ error: 'Supplier is required.' });
-      }
+//       if (!headerData.supplierName?.trim()) {
+//         return reply.code(400).send({ error: 'Supplier is required.' });
+//       }
 
-      if (!Array.isArray(items) || items.length === 0) {
-        return reply.code(400).send({ error: 'At least one transaction item is required.' });
-      }
+//       if (!Array.isArray(items) || items.length === 0) {
+//         return reply.code(400).send({ error: 'At least one transaction item is required.' });
+//       }
 
-      try {
-        const result = await db.transaction(async (tx) => {
-          // Update only if both TransactionID and RestaurantID match
-          const [updatedTransaction] = await tx
-            .update(stockTransactions)
-            .set({
-              ...headerData,
-              updatedAt: new Date(),
-            })
-           .where(
-  and(
-    eq(stockTransactions.transactionId, transactionId),
-    eq(stockTransactions.restaurantId, headerData.restaurantId!)
-  )
-)
-            .returning();
+//       try {
+//         const result = await db.transaction(async (tx) => {
+//           // Update only if both TransactionID and RestaurantID match
+//           const [updatedTransaction] = await tx
+//             .update(stockTransactions)
+//             .set({
+//               ...headerData,
+//               updatedAt: new Date(),
+//             })
+//            .where(
+//   and(
+//     eq(stockTransactions.transactionId, transactionId),
+//     eq(stockTransactions.restaurantId, headerData.restaurantId!)
+//   )
+// )
+//             .returning();
 
-          if (!updatedTransaction) {
-            throw new Error('NOT_FOUND');
-          }
+//           if (!updatedTransaction) {
+//             throw new Error('NOT_FOUND');
+//           }
 
-          // Delete Old Details
-          await tx
-            .delete(stockDetails)
-            .where(eq(stockDetails.transactionId, transactionId));
+//           // Delete Old Details
+//           await tx
+//             .delete(stockDetails)
+//             .where(eq(stockDetails.transactionId, transactionId));
 
-          // Insert New Details
-          const detailsToInsert = items.map((item) => ({
-            ...item,
-            transactionId: transactionId,
-            type: item.type || updatedTransaction.type,
-          }));
+//           // Insert New Details
+//           const detailsToInsert = items.map((item) => ({
+//             ...item,
+//             transactionId: transactionId,
+//             type: item.type || updatedTransaction.type,
+//           }));
 
-          const insertedDetails = await tx
-            .insert(stockDetails)
-            .values(detailsToInsert)
-            .returning();
+//           const insertedDetails = await tx
+//             .insert(stockDetails)
+//             .values(detailsToInsert)
+//             .returning();
 
-          return { ...updatedTransaction, details: insertedDetails };
-        });
+//           return { ...updatedTransaction, details: insertedDetails };
+//         });
 
-        return reply.code(200).send({
-          message: 'Transaction updated successfully',
-          data: result,
-        });
-      } catch (error) {
-        if (error instanceof Error && error.message === 'NOT_FOUND') {
-          return reply.code(404).send({ error: 'Stock transaction not found for this restaurant' });
-        }
-        request.log.error(error);
-        return reply.code(500).send({ error: 'Failed to update transaction' });
-      }
+//         return reply.code(200).send({
+//           message: 'Transaction updated successfully',
+//           data: result,
+//         });
+//       } catch (error) {
+//         if (error instanceof Error && error.message === 'NOT_FOUND') {
+//           return reply.code(404).send({ error: 'Stock transaction not found for this restaurant' });
+//         }
+//         request.log.error(error);
+//         return reply.code(500).send({ error: 'Failed to update transaction' });
+//       }
+//     }
+//   );
+
+fastify.put<{ Params: { id: string }; Body: any }>(
+  '/api/stock-transactions/:id',
+  async (request, reply) => {
+    const transactionId = parseInt(request.params.id, 10);
+    if (Number.isNaN(transactionId)) {
+      return reply.code(400).send({ error: 'Invalid transaction id.' });
     }
-  );
+
+    const body = request.body as Record<string, any>;
+    const items = body.items || [];
+
+    // Casing-tolerant extraction (same as POST)
+    const restaurantId  = body.restaurantId ?? body.restaurant_id ?? body.RestaurantID;
+    const supplierName  = body.supplierName ?? body.supplier_name ?? body.SupplierName;
+    const grnNumber     = body.grnNumber ?? body.grn_number ?? body.GRNNumber;
+    const receivedAt    = body.receivedAt ?? body.received_at ?? body.TransactionDate;
+    const reference     = body.reference ?? body.Reference;
+    const comment       = body.comment ?? body.Comment;
+    const subtotal      = body.subtotal ?? body.Subtotal ?? 0;
+    const discountAmount = body.discountAmount ?? body.discount ?? body.DiscountAmount ?? 0;
+    const taxAmount     = body.taxAmount ?? body.tax ?? body.TaxAmount ?? 0;
+    const netTotal      = body.netTotal ?? body.net_total ?? body.NetTotal ?? 0;
+    const status        = body.status ?? body.Status ?? 'DRAFT';
+    const type          = body.type ?? body.Type ?? 'PUR';
+
+    if (!restaurantId) {
+      return reply.code(400).send({ error: 'restaurantId is required.' });
+    }
+    if (!supplierName || !String(supplierName).trim()) {
+      return reply.code(400).send({ error: 'Supplier is required.' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return reply.code(400).send({ error: 'At least one transaction item is required.' });
+    }
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        // Build a clean, schema-shaped header payload (do NOT spread raw body)
+        const headerPayload: Record<string, any> = {
+          RestaurantID: Number(restaurantId),
+          restaurantId: Number(restaurantId),
+
+          GRNNumber: grnNumber ? String(grnNumber) : null,
+          grnNumber: grnNumber ? String(grnNumber) : null,
+
+          SupplierName: String(supplierName),
+          supplierName: String(supplierName),
+
+          TransactionDate: receivedAt ? new Date(receivedAt) : new Date(),
+          transactionDate: receivedAt ? new Date(receivedAt) : new Date(),
+
+          Reference: reference ? String(reference) : null,
+          reference: reference ? String(reference) : null,
+
+          Comment: comment ? String(comment) : null,
+          comment: comment ? String(comment) : null,
+
+          Subtotal: String(subtotal),
+          subtotal: String(subtotal),
+
+          DiscountAmount: String(discountAmount),
+          discountAmount: String(discountAmount),
+
+          TaxAmount: String(taxAmount),
+          taxAmount: String(taxAmount),
+
+          NetTotal: String(netTotal),
+          netTotal: String(netTotal),
+
+          Status: String(status),
+          status: String(status),
+
+          type: String(type),
+
+          updatedAt: new Date(),
+        };
+
+        // Drop undefined values so Drizzle doesn't complain
+        for (const k of Object.keys(headerPayload)) {
+          if (headerPayload[k] === undefined) delete headerPayload[k];
+        }
+
+        const [updatedTransaction] = await tx
+          .update(stockTransactions)
+          .set(headerPayload)
+          .where(
+            and(
+              eq(stockTransactions.transactionId, transactionId),
+              eq(stockTransactions.restaurantId, Number(restaurantId))
+            )
+          )
+          .returning();
+
+        if (!updatedTransaction) throw new Error('NOT_FOUND');
+
+        // Delete old lines
+        await tx
+          .delete(stockDetails)
+          .where(eq(stockDetails.transactionId, transactionId));
+
+        // Map items exactly like the POST does
+        const detailsPayload = items.map((item: any) => ({
+          transactionId,
+          RawMaterialId:
+            item.rawMaterialId ??
+            item.rawMaterialID ??
+            item.RawMaterialID ??
+            item.id,
+          itemname: String(
+            item.name ||
+            item.itemName ||
+            item.rawMaterialName ||
+            item.itemname ||
+            ''
+          ),
+          unit: String(item.unit || ''),
+          qty: Number(item.quantity ?? item.qty ?? 0),
+          unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
+          discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
+          lineTotal: String(item.lineTotal ?? item.line_total ?? 0),
+          type: String(item.type || type || 'PUR'),
+        }));
+
+        const insertedDetails = await tx
+          .insert(stockDetails)
+          .values(detailsPayload as any)
+          .returning();
+
+        return { ...updatedTransaction, details: insertedDetails };
+      });
+
+      return reply.code(200).send({
+        message: 'Transaction updated successfully',
+        data: result,
+      });
+    } catch (error: any) {
+      if (error instanceof Error && error.message === 'NOT_FOUND') {
+        return reply.code(404).send({
+          error: 'Stock transaction not found for this restaurant',
+        });
+      }
+      request.log.error(error);
+      // Include details so you can actually see what Drizzle is complaining about
+      return reply.code(500).send({
+        error: 'Failed to update transaction',
+        details: error?.message || String(error),
+      });
+    }
+  }
+);
+
+
+
+fastify.get<{
+  Params: {
+    transactionId: string;
+  };
+  Querystring: {
+    restaurantId: string;
+  };
+}>(
+  '/api/stock-transactions/:transactionId',
+  async (request, reply ) => {
+    const { transactionId } = request.params;
+    const { restaurantId } = request.query;
+
+    if (!restaurantId) {
+      return reply.code(400).send({
+        error: 'restaurantId query parameter is required.',
+      });
+    }
+
+    const parsedTransactionId = Number(transactionId);
+    const parsedRestaurantId = Number(restaurantId);
+
+    if (
+      !Number.isInteger(parsedTransactionId) ||
+      parsedTransactionId <= 0
+    ) {
+      return reply.code(400).send({
+        error: 'transactionId must be a valid positive number.',
+      });
+    }
+
+    if (
+      !Number.isInteger(parsedRestaurantId) ||
+      parsedRestaurantId <= 0
+    ) {
+      return reply.code(400).send({
+        error: 'restaurantId must be a valid positive number.',
+      });
+    }
+
+    try {
+      const transactions = await db
+        .select({
+          transactionId: stockTransactions.transactionId,
+          restaurantId: stockTransactions.restaurantId,
+          transactionNumber: stockTransactions.transactionNumber,
+          grnNumber: stockTransactions.grnNumber,
+          supplierName: stockTransactions.supplierName,
+          transactionDate: sql<string>`"TransactionDate"::text`,
+          reference: stockTransactions.reference,
+          comment: stockTransactions.comment,
+          subtotal: stockTransactions.subtotal,
+          discountAmount: stockTransactions.discountAmount,
+          taxableAmount: stockTransactions.taxableAmount,
+          taxAmount: stockTransactions.taxAmount,
+          netTotal: stockTransactions.netTotal,
+          status: stockTransactions.status,
+          type: stockTransactions.type,
+        })
+        .from(stockTransactions)
+        .where(
+          and(
+            eq(stockTransactions.transactionId, parsedTransactionId),
+            eq(stockTransactions.restaurantId, parsedRestaurantId),
+          ),
+        )
+        .limit(1);
+
+      if (!transactions.length) {
+        return reply.code(404).send({
+          error: 'Stock transaction not found.',
+        });
+      }
+
+      const transaction = transactions[0];
+
+      const details = await db
+        .select()
+        .from(stockDetails)
+        .where(
+          eq(stockDetails.transactionId, parsedTransactionId),
+        );
+
+      return reply.code(200).send({
+        ...transaction,
+        details,
+      });
+    } catch (error) {
+      request.log.error(error);
+
+      return reply.code(500).send({
+        error: 'Failed to fetch stock transaction.',
+      });
+    }
+  },
+);
+
+
+
+
+
+
+
 }

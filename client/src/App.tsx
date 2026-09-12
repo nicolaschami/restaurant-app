@@ -89,7 +89,7 @@ export function App() {
       case 'purchaselist':
         return (
           <PurchaseList
-            onNewPurchase={() => setActiveTab('purchase')}
+        //    onNewPurchase={() => setActiveTab('purchase')}
           />
         );
       case 'categories':
