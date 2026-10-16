@@ -36,6 +36,13 @@ import { kdsRoutes} from './routes/kds.js'
 import printerRoutes from './routes/silent-print.js';
 import  stockTransactionRoutes from './routes/stock-transactions.js';
 import restaurantRoutes from './routes/restaurants.js';
+import dashboardRoutes from './routes/dashboard.js';
+import {
+  getRestaurantId,
+  assertOrderInRestaurant,
+  assertOrderItemInRestaurant,
+  assertMenuItemInRestaurant,
+} from './lib/tenant.js';
 
 
 // Module Type Augmentations
@@ -66,7 +73,20 @@ declare module 'fastify' {
 }
 
 const fastify = Fastify({
-  logger: true,
+  logger: {
+    // Hide the login token in logged URLs. The WebSocket sends it as /ws?token=...
+    // (browsers can't add headers to a WebSocket), and logs must never contain tokens.
+    serializers: {
+      req(req) {
+        return {
+          method: req.method,
+          url: req.url.replace(/([?&]token=)[^&]*/, '$1***'),
+          host: req.host,
+          remoteAddress: req.ip,
+        };
+      },
+    },
+  },
   bodyLimit: 10485760, // 10MB limit to prevent dropping large payload requests
 });
 
@@ -107,13 +127,60 @@ fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyR
   }
 });
 
+// --- Global login guard ---
+// Every /api/* request must carry a valid login token (JWT), unless its path is in
+// PUBLIC_API_ROUTES. Being "secure by default" means a new route is protected
+// automatically, even if someone forgets to add `onRequest: [fastify.authenticate]`.
+// This matters on-premise too: guests on the restaurant Wi-Fi can reach the server.
+//
+// Not covered here (on purpose):
+//   - /uploads/*  → menu pictures; <img> tags cannot send a token.
+//   - /ws         → the WebSocket; it gets its own check in the security step #3.
+const PUBLIC_API_ROUTES = new Set<string>([
+  '/api/auth/login', // you can't be logged in before logging in
+]);
+
+fastify.addHook('onRequest', async (request, reply) => {
+  // CORS "preflight" requests (OPTIONS) are sent by the browser itself, without the
+  // token, before the real request. They must pass, or every call from the app fails.
+  if (request.method === 'OPTIONS') return;
+
+  const path = request.url.split('?')[0]; // ignore the ?query=part
+  if (!path.startsWith('/api/') || PUBLIC_API_ROUTES.has(path)) return;
+
+  try {
+    await request.jwtVerify(); // checks the token and fills request.user
+  } catch {
+    return reply.status(401).send({ error: 'Unauthorized' });
+  }
+});
+
 // --- WebSocket Route ---
 fastify.register(async function (fastifyInstance) {
   fastifyInstance.get(
     '/ws',
-    { websocket: true },
+    {
+      websocket: true,
+      // Runs BEFORE the connection is opened: no valid login token → refused (401).
+      // The token comes in the address (/ws?token=...) because browsers can't send
+      // an Authorization header when opening a WebSocket.
+      preValidation: async (request, reply) => {
+        const { token } = request.query as { token?: string };
+        try {
+          request.user = fastify.jwt.verify(token ?? '');
+        } catch {
+          return reply.status(401).send({ error: 'Unauthorized' });
+        }
+        if (!request.user.restaurantId) {
+          return reply.status(403).send({ error: 'User is not assigned to a restaurant.' });
+        }
+      },
+    },
     (connection, req) => {
-      fastify.log.info('New WebSocket connection opened');
+      // The room (= which restaurant's live updates this screen receives) comes from
+      // the token, so a screen can only ever listen to its own restaurant.
+      const restaurantId = String(req.user.restaurantId);
+      fastify.log.info({ restaurantId }, 'New WebSocket connection opened');
 
       // @fastify/websocket v8+ passes the raw ws socket directly as
       // `connection`. Older versions (v7 and below) wrap it as
@@ -134,7 +201,7 @@ fastify.register(async function (fastifyInstance) {
       // abrupt code 1006 close on the client.
       try {
         if (typeof roomManager?.handleConnection === 'function') {
-          roomManager.handleConnection(socket, req);
+          roomManager.handleConnection(socket, restaurantId);
         } else {
           socket.on('message', (message: Buffer) => {
             console.log('Received WS message:', message.toString());
@@ -266,16 +333,12 @@ fastify.get(
   '/api/menu-items',
   { onRequest: [fastify.authenticate] },
   async (request, reply) => {
-    const { restaurantId, categoryId } = request.query as {
-      restaurantId?: string;
-      categoryId?: string;
-    };
+    const { categoryId } = request.query as { categoryId?: string };
 
-    const conditions = [];
+    // Always limited to the user's own restaurant (from the token). Before, a request
+    // without ?restaurantId returned the menu items of ALL restaurants.
+    const conditions = [eq(menuItems.restaurantId, getRestaurantId(request))];
 
-    if (restaurantId) {
-      conditions.push(eq(menuItems.restaurantId, parseInt(restaurantId)));
-    }
     if (categoryId) {
       conditions.push(eq(menuItems.categoryId, parseInt(categoryId)));
     }
@@ -316,6 +379,9 @@ fastify.get(
       return reply.status(400).send({ error: 'Invalid ID format.' });
     }
 
+    // Another restaurant's item → 404.
+    await assertMenuItemInRestaurant(itemId, getRestaurantId(request));
+
     const [item] = await db
       .select()
       .from(menuItems)
@@ -342,6 +408,9 @@ fastify.patch(
     }
 
     const body = request.body as Record<string, any>;
+
+    // Only the user's own restaurant's items can be edited.
+    await assertMenuItemInRestaurant(itemId, getRestaurantId(request));
 
     const [existing] = await db
       .select()
@@ -420,6 +489,9 @@ fastify.delete(
     if (isNaN(itemId)) {
       return reply.status(400).send({ error: 'Invalid ID format.' });
     }
+
+    // Only the user's own restaurant's items can be deleted.
+    await assertMenuItemInRestaurant(itemId, getRestaurantId(request));
 
     const [deletedItem] = await db
       .delete(menuItems)
@@ -502,6 +574,9 @@ fastify.patch('/api/orders/:id/status', async (request, reply) => {
   const { id } = request.params as { id: string };
   const { status } = request.body as { status: string };
 
+  // Only the user's own restaurant's orders (another restaurant's → 404).
+  await assertOrderInRestaurant(parseInt(id), getRestaurantId(request));
+
   const [updatedOrder] = await db
     .update(orders)
     .set({ status })
@@ -536,6 +611,8 @@ fastify.post('/api/orders/:orderId/items', async (request, reply) => {
   }
 
   const parsedOrderId = parseInt(orderId);
+  // Items can only be added to the user's own restaurant's orders.
+  await assertOrderInRestaurant(parsedOrderId, getRestaurantId(request));
   const resultItems = [];
 
   for (const item of body.items) {
@@ -601,6 +678,9 @@ fastify.patch('/api/order-items/:id', async (request, reply) => {
 
   const itemId = parseInt(id);
 
+  // Only items of the user's own restaurant's orders.
+  await assertOrderItemInRestaurant(itemId, getRestaurantId(request));
+
   const [existingItem] = await db
     .select()
     .from(orderItems)
@@ -647,6 +727,9 @@ fastify.delete('/api/order-items/:id', async (request, reply) => {
     return reply.status(400).send({ error: 'Invalid item ID format.' });
   }
 
+  // Only items of the user's own restaurant's orders.
+  await assertOrderItemInRestaurant(itemId, getRestaurantId(request));
+
   const [existingItem] = await db
     .select()
     .from(orderItems)
@@ -679,6 +762,9 @@ fastify.patch('/api/orders/:id/cancel', async (request, reply) => {
   if (isNaN(orderId)) {
     return reply.status(400).send({ error: 'Invalid order ID format.' });
   }
+
+  // Only the user's own restaurant's orders can be cancelled.
+  await assertOrderInRestaurant(orderId, getRestaurantId(request));
 
   const [existingOrder] = await db
     .select()
@@ -739,6 +825,7 @@ fastify.register(kdsRoutes);
 fastify.register(drawerRoutes);
 fastify.register(restaurantRoutes);
 fastify.register(stockTransactionRoutes);
+fastify.register(dashboardRoutes);
 
 
 

@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { restaurants } from '../db/schema.js';
+import { getRestaurantId } from '../lib/tenant.js';
 
 // Define request param & body types
 interface UpdateRestaurantParams {
@@ -31,8 +32,14 @@ export default async function restaurantRoutes(fastify: FastifyInstance) {
   fastify.put<{ Params: UpdateRestaurantParams; Body: UpdateRestaurantBody }>(
     '/api/restaurant/:id',
     async (request, reply) => {
+      // A user may only edit THEIR OWN restaurant (from the login token).
+      // Before, any logged-in user could change any restaurant by changing the :id.
+      const restaurantId = getRestaurantId(request);
+      if (Number(request.params.id) !== restaurantId) {
+        return reply.status(404).send({ error: 'Restaurant not found.' });
+      }
       try {
-        const { id } = request.params;
+        const id = restaurantId;
         const {
           name,
           phone,
@@ -74,7 +81,8 @@ export default async function restaurantRoutes(fastify: FastifyInstance) {
             receipt_header,
             receipt_footer,
             tax_number,
-            isActive,
+            // isActive is NOT updated here on purpose: switching a restaurant
+            // on/off is the platform's decision (e.g. subscription), not the restaurant's.
             updatedAt: new Date(),
           })
           .where(eq(restaurants.id, Number(id)))

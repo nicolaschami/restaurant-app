@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db/index.js';
 import { rawMaterials } from '../db/schema';
 import { eq, desc,asc,and } from 'drizzle-orm';
+import { getRestaurantId } from '../lib/tenant.js';
 
 export default async function rawMaterialsRoutes(fastify: FastifyInstance) {
 
@@ -128,9 +129,17 @@ export default async function rawMaterialsRoutes(fastify: FastifyInstance) {
     '/api/raw-materials/:id',
     { onRequest: [fastify.authenticate] },
     async (request, reply) => {
+      const restaurantId = getRestaurantId(request);
       try {
         const { id } = request.params as { id: string };
-        await db.delete(rawMaterials).where(eq(rawMaterials.id, Number(id)));
+        // Only a raw material of the user's own restaurant can be deleted.
+        const deleted = await db
+          .delete(rawMaterials)
+          .where(and(eq(rawMaterials.id, Number(id)), eq(rawMaterials.restaurantId, restaurantId)))
+          .returning({ id: rawMaterials.id });
+        if (deleted.length === 0) {
+          return reply.status(404).send({ error: 'Raw material not found.' });
+        }
         return reply.send({ success: true });
       } catch (error: any) {
         return reply.status(500).send({ error: 'Failed to delete raw material' });

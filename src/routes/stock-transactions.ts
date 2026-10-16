@@ -3,6 +3,7 @@ import { eq, and,sql ,desc,inArray} from 'drizzle-orm';
 import { db } from "../db";
 import { stockTransactions, stockDetails } from '../db/schema';
 import type { CreateStockTransactionPayload } from '../db/schema';
+import { getRestaurantId } from '../lib/tenant.js';
 
 export default async function stockTransactionRoutes(fastify: FastifyInstance) {
 
@@ -86,13 +87,8 @@ export default async function stockTransactionRoutes(fastify: FastifyInstance) {
 fastify.get<{ Querystring: { restaurantId: string } }>(
     '/api/stock-transactions',
     async (request, reply) => {
-      const { restaurantId } = request.query;
-
-      if (!restaurantId) {
-        return reply.code(400).send({ error: 'restaurantId query parameter is required.' });
-      }
-
-      const parsedRestaurantId = parseInt(restaurantId, 10);
+      // The restaurant comes from the login token; ?restaurantId is ignored.
+      const parsedRestaurantId = getRestaurantId(request);
 
       try {
         // 1. Fetch main stock transactions with date cast as raw string
@@ -151,8 +147,10 @@ fastify.post('/api/stock-transactions', async (request, reply) => {
   const body = request.body as Record<string, any>;
   const items = body.items || [];
 
+  // The purchase belongs to the user's restaurant (login token), not to the body's restaurantId.
+  const restaurantId = getRestaurantId(request);
+
   // Extract variables safely checking all casing variations
-  const restaurantId = body.restaurantId ?? body.restaurant_id ?? body.RestaurantID;
   const supplierName = body.supplierName ?? body.supplier_name ?? body.SupplierName;
   const grnNumber = body.grnNumber ?? body.grn_number ?? body.GRNNumber;
   const receivedAt = body.receivedAt ?? body.received_at ?? body.TransactionDate;
@@ -375,8 +373,10 @@ fastify.put<{ Params: { id: string }; Body: any }>(
     const body = request.body as Record<string, any>;
     const items = body.items || [];
 
+    // Restaurant from the login token: you can only update your own restaurant's purchases.
+    const restaurantId  = getRestaurantId(request);
+
     // Casing-tolerant extraction (same as POST)
-    const restaurantId  = body.restaurantId ?? body.restaurant_id ?? body.RestaurantID;
     const supplierName  = body.supplierName ?? body.supplier_name ?? body.SupplierName;
     const grnNumber     = body.grnNumber ?? body.grn_number ?? body.GRNNumber;
     const receivedAt    = body.receivedAt ?? body.received_at ?? body.TransactionDate;
@@ -389,9 +389,6 @@ fastify.put<{ Params: { id: string }; Body: any }>(
     const status        = body.status ?? body.Status ?? 'DRAFT';
     const type          = body.type ?? body.Type ?? 'PUR';
 
-    if (!restaurantId) {
-      return reply.code(400).send({ error: 'restaurantId is required.' });
-    }
     if (!supplierName || !String(supplierName).trim()) {
       return reply.code(400).send({ error: 'Supplier is required.' });
     }
@@ -528,16 +525,10 @@ fastify.get<{
   '/api/stock-transactions/:transactionId',
   async (request, reply ) => {
     const { transactionId } = request.params;
-    const { restaurantId } = request.query;
-
-    if (!restaurantId) {
-      return reply.code(400).send({
-        error: 'restaurantId query parameter is required.',
-      });
-    }
 
     const parsedTransactionId = Number(transactionId);
-    const parsedRestaurantId = Number(restaurantId);
+    // Restaurant from the login token; ?restaurantId is ignored.
+    const parsedRestaurantId = getRestaurantId(request);
 
     if (
       !Number.isInteger(parsedTransactionId) ||
@@ -545,15 +536,6 @@ fastify.get<{
     ) {
       return reply.code(400).send({
         error: 'transactionId must be a valid positive number.',
-      });
-    }
-
-    if (
-      !Number.isInteger(parsedRestaurantId) ||
-      parsedRestaurantId <= 0
-    ) {
-      return reply.code(400).send({
-        error: 'restaurantId must be a valid positive number.',
       });
     }
 

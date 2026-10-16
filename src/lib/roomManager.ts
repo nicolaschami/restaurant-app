@@ -1,4 +1,3 @@
-import { FastifyRequest } from 'fastify';
 import { WebSocket } from 'ws';
 
 interface ConnectedClient {
@@ -13,33 +12,14 @@ class RoomManager {
   /**
    * Handles incoming WebSocket connection and sets up event listeners.
    */
-  handleConnection(socket: WebSocket, req: FastifyRequest) {
-    // 1. Optionally parse restaurantId from query string (e.g., /ws?restaurantId=123)
-    const query = req.query as { restaurantId?: string };
-    if (query?.restaurantId) {
-      this.joinRoom(query.restaurantId, socket);
-    }
+  // `restaurantId` comes from the verified login token (see the /ws route in app.ts).
+  // There is deliberately NO "join another room" message anymore: a screen could
+  // otherwise ask to listen to a different restaurant's orders.
+  handleConnection(socket: WebSocket, restaurantId: string) {
+    // 1. Join the restaurant's room
+    this.joinRoom(restaurantId, socket);
 
-    // 2. Handle incoming JSON messages from clients
-    socket.on('message', (rawMessage: Buffer) => {
-      try {
-        const data = JSON.parse(rawMessage.toString());
-
-        // Example message payload: { action: 'join', restaurantId: '123' }
-        if (data.action === 'join' && data.restaurantId) {
-          this.joinRoom(String(data.restaurantId), socket);
-        }
-
-        // Example message payload: { action: 'leave', restaurantId: '123' }
-        if (data.action === 'leave' && data.restaurantId) {
-          this.leaveRoom(String(data.restaurantId), socket);
-        }
-      } catch (err) {
-        console.error('Failed to parse WebSocket message:', err);
-      }
-    });
-
-    // 3. Log errors
+    // 2. Log errors
     socket.on('error', (err) => {
       console.error('WebSocket socket error:', err);
     });

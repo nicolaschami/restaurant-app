@@ -10,29 +10,49 @@ import { users,restaurants } from '../db/schema.js';
 
 export default async function authRoutes(fastify: FastifyInstance) {
 
-  // REGISTER ROUTE
- 
+  // REGISTER ROUTE (create a new staff user)
+  // Only a logged-in user can call this: the global login guard in app.ts checks the
+  // token before we get here, and fills request.user from it.
+  // TODO (roles step #6): allow only admins/managers to create users.
 fastify.post('/api/auth/register', async (request, reply) => {
   const body = (request.body as any) || {};
-  const { restaurantId, name, email, password, roleId } = body;
+  const { name, password, roleId } = body;
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
 
   if (!name || !email || !password) {
     return reply.status(400).send({ error: 'Name, email, and password are required.' });
   }
+  if (String(password).length < 6) {
+    return reply.status(400).send({ error: 'Password must be at least 6 characters.' });
+  }
+
+  // The new user always joins the SAME restaurant as the person creating it.
+  // We take it from the login token, never from the request body — otherwise
+  // anyone could add users to another restaurant.
+  const { restaurantId } = request.user;
+  if (!restaurantId) {
+    return reply.status(403).send({ error: 'Your account is not assigned to a restaurant.' });
+  }
+
+  // One account per email (login looks users up by email).
+  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (existing) {
+    return reply.status(409).send({ error: 'A user with this email already exists.' });
+  }
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // 1. Explicitly assign role (use passed roleId or fallback to 1)
+  // Role: use the given roleId, or 1 by default.
   const userRoleId = roleId ? Number(roleId) : 1;
 
   const [newUser] = await db
     .insert(users)
     .values({
-      restaurantId: restaurantId ? Number(restaurantId) : 1,
+      restaurantId,
       name,
       email,
       passwordHash: hashedPassword,
-      role: userRoleId, // 👈 Explicitly passing the value 1
+      role: userRoleId,
     })
     .returning();
 
@@ -43,7 +63,9 @@ fastify.post('/api/auth/register', async (request, reply) => {
 
   // LOGIN ROUTE
  fastify.post('/api/auth/login', async (request, reply) => {
-  const { email, password } = (request.body as { email?: string; password?: string }) || {};
+  const { password, ...rest } = (request.body as { email?: string; password?: string }) || {};
+  // Same format as register stores it, so "Admin@Restaurant.com " still matches.
+  const email = rest.email?.trim().toLowerCase();
 
   // 1. Validate request body
   if (!email || !password) {

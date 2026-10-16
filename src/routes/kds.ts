@@ -8,6 +8,11 @@ import {
 } from "../db/schema";
 import { sql, eq, inArray, and } from "drizzle-orm";
 import { roomManager } from "../lib/roomManager.js";
+import {
+  getRestaurantId,
+  assertOrderInRestaurant,
+  assertOrderItemInRestaurant,
+} from "../lib/tenant.js";
 
 console.log("🚨🚨🚨 KDS ROUTES FILE LOADED 🚨🚨🚨");
 
@@ -23,22 +28,11 @@ export async function kdsRoutes(fastify: FastifyInstance) {
       request: FastifyRequest<{ Querystring: KDSQuery }>,
       reply: FastifyReply
     ) => {
-      console.log("🔥🔥🔥 KDS ACTIVE ROUTE HIT 🔥🔥🔥");
-      console.log("QUERY:", request.query);
+      // The restaurant comes from the login token; ?restaurantId sent by the
+      // screen is ignored (it could point to another restaurant).
+      const restaurantId = getRestaurantId(request);
 
       try {
-        const rawId = request.query.restaurantId || request.query.restaurant_id;
-        const restaurantId = parseInt(String(rawId), 10);
-
-        if (isNaN(restaurantId)) {
-          return reply.status(400).send({
-            statusCode: 400,
-            error: "Bad Request",
-            message: "Missing or invalid restaurantId query parameter",
-            received: rawId ?? null,
-          });
-        }
-
         const activeOrders = await db
           .select({
             id: orders.id,
@@ -147,6 +141,9 @@ export async function kdsRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: "Invalid item ID." });
       }
 
+      // A kitchen screen can only tick items of its own restaurant's orders.
+      await assertOrderItemInRestaurant(itemId, getRestaurantId(request));
+
       try {
         const [item] = await db
           .select()
@@ -208,6 +205,9 @@ export async function kdsRoutes(fastify: FastifyInstance) {
       if (isNaN(orderId)) {
         return reply.status(400).send({ error: "Invalid order ID." });
       }
+
+      // A kitchen screen can only bump its own restaurant's orders.
+      await assertOrderInRestaurant(orderId, getRestaurantId(request));
 
       try {
         // NOTE: 'COMPLETED' must be a valid value for your kdsStatus

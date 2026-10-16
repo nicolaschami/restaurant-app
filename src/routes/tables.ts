@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db';
 import { restaurantTables } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { getRestaurantId } from '../lib/tenant.js';
 
 interface TableBody {
   label: string;
@@ -19,8 +20,14 @@ export default async function tableRoutes(fastify: FastifyInstance) {
   // ==========================================
  // GET /api/tables
 fastify.get('/api/tables', async (request, reply) => {
+    // Only this restaurant's tables (from the login token). Before, it returned
+    // the tables of ALL restaurants.
+    const restaurantId = getRestaurantId(request);
     try {
-      const rawTables = await db.select().from(restaurantTables);
+      const rawTables = await db
+        .select()
+        .from(restaurantTables)
+        .where(eq(restaurantTables.restaurantId, restaurantId));
 
       const formattedTables = rawTables.map((t) => ({
         id: t.id,
@@ -74,11 +81,14 @@ fastify.post('/api/tables', async (request, reply) => {
 
   const notesText = body.notes ? String(body.notes).trim() : null;
 
+  // The table belongs to the user's restaurant (token), not body.restaurantId.
+  const restaurantId = getRestaurantId(request);
+
   try {
     const [newTable] = await db
       .insert(restaurantTables)
       .values({
-        restaurantId: Number(body.restaurantId ?? 1), // Schema expects a string
+        restaurantId,
         label: tableLabel.trim(),
         capacity: body.capacity ? Number(body.capacity) : null,
         zone: body.section || body.zone || null,

@@ -5,6 +5,7 @@ import { roomManager } from '../lib/roomManager';
 import { db } from '../db';
 import { orders, orderItems, menuItems, restaurantTables } from '../db/schema';
 import { eq, max, inArray, sql, and, ne } from 'drizzle-orm';
+import { getRestaurantId, assertOrderInRestaurant } from '../lib/tenant.js';
 
 interface OrderItemInput {
   menuItemId: number;
@@ -63,16 +64,14 @@ export default async function orderRoutes(fastify: FastifyInstance) {
 fastify.post('/api/orders', async (request, reply) => {
   const body = (request.body || {}) as CreateOrderBody;
 
-  if (!body || !body.restaurantId) {
-    return reply.status(400).send({ error: 'restaurantId is required.' });
-  }
+  // The order belongs to the user's restaurant (login token); body.restaurantId is ignored.
+  const restaurantId = getRestaurantId(request);
 
   if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
     return reply.status(400).send({ error: 'Order must contain at least one item.' });
   }
 
   const {
-    restaurantId,
     tableId,
     orderType,
     orderStatus,
@@ -97,7 +96,8 @@ fastify.post('/api/orders', async (request, reply) => {
           priceDelivery: menuItems.priceDelivery,
         })
         .from(menuItems)
-        .where(inArray(menuItems.id, requestedIds));
+        // Only this restaurant's menu items can be ordered.
+        .where(and(inArray(menuItems.id, requestedIds), eq(menuItems.restaurantId, restaurantId)));
 
       // Map base price according to orderType
       const priceMap = new Map<number, number>();
@@ -185,7 +185,8 @@ fastify.post('/api/orders', async (request, reply) => {
         await tx
           .update(restaurantTables)
           .set({ status: tableStatus ?? 'occupied' })
-          .where(eq(restaurantTables.id, Number(tableId)));
+          // Only a table of this restaurant can be marked occupied.
+          .where(and(eq(restaurantTables.id, Number(tableId)), eq(restaurantTables.restaurantId, restaurantId)));
       }
 
       // 6. Insert Order Items (includes variantSize)
@@ -569,6 +570,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
     return reply.status(400).send({ error: 'Valid Order ID is required.' });
   }
 
+  // Only the user's own restaurant's orders can be updated (another restaurant's → 404).
+  await assertOrderInRestaurant(orderId, getRestaurantId(request));
+
   try {
     const result = await db.transaction(async (tx) => {
       // 1. Fetch current order header & existing items
@@ -873,13 +877,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
 
 
   // 2. GET ACTIVE ORDERS SUMMARY
-  // GET /api/orders/active?restaurantId=1
+  // GET /api/orders/active  (restaurant from the login token; ?restaurantId is ignored)
   fastify.get('/api/orders/active', async (request, reply) => {
-    const { restaurantId } = request.query as { restaurantId?: string };
-
-    if (!restaurantId) {
-      return reply.status(400).send({ error: 'restaurantId query parameter is required.' });
-    }
+    const restaurantId = getRestaurantId(request);
 
     try {
       // Fetch all orders that are NOT CLOSED for the specified restaurant
@@ -922,6 +922,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
     if (isNaN(orderId)) {
       return reply.status(400).send({ error: 'Invalid order ID format.' });
     }
+
+    // Only the user's own restaurant's orders can be read.
+    await assertOrderInRestaurant(orderId, getRestaurantId(request));
 
     try {
       // 1. Fetch Order Header
@@ -972,6 +975,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
     if (isNaN(itemId)) {
       return reply.status(400).send({ error: 'Invalid ID format.' });
     }
+
+    // Only the user's own restaurant's orders can be deleted.
+    await assertOrderInRestaurant(itemId, getRestaurantId(request));
 
     try {
       const [deletedItem] = await db

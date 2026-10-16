@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { db } from '../db';
 import { suppliers } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { getRestaurantId } from '../lib/tenant.js';
 
 interface SupplierBody {
   supplierCode?: string;
@@ -170,10 +171,13 @@ const tenantId = String(restaurantId);
       return reply.status(400).send({ error: 'Invalid ID format.' });
     }
 
+    const restaurantId = getRestaurantId(request);
+
     try {
+      // Only a supplier of the user's own restaurant can be deleted.
       const [deletedItem] = await db
         .delete(suppliers)
-        .where(eq(suppliers.supplierId, itemId))
+        .where(and(eq(suppliers.supplierId, itemId), eq(suppliers.restaurantId, String(restaurantId))))
         .returning();
 
       if (!deletedItem) {
