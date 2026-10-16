@@ -15,6 +15,7 @@ import Printo from './pages/Printo';
 import RestaurantSettings from './pages/RestaurantSettings';
 import PurchaseReceiptForm from './pages/Purchasetransactionscreen';
 import PurchaseList from './pages/PurchaseTransactionsList';
+import Login from './pages/Login';
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
@@ -25,6 +26,21 @@ const PosViewWrapper = PosView as React.ComponentType<{
 export function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pos' | string>('dashboard');
   const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
+
+  // Login "ticket" (JWT) saved by the Login page. The server needs it on protected
+  // routes (categories, products...) — without it they answer 401 Unauthorized.
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [restaurantName, setRestaurantName] = useState<string>(
+    localStorage.getItem('restaurantName') || 'My Restaurant'
+  );
+
+  // Forget the saved login; setting token to null shows the Login page again.
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('restaurantName');
+    setToken(null);
+    setActiveTab('dashboard');
+  };
 
   const handleSelectTicket = (ticket: ActiveOrder) => {
     setActiveOrder(ticket);
@@ -39,6 +55,30 @@ export function App() {
     setActiveOrder(null);
     setActiveTab('dashboard');
   };
+
+  // Not logged in yet → show only the Login page (no sidebar, no screens).
+  if (!token) {
+    return (
+      <Login
+        onLoginSuccess={(jwt, name) => {
+          setToken(jwt);
+          setRestaurantName(name);
+        }}
+      />
+    );
+  }
+
+  // The POS opens full screen (no sidebar): cashiers need all the room, and its
+  // own header has a button back to the dashboard.
+  if (activeTab === 'pos') {
+    return (
+      <PosViewWrapper
+        activeOrder={activeOrder}
+        onResetOrder={handleResetOrder}
+        onClose={handleClosePos}
+      />
+    );
+  }
 
   const renderContent = () => {
     if (activeTab.startsWith('report-')) {
@@ -67,7 +107,7 @@ export function App() {
       case 'dashboard':
         return (
           <DashboardView
-            restaurantName="My Kitchen"
+            restaurantName={restaurantName}
             onNavigate={(tab) => setActiveTab(tab)}
             onSelectTicket={handleSelectTicket}
           />
@@ -117,7 +157,7 @@ export function App() {
       default:
         return (
           <DashboardView
-            restaurantName="My Kitchen"
+            restaurantName={restaurantName}
             onNavigate={(tab) => setActiveTab(tab)}
             onSelectTicket={handleSelectTicket}
           />
@@ -126,7 +166,12 @@ export function App() {
   };
 
   return (
-    <SidebarLayout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <SidebarLayout
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      onLogout={handleLogout}
+      restaurantName={restaurantName}
+    >
       {renderContent()}
     </SidebarLayout>
   );

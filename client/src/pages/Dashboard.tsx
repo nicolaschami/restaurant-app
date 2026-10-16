@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef, type FC } from 'react';
+import { useState, useEffect, useCallback, type FC } from 'react';
 import { api } from '../api';
+import { ChefHat, Archive, Sun, Moon, Plus, Loader2 } from 'lucide-react';
 
 // ==========================================
 // TYPES
@@ -18,57 +19,60 @@ export interface ActiveOrder {
   created_at?: string;
 }
 
-interface Metric {
-  label: string;
-  value: string;
-  change?: string;
-  detail?: string;
-  icon: string;
-  alert?: boolean;
-}
-
 interface DashboardViewProps {
   restaurantName: string;
   onNavigate: (tab: string) => void;
   onSelectTicket?: (ticket: ActiveOrder) => void;
 }
 
+// Real numbers from GET /api/dashboard/summary (see src/routes/dashboard.ts on the
+// server). "Today" and the week follow the restaurant's time zone.
+interface DashboardSummary {
+  currency: string;
+  today: { sales: number; orders: number; averageOrder: number; yesterdaySales: number };
+  week: { date: string; label: string; sales: number; orders: number }[];
+  activeOrders: number;
+  topItems: { name: string; quantity: number; sales: number }[];
+  menu: { items: number; categories: number };
+  lowStock: {
+    count: number;
+    items: { id: number; name: string; unit: string; currentStock: number; minQty: number }[];
+  };
+}
+
+type Theme = 'light' | 'dark';
+
 // ==========================================
-// CONSTANTS
+// HELPERS
 // ==========================================
-const DASHBOARD_METRICS: Metric[] = [
-  { label: "Today's Sales", value: "$1,240.50", change: "+12.5%", icon: "💰" },
-  { label: "Menu Items", value: "48", detail: "4 active categories", icon: "🍔" },
-  { label: "Stock Alerts", value: "3", detail: "Action required", icon: "⚠️", alert: true },
-];
 
-const SALES_BARS = [
-  { day: 'MON', revenue: 1260 },
-  { day: 'TUE', revenue: 1740 },
-  { day: 'WED', revenue: 1440 },
-  { day: 'THU', revenue: 2250 },
-  { day: 'FRI', revenue: 1950 },
-  { day: 'SAT', revenue: 2760 },
-  { day: 'SUN', revenue: 2160 },
-];
+// Money in the restaurant's currency, e.g. "$1,240.50".
+const formatMoney = (value: number, currency = 'USD') => {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
+  } catch {
+    return `$${value.toFixed(2)}`;
+  }
+};
 
-const STOCK_ALERTS = [
-  { name: 'Mozzarella Cheese', remaining: '1.2 kg left', progress: 18, color: '#A23B2E', icon: '🧀' },
-  { name: 'Chicken Breast', remaining: '3.5 kg left', progress: 35, color: '#B8863B', icon: '🍗' },
-  { name: 'Cooking Oil', remaining: '4.2 liters left', progress: 42, color: '#B8863B', icon: '🫗' },
-];
+// "+12.5%" / "-3.0%" compared with yesterday; nothing when yesterday had no sales.
+const changeVsYesterday = (today: number, yesterday: number): string | undefined => {
+  if (!yesterday) return undefined;
+  const pct = ((today - yesterday) / yesterday) * 100;
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+};
 
+// How long an open order has been waiting: fresh < 10 min ≤ waiting < 20 min ≤ late.
 const FRESHNESS_META = [
   { key: 'fresh', label: 'Fresh', color: '#4C7A5E' },
-  { key: 'aging', label: 'Aging', color: '#B8863B' },
+  { key: 'aging', label: 'Waiting', color: '#B8863B' },
   { key: 'late', label: 'Late', color: '#A23B2E' },
 ] as const;
 type FreshnessKey = (typeof FRESHNESS_META)[number]['key'];
-
 const freshnessOf = (mins: number): FreshnessKey => (mins >= 20 ? 'late' : mins >= 10 ? 'aging' : 'fresh');
 
 const formatDuration = (mins: number): string => {
-  if (mins < 60) return `${mins}m`;
+  if (mins < 60) return `${mins} min`;
   if (mins < 1440) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
@@ -79,259 +83,122 @@ const formatDuration = (mins: number): string => {
   return h === 0 ? `${d}d` : `${d}d ${h}h`;
 };
 
-const formatDialAvg = (mins: number): { value: number; unit: string } => {
-  if (mins < 60) return { value: mins, unit: 'AVG MIN' };
-  if (mins < 1440) return { value: Math.round(mins / 60), unit: 'AVG HR' };
-  return { value: Math.round(mins / 1440), unit: 'AVG DAY' };
-};
-
 const ORDER_TYPE_META = [
-  { key: 'dinein', label: 'Dine-In', color: '#5B7C99', match: (s: string) => s.includes('dine') },
-  { key: 'takeaway', label: 'Takeaway', color: '#B8863B', match: (s: string) => s.includes('take') || s.includes('pick') },
-  { key: 'delivery', label: 'Delivery', color: '#6B6560', match: (s: string) => s.includes('deliver') },
+  { key: 'dinein', label: 'Dine-in', match: (s: string) => s.includes('dine') },
+  { key: 'takeaway', label: 'Takeaway', match: (s: string) => s.includes('take') || s.includes('pick') },
+  { key: 'delivery', label: 'Delivery', match: (s: string) => s.includes('deliver') },
 ] as const;
 type OrderTypeKey = (typeof ORDER_TYPE_META)[number]['key'];
-
 const matchOrderType = (orderType: string) => {
   const s = (orderType || '').toLowerCase();
   return ORDER_TYPE_META.find((m) => m.match(s));
 };
 
 // ==========================================
-// STYLES
+// STYLES — same cream/gold (light) and green/gold (dark) family as the POS
 // ==========================================
 const DashboardStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@500;600;700&display=swap');
-    .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
-    .price-font { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-    .ticket-tear-line {
-      background-image: repeating-linear-gradient(90deg, #d6d3d1 0 5px, transparent 5px 11px);
-      height: 1px;
-    }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    .counter-texture {
-      background-color: #f4f2ee;
-      background-image: radial-gradient(#e2ddd3 1px, transparent 1px);
-      background-size: 18px 18px;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
 
-    .kb-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
-      letter-spacing: 0.12em; color: #8a8377; margin: 0; }
-    .kb-rail-bar { height: 10px; border-radius: 4px; margin-bottom: 2px;
-      background: linear-gradient(180deg, #7c766e, #56514a);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.15) inset, 0 3px 6px rgba(0,0,0,0.18);
-      display: flex; align-items: center; justify-content: space-evenly; padding: 0 12px; }
-    .kb-bolt { width: 4px; height: 4px; border-radius: 50%; background: rgba(0,0,0,0.35); }
-    .kb-rail-tickets { display: flex; gap: 22px; flex-wrap: wrap; padding: 16px 6px 6px; }
-    .kb-ticket-wrap { position: relative; width: 176px; transition: opacity 460ms ease, transform 460ms ease; }
-    .kb-clip { position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
-      width: 14px; height: 20px; border-radius: 3px;
-      background: linear-gradient(180deg, #9b958a, #6b6560);
-      box-shadow: 0 2px 3px rgba(0,0,0,0.25); }
-    .kb-ticket { background: #FFFDF8; border: 1px solid #E7E1D2; border-top-width: 4px;
-      border-radius: 4px; padding: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.06);
-      transition: transform 220ms ease, box-shadow 220ms ease; cursor: pointer; }
-    .kb-ticket-wrap:hover .kb-ticket { transform: translateY(-7px) scale(1.025);
-      box-shadow: 0 14px 24px rgba(0,0,0,0.14); }
-    .kb-ticket-wrap:hover .kb-clip { box-shadow: 0 3px 5px rgba(0,0,0,0.3); }
-    .kb-ticket-row { display: flex; align-items: center; justify-content: space-between; }
-    .kb-ticket-no { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; color: #221F1C; }
-    .kb-badge { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700;
-      padding: 2px 6px; border-radius: 3px; letter-spacing: 0.02em; }
-    .kb-customer { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 0.01em;
-      color: #221F1C; margin: 8px 0 0; line-height: 1; }
-    .kb-meta { font-size: 11px; color: #8a8377; margin: 3px 0 0; }
-    .kb-price { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; color: #221F1C; }
+    .dash { min-height: 100%; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
+      padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; }
+    .dash[data-theme='light'] { --bg:#f6efdf; --panel:#fffaf0; --card:#ffffff; --hover:#fbf3e0; --line:#e2d6bb;
+      --text:#221f1c; --muted:#5f584b; --gold:#8a6420; --gold-line:#c9a24b; --track:#f1e8d3; --bar:#e2d3ad;
+      --fresh:#3f6b50; --fresh-bg:#e3eee5; --aging:#8a6420; --aging-bg:#f6ecd5; --late:#a3412a; --late-bg:#f7e0da; }
+    .dash[data-theme='dark'] { --bg:#1a2520; --panel:#22302a; --card:#2b3b33; --hover:#34473d; --line:#3f5247;
+      --text:#f6f0e2; --muted:#b3bfb3; --gold:#e6cf8f; --gold-line:#9a7d3c; --track:#22302a; --bar:#3f5247;
+      --fresh:#9fd0ae; --fresh-bg:#25402f; --aging:#e6cf8f; --aging-bg:#46391f; --late:#f0a68c; --late-bg:#4a2c27; }
+    .dash .serif { font-family: 'Fraunces', serif; }
+    .dash .mono { font-family: 'IBM Plex Mono', monospace; }
 
-    .kb-status-card { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 10px;
-      padding: 16px 18px; }
-    .kb-status-title { font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: 0.02em;
-      color: #221F1C; margin: 0 0 10px; }
-    .kb-status-grid { display: flex; gap: 18px; }
-    .kb-status-col { flex: 1 1 150px; min-width: 140px; }
-    .kb-status-col + .kb-status-col { border-left: 1px dashed #E7E1D2; padding-left: 18px; }
-    .kb-status-col-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700;
-      letter-spacing: 0.1em; color: #8a8377; margin: 0 0 2px; }
-    .kb-dial-wrap { position: relative; width: 92px; height: 92px; margin: 4px auto; }
-    .kb-dial-center { position: absolute; inset: 0; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; }
-    .kb-dial-num { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #221F1C; line-height: 1; }
-    .kb-dial-unit { font-family: 'JetBrains Mono', monospace; font-size: 8px; color: #8a8377; letter-spacing: 0.06em; }
-    .kb-legend-row { display: flex; align-items: center; gap: 6px; padding: 3px 5px; border-radius: 6px;
-      width: 100%; text-align: left; border: none; background: transparent; cursor: pointer;
-      transition: background 120ms ease; }
-    .kb-legend-row:hover { background: #F1ECDC; }
-    .kb-legend-row.active { background: #F1ECDC; box-shadow: inset 0 0 0 1px #E7E1D2; }
-    .kb-legend-row.dimmed { opacity: 0.45; }
-    .kb-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .kb-legend-label { font-size: 10.5px; color: #55504a; flex: 1; }
-    .kb-legend-count { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 700; color: #221F1C; }
+    /* Header: one line */
+    .d-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .d-head-title { flex: 1 1 280px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; }
+    .d-head-title h1 { margin: 0; font-size: 22px; font-weight: 600; }
+    .d-sub { font-size: 13px; color: var(--muted); }
+    .d-live { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+    .d-live-dot { width: 8px; height: 8px; border-radius: 999px; }
+    .d-live-dot.live { background: #4C7A5E; }
+    .d-live-dot.connecting { background: #B8863B; animation: d-pulse 1.2s ease-in-out infinite; }
+    .d-live-dot.offline { background: #A23B2E; }
+    @keyframes d-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    .d-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .d-btn { height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 10px;
+      border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit; }
+    .d-btn:hover:not(:disabled) { background: var(--hover); }
+    .d-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .d-btn.icon { width: 40px; padding: 0; justify-content: center; color: var(--gold); }
+    .d-btn.primary { background: #c9a24b; border-color: #c9a24b; color: #201a0c; font-size: 14px; font-weight: 700; padding: 0 18px; }
+    .d-btn.primary:hover { filter: brightness(1.06); background: #c9a24b; }
 
-    .kb-filter-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px;
-      font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #221F1C;
-      background: #F1ECDC; border: 1px solid #E7E1D2; padding: 3px 6px 3px 10px; border-radius: 12px;
-      cursor: pointer; }
-    .kb-filter-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
-    .kb-filter-chip:hover { background: #EAE3CE; }
+    .d-alert { margin: 0; padding: 8px 14px; border-radius: 10px; font-size: 13px;
+      background: var(--aging-bg); color: var(--aging); }
 
-    .kb-ws-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
-      font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #8a8377; }
-    .kb-ws-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .kb-ws-dot.live { background: #4C7A5E; box-shadow: 0 0 0 3px rgba(76,122,94,0.18); }
-    .kb-ws-dot.connecting { background: #B8863B; animation: kb-pulse 1.2s ease-in-out infinite; }
-    .kb-ws-dot.offline { background: #A23B2E; }
-    @keyframes kb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    /* Open orders — first and biggest */
+    .d-pass { min-height: 400px; box-sizing: border-box; padding: 14px 16px; border-radius: 16px;
+      background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+    .d-pass-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .d-pass-head h2 { margin: 0; font-size: 18px; font-weight: 600; flex: 1 1 160px; }
+    .d-pass-head h2 .mono { font-size: 14px; color: var(--muted); }
+    .d-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .d-chip { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+      background: var(--card); color: var(--muted); border: 1px solid var(--line); }
+    .d-chip.on { background: #c9a24b; border-color: #c9a24b; color: #201a0c; }
+    .d-chip .dot { width: 8px; height: 8px; border-radius: 999px; }
+    /* Cards are placed starting from the RIGHT (like the dishes in the POS);
+       the text inside each card stays left-to-right. */
+    .d-tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; align-content: start; direction: rtl; }
+    .d-ticket { direction: ltr; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
+      border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+      text-align: left; cursor: pointer; font-family: inherit; }
+    .d-ticket:hover { border-color: var(--gold-line); }
+    .d-ticket-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .d-ticket-no { font-size: 16px; font-weight: 600; }
+    .d-badge { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .d-badge.fresh { background: var(--fresh-bg); color: var(--fresh); }
+    .d-badge.aging { background: var(--aging-bg); color: var(--aging); }
+    .d-badge.late { background: var(--late-bg); color: var(--late); }
+    .d-ticket-who { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .d-ticket-meta { font-size: 12px; color: var(--muted); }
+    .d-ticket-total { font-size: 15px; font-weight: 600; color: var(--gold); }
+    .d-empty { padding: 24px 4px; font-size: 14px; color: var(--muted); }
 
-    .kb-receipt { background: #FFFDF8; border: 1px solid #E7E1D2; border-radius: 4px;
-      padding: 22px 22px 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-    .kb-receipt-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
-    .kb-receipt-day { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #55504a; width: 34px; }
-    .kb-receipt-bar-track { flex: 1; height: 6px; background: #EFEAE0; border-radius: 3px; overflow: hidden; }
-    .kb-receipt-bar { height: 100%; background: #4C7A5E; border-radius: 3px; transition: width 700ms ease; }
-    .kb-receipt-amt { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;
-      color: #221F1C; width: 62px; text-align: right; }
-    .kb-barcode { margin-top: 14px; height: 22px;
-      background-image: repeating-linear-gradient(90deg, #221F1C 0 2px, transparent 2px 5px,
-        #221F1C 5px 6px, transparent 6px 9px, #221F1C 9px 12px, transparent 12px 16px);
-      opacity: 0.8; }
+    /* Key numbers — slim row */
+    .d-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .d-kpi { padding: 14px 18px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+    .d-kpi-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .d-kpi-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+    .d-kpi-value { font-size: 24px; font-weight: 600; margin-top: 6px; }
+    .d-kpi-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* Bottom row */
+    .d-bottom { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+    .d-card { padding: 16px 18px; border-radius: 16px; background: var(--card); border: 1px solid var(--line);
+      display: flex; flex-direction: column; gap: 12px; }
+    .d-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .d-card-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+    .d-link { border: 0; background: none; padding: 0; font-family: inherit; font-size: 14px; font-weight: 600;
+      color: var(--gold); cursor: pointer; }
+    .d-week { height: 140px; display: flex; align-items: flex-end; gap: 10px; }
+    .d-week-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; }
+    .d-week-amt { font-size: 11px; color: var(--muted); }
+    .d-week-bar { width: 100%; max-width: 44px; border-radius: 8px 8px 4px 4px; background: var(--bar);
+      transition: height 600ms ease; }
+    .d-week-bar.today { background: #c9a24b; }
+    .d-week-day { font-size: 12px; color: var(--muted); }
+    .d-week-day.today { font-weight: 700; color: var(--gold); }
+    .d-track { height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
+    .d-fill { height: 6px; border-radius: 999px; }
+    .d-row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+    .d-stock { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); }
   `}</style>
 );
 
-// SUB-COMPONENT: MINI RING
-const MiniRing: FC<{
-  segments: { color: string; pct: number; dimmed?: boolean }[];
-  centerValue: string | number;
-  centerUnit: string;
-  mounted: boolean;
-}> = ({ segments, centerValue, centerUnit, mounted }) => {
-  const R = 34;
-  const C = 2 * Math.PI * R;
-  let cumulative = 0;
-
-  return (
-    <div className="kb-dial-wrap">
-      <svg width="92" height="92" viewBox="0 0 92 92">
-        <circle cx="46" cy="46" r={R} fill="none" stroke="#E7E1D2" strokeWidth="7" />
-        {segments.map((seg, i) => {
-          if (seg.pct <= 0) return null;
-          const segLen = mounted ? seg.pct * C : 0;
-          const gap = C - segLen;
-          const rotation = -90 + cumulative * 360;
-          cumulative += seg.pct;
-          return (
-            <circle
-              key={i}
-              cx="46" cy="46" r={R} fill="none"
-              stroke={seg.color} strokeWidth="7" strokeLinecap={segments.length === 1 ? 'round' : 'butt'}
-              strokeOpacity={seg.dimmed ? 0.25 : 1}
-              strokeDasharray={`${segLen} ${gap}`}
-              transform={`rotate(${rotation} 46 46)`}
-              style={{ transition: 'stroke-dasharray 900ms ease 300ms, stroke-opacity 150ms ease' }}
-            />
-          );
-        })}
-      </svg>
-      <div className="kb-dial-center">
-        <span className="kb-dial-num">{centerValue}</span>
-        <span className="kb-dial-unit">{centerUnit}</span>
-      </div>
-    </div>
-  );
-};
-
-// SUB-COMPONENT: KITCHEN STATUS CARD
-const KitchenStatusCard: FC<{
-  tickets: ActiveOrder[];
-  mounted: boolean;
-  getMins: (t: ActiveOrder) => number;
-  freshnessFilter: FreshnessKey | null;
-  onToggleFreshness: (key: FreshnessKey) => void;
-  typeFilter: OrderTypeKey | null;
-  onToggleType: (key: OrderTypeKey) => void;
-}> = ({ tickets, mounted, getMins, freshnessFilter, onToggleFreshness, typeFilter, onToggleType }) => {
-  const freshCounts = { fresh: 0, aging: 0, late: 0 };
-  tickets.forEach((t) => freshCounts[freshnessOf(getMins(t))]++);
-  const avgMins = tickets.length
-    ? Math.round(tickets.reduce((s, t) => s + getMins(t), 0) / tickets.length)
-    : 0;
-  const dialPct = Math.min(avgMins / 30, 1);
-  const dialColor = avgMins >= 20 ? '#A23B2E' : avgMins >= 10 ? '#B8863B' : '#4C7A5E';
-  const dialAvg = formatDialAvg(avgMins);
-
-  const typeCounts = { dinein: 0, takeaway: 0, delivery: 0 };
-  tickets.forEach((t) => {
-    const meta = matchOrderType(t.orderType);
-    if (meta) typeCounts[meta.key]++;
-  });
-  const total = tickets.length;
-  const typeSegments = ORDER_TYPE_META.map((meta) => {
-    const count = typeCounts[meta.key];
-    const pct = total > 0 ? count / total : 0;
-    return { ...meta, count, pct, dimmed: typeFilter !== null && typeFilter !== meta.key };
-  });
-
-  return (
-    <div className="kb-status-card" style={{ flex: '0 0 auto' }}>
-      <p className="kb-status-title">Kitchen Status</p>
-      <div className="kb-status-grid">
-        <div className="kb-status-col">
-          <p className="kb-status-col-label">PACE</p>
-          <MiniRing
-            segments={[{ color: dialColor, pct: dialPct }]}
-            centerValue={dialAvg.value}
-            centerUnit={dialAvg.unit}
-            mounted={mounted}
-          />
-          <div style={{ marginTop: 4 }}>
-            {FRESHNESS_META.map((f) => (
-              <button
-                key={f.key}
-                className={`kb-legend-row ${freshnessFilter === f.key ? 'active' : ''} ${
-                  freshnessFilter && freshnessFilter !== f.key ? 'dimmed' : ''
-                }`}
-                onClick={() => onToggleFreshness(f.key)}
-                title={`Show only ${f.label} tickets`}
-              >
-                <span className="kb-legend-dot" style={{ background: f.color }} />
-                <span className="kb-legend-label">{f.label}</span>
-                <span className="kb-legend-count">{freshCounts[f.key]}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="kb-status-col">
-          <p className="kb-status-col-label">MIX</p>
-          <MiniRing
-            segments={typeSegments.map((s) => ({ color: s.color, pct: s.pct, dimmed: s.dimmed }))}
-            centerValue={total}
-            centerUnit="ACTIVE"
-            mounted={mounted}
-          />
-          <div style={{ marginTop: 4 }}>
-            {typeSegments.map((seg) => (
-              <button
-                key={seg.key}
-                className={`kb-legend-row ${typeFilter === seg.key ? 'active' : ''} ${seg.dimmed ? 'dimmed' : ''}`}
-                onClick={() => onToggleType(seg.key)}
-                title={`Show only ${seg.label} tickets`}
-              >
-                <span className="kb-legend-dot" style={{ background: seg.color }} />
-                <span className="kb-legend-label">{seg.label}</span>
-                <span className="kb-legend-count">{seg.count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ==========================================
-// DASHBOARD VIEW
+// MAIN COMPONENT
 // ==========================================
 export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNavigate, onSelectTicket }) => {
   const [tickets, setTickets] = useState<ActiveOrder[]>([]);
@@ -342,13 +209,42 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
   const [typeFilter, setTypeFilter] = useState<OrderTypeKey | null>(null);
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessKey | null>(null);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
-  const railRef = useRef<HTMLDivElement>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
 
+  // Light/dark is remembered on this computer. Light by default for the back office.
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem('dashboardTheme') === 'dark' ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('dashboardTheme', theme);
+    } catch {
+      /* storage unavailable — theme just won't be remembered */
+    }
+  }, [theme]);
+
+  // Sales, week, stock and menu numbers. Refreshed on load, every minute, and
+  // whenever an order changes (live update from the server).
+  const fetchSummary = useCallback(async () => {
+    try {
+      const response = await api.get('/dashboard/summary');
+      setSummary(response.data);
+      setSummaryError(false);
+    } catch (err) {
+      console.error('Failed to fetch dashboard summary:', err);
+      setSummaryError(true);
+    }
+  }, []);
+
+  // Open (unpaid) orders. The server picks the restaurant from the login token.
   const fetchActiveOrders = useCallback(async () => {
     try {
-      const response = await api.get('/orders/active', {
-        params: { restaurantId: 1 },
-      });
+      const response = await api.get('/orders/active');
       setTickets(response.data.orders || []);
     } catch (err) {
       console.error('Failed to fetch active orders:', err);
@@ -357,7 +253,6 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
     }
   }, []);
 
-  // Open Cash Drawer Handler
   const handleOpenDrawer = async () => {
     try {
       setIsOpeningDrawer(true);
@@ -371,6 +266,7 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
     }
   };
 
+  // Live updates over the WebSocket (with automatic reconnect).
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -380,9 +276,11 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
     const connect = () => {
       const httpBase: string = (api.defaults?.baseURL as string) || window.location.origin;
       const wsBase = httpBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
-      const wsUrl = `${wsBase}/ws?restaurantId=1`;
+      // The server checks this login token before opening the live connection,
+      // and picks the restaurant room from it.
+      const token = encodeURIComponent(localStorage.getItem('token') || '');
       setWsStatus('connecting');
-      socket = new WebSocket(wsUrl);
+      socket = new WebSocket(`${wsBase}/ws?token=${token}`);
 
       socket.onopen = () => {
         attempt = 0;
@@ -394,6 +292,7 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
           const { event: eventName } = JSON.parse(event.data);
           if (eventName === 'ORDER_UPDATED' || eventName === 'ORDER_STATUS_UPDATED') {
             fetchActiveOrders();
+            fetchSummary();
           }
         } catch (err) {
           console.error('Failed to parse websocket message:', err);
@@ -416,11 +315,15 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
       if (reconnectTimer) clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [fetchActiveOrders]);
+  }, [fetchActiveOrders, fetchSummary]);
 
   useEffect(() => {
     fetchActiveOrders();
-    const fetchInterval = setInterval(fetchActiveOrders, 60000);
+    fetchSummary();
+    const fetchInterval = setInterval(() => {
+      fetchActiveOrders();
+      fetchSummary();
+    }, 60000);
     const minuteTicker = setInterval(() => setNow(Date.now()), 60000);
     const mountTimer = setTimeout(() => setMounted(true), 60);
 
@@ -429,293 +332,286 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
       clearInterval(minuteTicker);
       clearTimeout(mountTimer);
     };
-  }, [fetchActiveOrders]);
+  }, [fetchActiveOrders, fetchSummary]);
 
-  const getElapsedMinutes = useCallback(
-    (createdAtStr?: string) => {
-      if (!createdAtStr) return 0;
-      const createdTime = new Date(createdAtStr).getTime();
-      if (isNaN(createdTime)) return 0;
-      return Math.max(0, Math.floor((now - createdTime) / (1000 * 60)));
-    },
-    [now]
-  );
-
-  const getMins = (t: ActiveOrder) => getElapsedMinutes(t.created_at || t.createdAt);
-
-  const toggleType = (key: OrderTypeKey) => setTypeFilter((prev) => (prev === key ? null : key));
-  const toggleFreshness = (key: FreshnessKey) => setFreshnessFilter((prev) => (prev === key ? null : key));
-  const clearFilters = () => {
-    setTypeFilter(null);
-    setFreshnessFilter(null);
+  const getMins = (t: ActiveOrder) => {
+    const createdAtStr = t.created_at || t.createdAt;
+    if (!createdAtStr) return 0;
+    const createdTime = new Date(createdAtStr).getTime();
+    if (isNaN(createdTime)) return 0;
+    return Math.max(0, Math.floor((now - createdTime) / 60000));
   };
 
   const displayedTickets = tickets.filter((t) => {
-    if (typeFilter) {
-      const meta = matchOrderType(t.orderType);
-      if (!meta || meta.key !== typeFilter) return false;
-    }
-    if (freshnessFilter) {
-      if (freshnessOf(getMins(t)) !== freshnessFilter) return false;
-    }
+    if (typeFilter && matchOrderType(t.orderType)?.key !== typeFilter) return false;
+    if (freshnessFilter && freshnessOf(getMins(t)) !== freshnessFilter) return false;
     return true;
   });
+  const freshCounts = FRESHNESS_META.map((f) => ({
+    ...f,
+    count: tickets.filter((t) => freshnessOf(getMins(t)) === f.key).length,
+  }));
+  const lateCount = freshCounts.find((f) => f.key === 'late')?.count || 0;
 
-  const typeLabel = typeFilter ? ORDER_TYPE_META.find((m) => m.key === typeFilter) : null;
-  const freshLabel = freshnessFilter ? FRESHNESS_META.find((f) => f.key === freshnessFilter) : null;
+  const openTicket = (t: ActiveOrder) => (onSelectTicket ? onSelectTicket(t) : onNavigate('pos'));
 
-  const maxRevenue = Math.max(...SALES_BARS.map((d) => d.revenue));
-  const weekTotal = SALES_BARS.reduce((s, d) => s + d.revenue, 0);
+  // ---- Real numbers (empty until the summary has loaded) ----
+  const currency = summary?.currency || 'USD';
+  const week = summary?.week || [];
+  const maxWeek = Math.max(1, ...week.map((d) => d.sales)); // avoid dividing by 0 on a quiet week
+  const weekTotal = week.reduce((s, d) => s + d.sales, 0);
+  const topItems = summary?.topItems || [];
+  const topMax = Math.max(1, ...topItems.map((t) => t.quantity));
+  const salesChange = summary ? changeVsYesterday(summary.today.sales, summary.today.yesterdaySales) : undefined;
+  const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="dash" data-theme={theme}>
       <DashboardStyles />
 
-      {/* HEADER SECTION */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <h1 className="text-2xl font-bold text-slate-800">Welcome back, {restaurantName}! 👋</h1>
-          <span className="kb-ws-status">
-            <span className={`kb-ws-dot ${wsStatus}`} />
+      {/* HEADER — one line */}
+      <div className="d-head">
+        <div className="d-head-title">
+          <h1 className="serif">{restaurantName}</h1>
+          <span className="d-sub">{todayLabel}</span>
+          <span className="d-live" title="Updates arrive automatically as orders change">
+            <span className={`d-live-dot ${wsStatus}`} />
             {wsStatus === 'live' ? 'Live' : wsStatus === 'connecting' ? 'Connecting…' : 'Offline'}
           </span>
         </div>
-        <p className="text-sm text-slate-500">Here is what's happening in your kitchen today.</p>
+        <div className="d-actions">
+          <button className="d-btn" onClick={() => onNavigate('kitchenscreen')}>
+            <ChefHat className="w-4 h-4" />
+            Kitchen display
+          </button>
+          <button className="d-btn" onClick={handleOpenDrawer} disabled={isOpeningDrawer}>
+            <Archive className="w-4 h-4" />
+            {isOpeningDrawer ? 'Opening…' : 'Open drawer'}
+          </button>
+          <button
+            className="d-btn icon"
+            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+            aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+            title={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+          >
+            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+          <button className="d-btn primary" onClick={() => onNavigate('pos')}>
+            <Plus className="w-4 h-4" />
+            New order
+          </button>
+        </div>
       </div>
 
-      {/* THE PASS */}
-      <div>
-        <div className="mb-3 flex items-center justify-between px-1" style={{ flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <p className="kb-eyebrow">THE PASS</p>
-            {typeLabel && (
-              <button className="kb-filter-chip" onClick={() => toggleType(typeLabel.key)}>
-                <span className="dot" style={{ background: typeLabel.color }} />
-                {typeLabel.label} ✕
-              </button>
-            )}
-            {freshLabel && (
-              <button className="kb-filter-chip" onClick={() => toggleFreshness(freshLabel.key)}>
-                <span className="dot" style={{ background: freshLabel.color }} />
-                {freshLabel.label} ✕
-              </button>
-            )}
-            {(typeFilter || freshnessFilter) && (
-              <button className="kb-filter-chip" onClick={clearFilters} style={{ opacity: 0.7 }}>
-                Clear all
-              </button>
-            )}
-          </div>
-          
-          {/* ACTION BUTTONS: Kitchen Display | Open Drawer | Open POS */}
-          <div className="flex items-center gap-4">
-           <button
-  onClick={() => onNavigate('kitchenscreen')}
-  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
->
-  <svg 
-    className="w-4 h-4 text-slate-500 group-hover:text-slate-800" 
-    fill="none" 
-    stroke="currentColor" 
-    viewBox="0 0 24 24"
-  >
-    {/* Chef Hat Icon */}
-    <path 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      strokeWidth={2} 
-      d="M6 13.87A4 4 0 017.41 6a5.11 5.11 0 019.18 0A4 4 0 0118 13.87V19H6v-5.13zM6 19h12v2H6v-2z" 
-    />
-  </svg>
-  <span>Kitchen Display</span>
-</button>
-            <button
-              onClick={handleOpenDrawer}
-              disabled={isOpeningDrawer}
-              className="text-xs font-semibold text-amber-600 hover:text-amber-700 disabled:opacity-50 transition-colors"
-            >
-              {isOpeningDrawer ? 'Opening Drawer...' : '📥 Open Cash Drawer '}
+      {summaryError && <p className="d-alert">Could not load today's numbers. They will refresh automatically in a minute.</p>}
+
+      {/* OPEN ORDERS — first and biggest: what staff watch all day */}
+      <section className="d-pass" aria-label="Open orders">
+        <div className="d-pass-head">
+          <h2 className="serif">
+            Open orders <span className="mono">· {tickets.length}</span>
+          </h2>
+          <div className="d-chips" role="group" aria-label="Order type">
+            <button className={`d-chip ${typeFilter === null ? 'on' : ''}`} onClick={() => setTypeFilter(null)}>
+              All
             </button>
-            <button
-  onClick={() => onNavigate('pos')}
-  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
->
-  <svg 
-    className="w-4 h-4 text-emerald-600" 
-    fill="none" 
-    stroke="currentColor" 
-    viewBox="0 0 24 24"
-  >
-    {/* POS / Terminal / Credit Card Icon */}
-    <path 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      strokeWidth={2} 
-      d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2z" 
-    />
-  </svg>
-  <span>Open POS</span>
-</button>
+            {ORDER_TYPE_META.map((m) => (
+              <button
+                key={m.key}
+                className={`d-chip ${typeFilter === m.key ? 'on' : ''}`}
+                onClick={() => setTypeFilter((prev) => (prev === m.key ? null : m.key))}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="d-chips" role="group" aria-label="Waiting time">
+            {freshCounts.map((f) => (
+              <button
+                key={f.key}
+                className={`d-chip ${freshnessFilter === f.key ? 'on' : ''}`}
+                onClick={() => setFreshnessFilter((prev) => (prev === f.key ? null : f.key))}
+              >
+                <span className="dot" style={{ background: f.color }} />
+                {f.label} · {f.count}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          <div style={{ flex: '1 1 560px', minWidth: 300 }} ref={railRef}>
-            <div className="kb-rail-bar">
-              {Array.from({ length: 14 }).map((_, i) => (
-                <span key={i} className="kb-bolt" />
-              ))}
-            </div>
-            <div className="kb-rail-tickets">
-              {isLoadingTickets ? (
-                <div className="py-8 text-center text-xs text-slate-400 w-full">Loading active tickets...</div>
-              ) : displayedTickets.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-400 w-full">
-                  {tickets.length === 0 ? 'No active kitchen tickets' : 'No tickets match the current filter'}
-                </div>
-              ) : (
-                displayedTickets.map((t, i) => {
-                  const mins = getMins(t);
-                  const angle = (i % 2 === 0 ? -1 : 1) * (1.2 + (i % 3) * 0.6);
-                  const status =
-                    mins >= 20
-                      ? { label: 'LATE', color: '#A23B2E', bg: '#F7ECEA' }
-                      : mins >= 10
-                      ? { label: 'AGING', color: '#B8863B', bg: '#F8F1E4' }
-                      : { label: 'FRESH', color: '#4C7A5E', bg: '#EEF3EE' };
-                  const label = t.customerName || `${t.orderType} Order`;
-
-                  return (
-                    <div
-                      key={t.orderId}
-                      className="kb-ticket-wrap cursor-pointer"
-                      onClick={() => {
-                        if (onSelectTicket) {
-                          onSelectTicket(t);
-                        } else {
-                          onNavigate('pos');
-                        }
-                      }}
-                      style={{
-                        transitionDelay: `${i * 90}ms`,
-                        opacity: mounted ? 1 : 0,
-                        transform: mounted ? `translateY(0) rotate(${angle}deg)` : `translateY(-18px) rotate(${angle}deg)`,
-                      }}
-                    >
-                      <span className="kb-clip" />
-                      <div className="kb-ticket" style={{ borderTopColor: status.color }}>
-                        <div className="kb-ticket-row">
-                          <span className="kb-ticket-no">#{t.ticketNo}</span>
-                          <span className="kb-badge" style={{ color: status.color, background: status.bg }}>
-                            {status.label} · {formatDuration(mins)}
-                          </span>
-                        </div>
-                        <p className="kb-customer" title={label}>{label}</p>
-                        <p className="kb-meta">{t.orderType} · {t.itemCount} items</p>
-                        <div className="ticket-tear-line" style={{ margin: '10px 0' }} />
-                        <div className="kb-ticket-row">
-                          <span className="kb-meta">TOTAL</span>
-                          <span className="kb-price">${Number(t.totalAmount || 0).toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+        {isLoadingTickets ? (
+          <div className="d-empty">
+            <Loader2 className="w-4 h-4" style={{ display: 'inline', marginRight: 6, animation: 'd-pulse 1s infinite' }} />
+            Loading open orders…
           </div>
+        ) : displayedTickets.length === 0 ? (
+          <div className="d-empty">{tickets.length === 0 ? 'No open orders right now.' : 'No open orders match this filter.'}</div>
+        ) : (
+          <div className="d-tickets">
+            {displayedTickets.map((t) => {
+              const mins = getMins(t);
+              const fresh = freshnessOf(mins);
+              const meta = FRESHNESS_META.find((f) => f.key === fresh)!;
+              const typeLabel = matchOrderType(t.orderType)?.label || t.orderType;
+              return (
+                <button
+                  key={t.orderId}
+                  className="d-ticket"
+                  style={{ boxShadow: `inset 0 3px 0 ${meta.color}` }}
+                  onClick={() => openTicket(t)}
+                  title="Open in the POS"
+                >
+                  <div className="d-ticket-row">
+                    <span className="d-ticket-no mono">#{t.ticketNo}</span>
+                    <span className={`d-badge ${fresh}`}>
+                      {fresh === 'late' ? 'LATE · ' : fresh === 'aging' ? 'WAITING · ' : ''}
+                      {formatDuration(mins)}
+                    </span>
+                  </div>
+                  <div className="d-ticket-who">{t.customerName || `${typeLabel} order`}</div>
+                  <div className="d-ticket-row" style={{ alignItems: 'baseline' }}>
+                    <span className="d-ticket-meta">
+                      {typeLabel} · {t.itemCount} {t.itemCount === 1 ? 'item' : 'items'}
+                    </span>
+                    <span className="d-ticket-total mono">{formatMoney(Number(t.totalAmount || 0), currency)}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
-          <KitchenStatusCard
-            tickets={tickets}
-            mounted={mounted}
-            getMins={getMins}
-            freshnessFilter={freshnessFilter}
-            onToggleFreshness={toggleFreshness}
-            typeFilter={typeFilter}
-            onToggleType={toggleType}
-          />
-        </div>
-      </div>
-
-      {/* METRICS GRID */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {DASHBOARD_METRICS.map((metric, i) => (
-          <div key={i} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">{metric.icon}</span>
-              {metric.change && (
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
-                  {metric.change}
-                </span>
-              )}
-            </div>
-            <div className="mt-4">
-              <h3 className="text-2xl font-bold text-slate-800">{metric.value}</h3>
-              <p className="text-xs font-medium text-slate-500">{metric.label}</p>
-            </div>
-            {metric.detail && (
-              <p className={`mt-2 text-xs ${metric.alert ? 'font-semibold text-amber-600' : 'text-slate-400'}`}>
-                {metric.detail}
-              </p>
+      {/* KEY NUMBERS — slim row */}
+      <div className="d-kpis">
+        <div className="d-kpi">
+          <div className="d-kpi-top">
+            <span className="d-kpi-label">Today's sales</span>
+            {salesChange && (
+              <span className={`d-badge ${salesChange.startsWith('-') ? 'late' : 'fresh'}`}>{salesChange}</span>
             )}
           </div>
-        ))}
+          <div className="d-kpi-value mono">{summary ? formatMoney(summary.today.sales, currency) : '—'}</div>
+          <div className="d-kpi-detail">
+            {summary
+              ? summary.today.yesterdaySales
+                ? `vs ${formatMoney(summary.today.yesterdaySales, currency)} yesterday`
+                : 'No sales yesterday'
+              : ' '}
+          </div>
+        </div>
+        <div className="d-kpi">
+          <span className="d-kpi-label">Orders today</span>
+          <div className="d-kpi-value mono">{summary ? summary.today.orders : '—'}</div>
+          <div className="d-kpi-detail">
+            {summary ? `Average ${formatMoney(summary.today.averageOrder, currency)} per order` : ' '}
+          </div>
+        </div>
+        <div className="d-kpi">
+          <div className="d-kpi-top">
+            <span className="d-kpi-label">Open now</span>
+            {lateCount > 0 && <span className="d-badge late">{lateCount} late</span>}
+          </div>
+          <div className="d-kpi-value mono">{tickets.length}</div>
+          <div className="d-kpi-detail">Orders not paid yet</div>
+        </div>
+        <div className="d-kpi">
+          <div className="d-kpi-top">
+            <span className="d-kpi-label">Stock alerts</span>
+            {!!summary?.lowStock.count && <span className="d-badge aging">Action</span>}
+          </div>
+          <div className="d-kpi-value mono">{summary ? summary.lowStock.count : '—'}</div>
+          <div className="d-kpi-detail">
+            {summary ? (summary.lowStock.count > 0 ? 'At or below minimum' : 'All stock above minimum') : ' '}
+          </div>
+        </div>
       </div>
 
-      {/* LOWER SECTION */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <p className="kb-eyebrow" style={{ marginBottom: 8 }}>THIS WEEK</p>
-          <div className="kb-receipt">
-            {SALES_BARS.map((d) => (
-              <div className="kb-receipt-row" key={d.day}>
-                <span className="kb-receipt-day">{d.day}</span>
-                <div className="kb-receipt-bar-track">
+      {/* BOTTOM ROW — week · best sellers · low stock */}
+      <div className="d-bottom">
+        <section className="d-card">
+          <div className="d-card-head">
+            <h2 className="serif">Last 7 days</h2>
+            <span className="mono" style={{ fontSize: 16, fontWeight: 600, color: 'var(--gold)' }}>
+              {formatMoney(weekTotal, currency)}
+            </span>
+          </div>
+          <div className="d-week">
+            {week.map((d, i) => {
+              const isToday = i === week.length - 1;
+              return (
+                <div className="d-week-col" key={d.date} title={`${d.date}: ${formatMoney(d.sales, currency)} · ${d.orders} orders`}>
+                  <span className="d-week-amt mono">{formatMoney(Math.round(d.sales), currency).replace(/\.00$/, '')}</span>
                   <div
-                    className="kb-receipt-bar"
-                    style={{ width: mounted ? `${(d.revenue / maxRevenue) * 100}%` : '0%' }}
+                    className={`d-week-bar ${isToday ? 'today' : ''}`}
+                    style={{ height: mounted ? `${Math.max(2, (d.sales / maxWeek) * 84)}px` : '2px' }}
                   />
+                  <span className={`d-week-day ${isToday ? 'today' : ''}`}>{isToday ? 'Today' : d.label}</span>
                 </div>
-                <span className="kb-receipt-amt">${d.revenue.toLocaleString()}</span>
-              </div>
-            ))}
-            <div className="ticket-tear-line" style={{ margin: '14px 0' }} />
-            <div className="kb-receipt-row">
-              <span className="kb-receipt-day" style={{ fontWeight: 700 }}>TOTAL</span>
-              <span style={{ flex: 1 }} />
-              <span className="kb-price" style={{ fontSize: 18 }}>${weekTotal.toLocaleString()}</span>
-            </div>
-            <div className="kb-barcode" />
+              );
+            })}
+            {!summary && !summaryError && <span className="d-sub">Loading…</span>}
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-800">Low Stock Alerts</h2>
-            <button
-              onClick={() => onNavigate('raw-materials')}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800"
-            >
-              Manage
+        <section className="d-card">
+          <div className="d-card-head">
+            <h2 className="serif">Best sellers today</h2>
+          </div>
+          {summary && topItems.length === 0 && <p className="d-sub" style={{ margin: 0 }}>No dishes sold yet today.</p>}
+          {topItems.map((item) => (
+            <div key={item.name} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div className="d-row">
+                <span style={{ fontWeight: 600 }}>{item.name}</span>
+                <span className="d-sub">
+                  <span className="mono" style={{ color: 'var(--text)', fontWeight: 600 }}>{item.quantity}</span> sold ·{' '}
+                  {formatMoney(item.sales, currency)}
+                </span>
+              </div>
+              <div className="d-track">
+                <div className="d-fill" style={{ width: `${(item.quantity / topMax) * 100}%`, background: '#c9a24b' }} />
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section className="d-card">
+          <div className="d-card-head">
+            <h2 className="serif">Low stock</h2>
+            <button className="d-link" onClick={() => onNavigate('raw-materials')}>
+              Manage →
             </button>
           </div>
-          <div className="space-y-4">
-            {STOCK_ALERTS.map((item, idx) => (
-              <div key={idx} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
-                <span className="text-xl">{item.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="font-semibold text-slate-700 truncate">{item.name}</span>
-                    <span className="text-slate-400">{item.remaining}</span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-slate-100">
-                    <div className="h-1.5 rounded-full" style={{ width: `${item.progress}%`, background: item.color }} />
-                  </div>
+          {summary && summary.lowStock.items.length === 0 && (
+            <p className="d-sub" style={{ margin: 0 }}>All raw materials are above their minimum quantity.</p>
+          )}
+          {summary?.lowStock.items.map((item) => {
+            // Bar = current stock as a share of the minimum; red when empty, gold otherwise.
+            const out = item.currentStock <= 0;
+            const pct = Math.min(100, (item.currentStock / item.minQty) * 100);
+            return (
+              <div key={item.id} className="d-stock">
+                <div className="d-row">
+                  <span style={{ fontWeight: 600 }}>{item.name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: out ? 'var(--late)' : 'var(--aging)' }}>
+                    {out ? 'Out of stock' : 'Low'}
+                  </span>
+                </div>
+                <div className="d-sub">
+                  {item.currentStock} {item.unit} left · minimum {item.minQty} {item.unit}
+                </div>
+                <div className="d-track">
+                  <div className="d-fill" style={{ width: `${out ? 0 : Math.max(pct, 4)}%`, background: out ? '#A23B2E' : '#B8863B' }} />
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            );
+          })}
+          {summary && summary.lowStock.count > summary.lowStock.items.length && (
+            <p className="d-sub" style={{ margin: 0 }}>
+              + {summary.lowStock.count - summary.lowStock.items.length} more — open Raw Materials to see all.
+            </p>
+          )}
+        </section>
       </div>
     </div>
   );

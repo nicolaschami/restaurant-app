@@ -289,7 +289,7 @@ export default function SidebarLayout({
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#1c1917] overflow-hidden select-none">
+    <div className="flex h-screen w-screen bg-[#131c18] overflow-hidden select-none">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
         .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
@@ -297,15 +297,15 @@ export default function SidebarLayout({
 
       {/* Sidebar */}
       <aside
-        className={`bg-[#1c1917] text-slate-300 flex flex-col border-r border-[#33291f] shrink-0 h-full transition-all duration-300 ${
+        className={`bg-[#131c18] text-slate-300 flex flex-col border-r border-[#2a3a32] shrink-0 h-full transition-all duration-300 ${
           isCollapsed ? 'w-16' : 'w-60'
         }`}
       >
         {/* Header */}
-        <div className="p-3 border-b border-[#33291f] flex items-center justify-between">
+        <div className="p-3 border-b border-[#2a3a32] flex items-center justify-between">
           {!isCollapsed && (
             <div className="min-w-0 flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#8a3f16] to-[#c2621f] text-[11px]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#9a7d3c] to-[#c9a24b] text-[11px]">
                 🍽️
               </span>
               <div className="min-w-0">
@@ -321,7 +321,7 @@ export default function SidebarLayout({
             title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
             {isCollapsed ? (
-              <PanelLeftOpen className="w-4 h-4 text-[#c2621f]" />
+              <PanelLeftOpen className="w-4 h-4 text-[#c9a24b]" />
             ) : (
               <PanelLeftClose className="w-4 h-4" />
             )}
@@ -337,12 +337,12 @@ export default function SidebarLayout({
               isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
             } py-2 rounded-md text-xs font-medium transition ${
               activeTab === 'dashboard'
-                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c2621f]'
+                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c9a24b]'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
             title="Dashboard"
           >
-            <LayoutDashboard className={`w-4 h-4 shrink-0 ${activeTab === 'dashboard' ? 'text-[#c2621f]' : ''}`} />
+            <LayoutDashboard className={`w-4 h-4 shrink-0 ${activeTab === 'dashboard' ? 'text-[#c9a24b]' : ''}`} />
             {!isCollapsed && <span className="truncate">Dashboard</span>}
           </button>
 
@@ -353,14 +353,29 @@ export default function SidebarLayout({
               isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
             } py-2 rounded-md text-xs font-medium transition ${
               activeTab === 'pos'
-                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c2621f]'
+                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c9a24b]'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
             title="POS Terminal"
           >
-            <ShoppingCart className={`w-4 h-4 shrink-0 ${activeTab === 'pos' ? 'text-[#c2621f]' : ''}`} />
+            <ShoppingCart className={`w-4 h-4 shrink-0 ${activeTab === 'pos' ? 'text-[#c9a24b]' : ''}`} />
             {!isCollapsed && <span className="truncate">POS Terminal</span>}
           </button>
+
+          {/* Logout — also in the main menu so it's always easy to find
+              (the footer button can be hidden below a long, scrolled menu) */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className={`w-full flex items-center ${
+                isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
+              } py-2 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/10 transition`}
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4 shrink-0" />
+              {!isCollapsed && <span className="truncate">Logout</span>}
+            </button>
+          )}
 
           {/* Products Group */}
           <div>
@@ -375,20 +390,20 @@ export default function SidebarLayout({
               title="Products"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <UtensilsCrossed className="w-4 h-4 text-[#c2621f] shrink-0" />
+                <UtensilsCrossed className="w-4 h-4 text-[#c9a24b] shrink-0" />
                 {!isCollapsed && <span className="truncate">Products</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
                   className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
-                    isProductsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                    isProductsOpen ? 'rotate-180 text-[#c9a24b]' : 'text-slate-500'
                   }`}
                 />
               )}
             </button>
 
             {isProductsOpen && !isCollapsed && (
-              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#2a3a32] space-y-0.5">
                 {productSubItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -398,7 +413,7 @@ export default function SidebarLayout({
                       onClick={() => handleTabChange(item.id)}
                       className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
                         isActive
-                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          ? 'bg-white/5 text-[#e6cf8f] shadow-[inset_2px_0_0_0_#c9a24b] font-semibold'
                           : 'text-slate-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -424,20 +439,20 @@ export default function SidebarLayout({
               title="Partners"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <Users className="w-4 h-4 text-[#c2621f] shrink-0" />
+                <Users className="w-4 h-4 text-[#c9a24b] shrink-0" />
                 {!isCollapsed && <span className="truncate">Partners</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
                   className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
-                    isPartnersOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                    isPartnersOpen ? 'rotate-180 text-[#c9a24b]' : 'text-slate-500'
                   }`}
                 />
               )}
             </button>
 
             {isPartnersOpen && !isCollapsed && (
-              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#2a3a32] space-y-0.5">
                 {partnerSubItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -447,7 +462,7 @@ export default function SidebarLayout({
                       onClick={() => handleTabChange(item.id)}
                       className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
                         isActive
-                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          ? 'bg-white/5 text-[#e6cf8f] shadow-[inset_2px_0_0_0_#c9a24b] font-semibold'
                           : 'text-slate-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -473,20 +488,20 @@ export default function SidebarLayout({
               title="Transaction"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <ArrowRightLeft className="w-4 h-4 text-[#c2621f] shrink-0" />
+                <ArrowRightLeft className="w-4 h-4 text-[#c9a24b] shrink-0" />
                 {!isCollapsed && <span className="truncate">Transaction</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
                   className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
-                    isTransactionOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                    isTransactionOpen ? 'rotate-180 text-[#c9a24b]' : 'text-slate-500'
                   }`}
                 />
               )}
             </button>
 
             {isTransactionOpen && !isCollapsed && (
-              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#2a3a32] space-y-0.5">
                 {transactionSubItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -496,7 +511,7 @@ export default function SidebarLayout({
                       onClick={() => handleTabChange(item.id)}
                       className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
                         isActive
-                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          ? 'bg-white/5 text-[#e6cf8f] shadow-[inset_2px_0_0_0_#c9a24b] font-semibold'
                           : 'text-slate-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -522,20 +537,20 @@ export default function SidebarLayout({
               title="Settings"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <Settings className="w-4 h-4 text-[#c2621f] shrink-0" />
+                <Settings className="w-4 h-4 text-[#c9a24b] shrink-0" />
                 {!isCollapsed && <span className="truncate">Settings</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
                   className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
-                    isSettingsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                    isSettingsOpen ? 'rotate-180 text-[#c9a24b]' : 'text-slate-500'
                   }`}
                 />
               )}
             </button>
 
             {isSettingsOpen && !isCollapsed && (
-              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-0.5">
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#2a3a32] space-y-0.5">
                 {settingSubItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -545,7 +560,7 @@ export default function SidebarLayout({
                       onClick={() => handleTabChange(item.id)}
                       className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition ${
                         isActive
-                          ? 'bg-white/5 text-[#e0925a] shadow-[inset_2px_0_0_0_#c2621f] font-semibold'
+                          ? 'bg-white/5 text-[#e6cf8f] shadow-[inset_2px_0_0_0_#c9a24b] font-semibold'
                           : 'text-slate-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -571,13 +586,13 @@ export default function SidebarLayout({
               title="Reports"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <BarChart3 className="w-4 h-4 text-[#c2621f] shrink-0" />
+                <BarChart3 className="w-4 h-4 text-[#c9a24b] shrink-0" />
                 {!isCollapsed && <span className="truncate">Reports</span>}
               </div>
               {!isCollapsed && (
                 <ChevronDown
                   className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
-                    isReportsOpen ? 'rotate-180 text-[#c2621f]' : 'text-slate-500'
+                    isReportsOpen ? 'rotate-180 text-[#c9a24b]' : 'text-slate-500'
                   }`}
                 />
               )}
@@ -585,7 +600,7 @@ export default function SidebarLayout({
 
             {/* Sub-menu (Categories) */}
             {isReportsOpen && !isCollapsed && (
-              <div className="mt-0.5 ml-2 pl-2 border-l border-[#33291f] space-y-1">
+              <div className="mt-0.5 ml-2 pl-2 border-l border-[#2a3a32] space-y-1">
                 {reportCategories.map((group) => {
                   const GroupIcon = group.icon;
                   const isGroupOpen = !!openReportSubGroups[group.id];
@@ -602,14 +617,14 @@ export default function SidebarLayout({
                         </div>
                         <ChevronRight
                           className={`w-3 h-3 transition-transform duration-200 shrink-0 ${
-                            isGroupOpen ? 'rotate-90 text-[#c2621f]' : 'text-slate-500'
+                            isGroupOpen ? 'rotate-90 text-[#c9a24b]' : 'text-slate-500'
                           }`}
                         />
                       </button>
 
                       {/* Sub-sub-menu (Individual Reports) */}
                       {isGroupOpen && (
-                        <div className="mt-0.5 ml-2 pl-2 border-l border-[#44362a] space-y-0.5">
+                        <div className="mt-0.5 ml-2 pl-2 border-l border-[#3f5247] space-y-0.5">
                           {group.items.map((item) => {
                             const ItemIcon = item.icon;
                             const isActive = activeTab === item.id;
@@ -619,7 +634,7 @@ export default function SidebarLayout({
                                 onClick={() => handleTabChange(item.id)}
                                 className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition ${
                                   isActive
-                                    ? 'bg-white/10 text-[#e0925a] font-semibold'
+                                    ? 'bg-white/10 text-[#e6cf8f] font-semibold'
                                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                                 }`}
                               >
@@ -640,7 +655,7 @@ export default function SidebarLayout({
 
         {/* Footer / Logout */}
         {onLogout && (
-          <div className="p-1.5 border-t border-[#33291f]">
+          <div className="p-1.5 border-t border-[#2a3a32]">
             <button
               onClick={onLogout}
               className={`w-full flex items-center ${

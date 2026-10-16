@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRef } from 'react'; 
+import { useRef } from 'react';
 import { api } from '../api';
 import { generateReceiptPDF } from '../services/pdfService';
 import {
@@ -11,8 +11,6 @@ import {
   Search,
   Plus,
   Minus,
-  CreditCard,
-  Receipt,
   RotateCcw,
   ShoppingBag,
   Sun,
@@ -20,20 +18,23 @@ import {
   UtensilsCrossed,
   X,
   Trash2,
-  Sparkles,
   SlidersHorizontal,
   Check,
   Printer,
   Archive,
   Gift,
   UserPlus,
- Phone,
+  Phone,
   MapPin,
   FileText,
   Mail,
   Loader2,
-  AlertTriangle
-  } from 'lucide-react';
+  AlertTriangle,
+  LayoutGrid,
+  Armchair,
+  User,
+  Pause
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface PosScreenProps {
@@ -42,7 +43,7 @@ interface PosScreenProps {
   // order to fetch. Full line items/table/customer come from GET /orders/:id.
   activeOrder?: { orderId: number; ticketNo?: number } | null;
   onResetOrder?: () => void;
- onClose?: () => void; // 👈 Accept onClose
+  onClose?: () => void; // 👈 Accept onClose
 }
 
 /* ---------- API SHAPES ---------- */
@@ -189,6 +190,19 @@ const getCategoryIcon = (name: string): LucideIcon => {
   return UtensilsCrossed;
 };
 
+// Category colors: `dot` for the category list, `dark` / `light` for dish cards
+// without a photo, in each theme.
+const CATEGORY_PALETTE = [
+  { dot: '#d9895b', dark: '#4a3326', light: '#f6dccb' },
+  { dot: '#8fb56d', dark: '#33402c', light: '#e2edd5' },
+  { dot: '#d2b56a', dark: '#473b25', light: '#f4e8c7' },
+  { dot: '#e3876f', dark: '#4a2c27', light: '#f7d9d1' },
+  { dot: '#6fb8a6', dark: '#2a403a', light: '#d6ece6' },
+  { dot: '#6f98c2', dark: '#2a3a47', light: '#d9e5f1' },
+  { dot: '#9a8ad0', dark: '#342f46', light: '#e4dff4' },
+  { dot: '#cf86aa', dark: '#462f40', light: '#f4dbe7' },
+];
+
 /* ---------- PRICE RESOLUTION ---------- */
 
 const variantKeyByOrderType: Record<OrderType, keyof VariantPrice> = {
@@ -227,22 +241,51 @@ const parseModPrice = (val: any): number => {
 
 let ticketSeq = 214;
 
-export default function PosScreen({onClose, onLogout, activeOrder, onResetOrder }: PosScreenProps) {
+export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder }: PosScreenProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingOrder, setIsLoadingOrder] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
-  const [theme, setTheme] = useState<Theme>('dark');
-  const [silentPrintText, setSilentPrintText] = useState<string | null>(null);   // ← HERE
-  const [isPrinting, setIsPrinting] = useState(false);                            // ← AND HERE
- const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-const [isDeleting, setIsDeleting] = useState(false);
-const [orderNotes, setOrderNotes] = useState<string>('');
+  // Light/dark choice is remembered on this device (each terminal can differ).
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem('posTheme') === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('posTheme', theme);
+    } catch {
+      /* storage unavailable — theme just won't be remembered */
+    }
+  }, [theme]);
+
+  // Header: restaurant name (saved by the login page) and a live clock.
+  const restaurantName = localStorage.getItem('restaurantName') || 'My Restaurant';
+  const [clock, setClock] = useState(() =>
+    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  );
+  useEffect(() => {
+    const timer = setInterval(
+      () => setClock(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+      15000
+    );
+    return () => clearInterval(timer);
+  }, []);
+  const [silentPrintText, setSilentPrintText] = useState<string | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [orderNotes, setOrderNotes] = useState<string>('');
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rawMenuItems, setRawMenuItems] = useState<ApiMenuItem[]>([]);
   const [modifierGroups, setModifierGroups] = useState<ApiModifierGroup[]>([]);
   const [activeCat, setActiveCat] = useState<number | null>(null);
-  
+
   const [isLoadingCategories, setIsLoadingCategories] = useState<boolean>(true);
   const [isLoadingItems, setIsLoadingItems] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -471,8 +514,8 @@ const [orderNotes, setOrderNotes] = useState<string>('');
 
         setBasket(rebuiltBasket);
         console.log('[currentOrderId SET FROM LOAD EFFECT]', order.id ?? orderId, '(loaded from GET /orders/:id)');
-       setCurrentOrderId(order.id ?? orderId);
-       setOrderNotes(order.notes || '');   // <-- INSERT THIS LINE
+        setCurrentOrderId(order.id ?? orderId);
+        setOrderNotes(order.notes || '');
       } catch (err: any) {
         if (!cancelled) {
           console.error('Failed to load order', err);
@@ -509,11 +552,18 @@ const [orderNotes, setOrderNotes] = useState<string>('');
     [rawMenuItems, orderType]
   );
 
-  const filteredItems = displayItems.filter(
-    (i) =>
-      (activeCat === null || i.catId === activeCat) &&
-      i.name.toLowerCase().includes(searchQuery.toLowerCase())
+  // Typing in search looks through the WHOLE menu; otherwise show the chosen category.
+  const query = searchQuery.trim().toLowerCase();
+  const filteredItems = displayItems.filter((i) =>
+    query ? i.name.toLowerCase().includes(query) : activeCat === null || i.catId === activeCat
   );
+
+  // Number of dishes per category (shown in the category list).
+  const itemsPerCategory = useMemo(() => {
+    const counts: Record<number, number> = {};
+    displayItems.forEach((i) => (counts[i.catId] = (counts[i.catId] || 0) + 1));
+    return counts;
+  }, [displayItems]);
 
   const activeCategory = categories.find((c) => c.id === activeCat);
 
@@ -581,6 +631,7 @@ const [orderNotes, setOrderNotes] = useState<string>('');
 
   const removeItem = (cartItemId: string) => {
     setBasket((prev) => prev.filter((b) => b.cartItemId !== cartItemId));
+    setSelectedLineId((cur) => (cur === cartItemId ? null : cur));
   };
 
   /* ---------- MODIFIER LINKING ---------- */
@@ -725,69 +776,69 @@ const [orderNotes, setOrderNotes] = useState<string>('');
   /* ---------- HARDWARE ACTIONS ---------- */
 
   const handleOpenDrawer = async () => {
-  try {
-    const selectedPrinter = localStorage.getItem('pos_printer_name') || 'POS-80';
-    console.log("printer name : ",selectedPrinter);
-    await api.post('/open-drawer', { printerName: selectedPrinter });
-  } catch (err: any) {
-    console.error('Drawer trigger failed:', err);
-    alert(err.response?.data?.error || 'Could not trigger drawer.');
-  }
-};
+    try {
+      const selectedPrinter = localStorage.getItem('pos_printer_name') || 'POS-80';
+      console.log('printer name : ', selectedPrinter);
+      await api.post('/open-drawer', { printerName: selectedPrinter });
+    } catch (err: any) {
+      console.error('Drawer trigger failed:', err);
+      alert(err.response?.data?.error || 'Could not trigger drawer.');
+    }
+  };
 
-const handleDeleteOrder = async () => {
-  if (!currentOrderId) return;
-  setIsDeleting(true);
-  setError(null);
-  try {
-    await api.delete(`/orders/${currentOrderId}`);
-    setBasket([]);
-    setDineInTable(null);
-    setDeliveryCustomer(null);
-    setDeliveryFee('0.00');
-    setCurrentOrderId(null);
-    setShowDeleteConfirm(false);
-    onClose?.(); // back to dashboard, same as a successful Hold/Pay
-  } catch (err: any) {
-    console.error('Failed to delete order:', err);
-    setError(err.response?.data?.error || 'Failed to delete the order. Please try again.');
-  } finally {
-    setIsDeleting(false);
-  }
-};
+  const handleDeleteOrder = async () => {
+    if (!currentOrderId) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await api.delete(`/orders/${currentOrderId}`);
+      setBasket([]);
+      setDineInTable(null);
+      setDeliveryCustomer(null);
+      setDeliveryFee('0.00');
+      setCurrentOrderId(null);
+      setShowDeleteConfirm(false);
+      onClose?.(); // back to dashboard, same as a successful Hold/Pay
+    } catch (err: any) {
+      console.error('Failed to delete order:', err);
+      setError(err.response?.data?.error || 'Failed to delete the order. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handlePrintCopy = async () => {
-  if (basket.length === 0) return;
-  setIsPrinting(true);
-  try {
-    const payload = {
-      restaurantName: 'Fen & Larder',
-      ticketNo,
-      orderType,
-      tableLabel: orderType === 'Dine-In' ? dineInTable?.label : undefined,
-      customerName: orderType === 'Delivery' ? deliveryCustomer?.name : undefined,
-      items: basket.map((b) => ({
-        name: b.item.name,
-        quantity: b.quantity,
-        lineTotal: lineUnitPrice(b) * b.quantity,
-        variantSize: b.variantSize,
-        modifiers: (b.modifiers || []).map((m) => m.optionName),
-      })),
-      subtotal,
-      tax,
-      deliveryFee: orderType === 'Delivery' ? deliveryFeeNum : undefined,
-      total,
-    };
+    if (basket.length === 0) return;
+    setIsPrinting(true);
+    try {
+      const payload = {
+        restaurantName: 'Fen & Larder',
+        ticketNo,
+        orderType,
+        tableLabel: orderType === 'Dine-In' ? dineInTable?.label : undefined,
+        customerName: orderType === 'Delivery' ? deliveryCustomer?.name : undefined,
+        items: basket.map((b) => ({
+          name: b.item.name,
+          quantity: b.quantity,
+          lineTotal: lineUnitPrice(b) * b.quantity,
+          variantSize: b.variantSize,
+          modifiers: (b.modifiers || []).map((m) => m.optionName),
+        })),
+        subtotal,
+        tax,
+        deliveryFee: orderType === 'Delivery' ? deliveryFeeNum : undefined,
+        total,
+      };
 
-    const response = await api.post('/silent-print', payload);
-    setSilentPrintText(response.data.ticketText);
-  } catch (err) {
-    console.error('Silent print failed:', err);
-    setError('Failed to generate the print ticket.');
-  } finally {
-    setIsPrinting(false);
-  }
-};
+      const response = await api.post('/silent-print', payload);
+      setSilentPrintText(response.data.ticketText);
+    } catch (err) {
+      console.error('Silent print failed:', err);
+      setError('Failed to generate the print ticket.');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   const deliveryFeeNum = orderType === 'Delivery' ? parseFloat(deliveryFee) || 0 : 0;
 
@@ -798,117 +849,113 @@ const handleDeleteOrder = async () => {
 
   /* ---------- SAVE ORDER ---------- */
 
-// add near your other useState lines:
-const savingRef = useRef(false);
+  const savingRef = useRef(false);
 
-const handleSaveOrder = async (isPayment: boolean) => {
-  // Hard, synchronous guard — impossible to double-fire even on a fast double-click,
-  // unlike isSaving (state), which can lag a render behind the actual click.
-  if (savingRef.current) {
-    console.log('[SAVE] blocked — already saving');
-    return;
-  }
+  const handleSaveOrder = async (isPayment: boolean) => {
+    // Hard, synchronous guard — impossible to double-fire even on a fast double-click,
+    // unlike isSaving (state), which can lag a render behind the actual click.
+    if (savingRef.current) {
+      console.log('[SAVE] blocked — already saving');
+      return;
+    }
 
-  console.log('[SAVE] start', { isPayment, basketLength: basket.length, orderType, currentOrderId });
+    console.log('[SAVE] start', { isPayment, basketLength: basket.length, orderType, currentOrderId });
 
-  if (basket.length === 0) {
-    console.log('[SAVE] blocked — empty basket');
-    return;
-  }
-  if (orderType === 'Dine-In' && !dineInTable) {
-    console.log('[SAVE] blocked — no table selected, opening picker');
-    setShowTablePicker(true);
-    return;
-  }
-  if (orderType === 'Delivery' && !deliveryCustomer) {
-    console.log('[SAVE] blocked — no customer selected, opening picker');
-    setShowCustomerPicker(true);
-    return;
-  }
+    if (basket.length === 0) {
+      console.log('[SAVE] blocked — empty basket');
+      return;
+    }
+    if (orderType === 'Dine-In' && !dineInTable) {
+      console.log('[SAVE] blocked — no table selected, opening picker');
+      setShowTablePicker(true);
+      return;
+    }
+    if (orderType === 'Delivery' && !deliveryCustomer) {
+      console.log('[SAVE] blocked — no customer selected, opening picker');
+      setShowCustomerPicker(true);
+      return;
+    }
 
-  savingRef.current = true;
-  setIsSaving(true);
-  setError(null);
+    savingRef.current = true;
+    setIsSaving(true);
+    setError(null);
 
-  try {
-    const orderPayload = {
-      restaurantId: 1,
-      ticketNo,
-      orderStatus: isPayment ? 'CLOSED' : 'open',
-      tableStatus: isPayment ? 'free' : 'occupied',
-      orderType,
-      tableId: orderType === 'Dine-In' ? dineInTable?.id : null,
-      tableLabel: orderType === 'Dine-In' ? dineInTable?.label : null,
-      customerId: orderType === 'Delivery' ? deliveryCustomer?.id : null,
-      customerName: orderType === 'Delivery' ? deliveryCustomer?.name : null,
-      customerPhone: orderType === 'Delivery' ? deliveryCustomer?.phone : null,
-      customerAddress: orderType === 'Delivery' ? deliveryCustomer?.address : null,
-      deliveryFee: deliveryFeeNum,
-      subtotal,
-      tax,
-      total,
-      notes: orderNotes,   
-      items: basket.map((b) => ({
-        menuItemId: b.item.id,
-        name: b.item.name,
-        quantity: b.quantity,
-        unitPrice: b.item.price,
-        variantSize: b.variantSize || null,
-        isComp: Boolean(b.comp),
-        compReason: b.comp ? b.comp.reason : null,
-        modifiers: (b.modifiers || []).map((m) => ({
-          groupId: m.groupId,
-          groupName: m.groupName,
-          optionId: m.optionId,
-          optionName: m.optionName,
-          price: m.price,
+    try {
+      const orderPayload = {
+        restaurantId: 1,
+        ticketNo,
+        orderStatus: isPayment ? 'CLOSED' : 'open',
+        tableStatus: isPayment ? 'free' : 'occupied',
+        orderType,
+        tableId: orderType === 'Dine-In' ? dineInTable?.id : null,
+        tableLabel: orderType === 'Dine-In' ? dineInTable?.label : null,
+        customerId: orderType === 'Delivery' ? deliveryCustomer?.id : null,
+        customerName: orderType === 'Delivery' ? deliveryCustomer?.name : null,
+        customerPhone: orderType === 'Delivery' ? deliveryCustomer?.phone : null,
+        customerAddress: orderType === 'Delivery' ? deliveryCustomer?.address : null,
+        deliveryFee: deliveryFeeNum,
+        subtotal,
+        tax,
+        total,
+        notes: orderNotes,
+        items: basket.map((b) => ({
+          menuItemId: b.item.id,
+          name: b.item.name,
+          quantity: b.quantity,
+          unitPrice: b.item.price,
+          variantSize: b.variantSize || null,
+          isComp: Boolean(b.comp),
+          compReason: b.comp ? b.comp.reason : null,
+          modifiers: (b.modifiers || []).map((m) => ({
+            groupId: m.groupId,
+            groupName: m.groupName,
+            optionId: m.optionId,
+            optionName: m.optionName,
+            price: m.price,
+          })),
+          lineTotal: lineUnitPrice(b) * b.quantity,
         })),
-        lineTotal: lineUnitPrice(b) * b.quantity,
-      })),
-    };
+      };
 
-    console.log('[SAVE] currentOrderId =', currentOrderId, '→ branch:', currentOrderId ? 'UPDATE' : 'CREATE');
+      console.log('[SAVE] currentOrderId =', currentOrderId, '→ branch:', currentOrderId ? 'UPDATE' : 'CREATE');
 
-    let savedOrderId = currentOrderId;
-    if (currentOrderId) {
-      const res = await api.put(`/orders/${currentOrderId}`, orderPayload);
-      console.log('[SAVE] PUT response', res.data);
-    } else {
-      const res = await api.post('/orders', orderPayload);
-      savedOrderId = res.data?.order?.id ?? null;
-      console.log('[SAVE] POST response, new id =', savedOrderId);
+      let savedOrderId = currentOrderId;
+      if (currentOrderId) {
+        const res = await api.put(`/orders/${currentOrderId}`, orderPayload);
+        console.log('[SAVE] PUT response', res.data);
+      } else {
+        const res = await api.post('/orders', orderPayload);
+        savedOrderId = res.data?.order?.id ?? null;
+        console.log('[SAVE] POST response, new id =', savedOrderId);
+      }
+
+      const tableRes = await api
+        .get('/tables', { params: { restaurantId: 1 } })
+        .catch(() => ({ data: [] }));
+      const freshTables = Array.isArray(tableRes.data) ? tableRes.data : tableRes.data?.tables || [];
+      if (freshTables.length > 0) {
+        setTables(freshTables);
+      } else if (orderType === 'Dine-In' && dineInTable) {
+        setTables((prev) => prev.map((t) => (t.id === dineInTable.id ? { ...t, status: 'occupied' } : t)));
+      }
+
+      setBasket([]);
+      setDineInTable(null);
+      setDeliveryCustomer(null);
+      setDeliveryFee('0.00');
+      if (!currentOrderId) setTicketNo((prev) => prev + 1);
+      setCurrentOrderId(null);
+
+      console.log('[SAVE] success, done. saved order id =', savedOrderId);
+      onClose?.();
+    } catch (err: any) {
+      console.error('[SAVE] failed:', err);
+      setError(err.response?.data?.message || err.response?.data?.error || 'Failed to save order. Please try again.');
+    } finally {
+      setIsSaving(false);
+      savingRef.current = false;
     }
-
-    const tableRes = await api
-      .get('/tables', { params: { restaurantId: 1 } })
-      .catch(() => ({ data: [] }));
-    const freshTables = Array.isArray(tableRes.data) ? tableRes.data : tableRes.data?.tables || [];
-    if (freshTables.length > 0) {
-      setTables(freshTables);
-    } else if (orderType === 'Dine-In' && dineInTable) {
-      setTables((prev) => prev.map((t) => (t.id === dineInTable.id ? { ...t, status: 'occupied' } : t)));
-    }
-
-    setBasket([]);
-    setDineInTable(null);
-    setDeliveryCustomer(null);
-    setDeliveryFee('0.00');
-    if (!currentOrderId) setTicketNo((prev) => prev + 1);
-    setCurrentOrderId(null);
-
-    console.log('[SAVE] success, done. saved order id =', savedOrderId);
-    onClose?.();
-  } catch (err: any) {
-    console.error('[SAVE] failed:', err);
-    setError(err.response?.data?.message || err.response?.data?.error || 'Failed to save order. Please try again.');
-  } finally {
-    setIsSaving(false);
-    savingRef.current = false;
-  }
-};
-/* ---------- Update order  ---------- */
-
-/* ---------- End Update order  ---------- */
+  };
 
   /* ---------- ORDER TYPE SWITCHING ---------- */
 
@@ -971,60 +1018,38 @@ const handleSaveOrder = async (isPayment: boolean) => {
     }
   };
 
-  const orderLabel = (() => {
-    if (orderType === 'Dine-In') {
-      return dineInTable
-        ? `Dine-In – T#${dineInTable.label} – Order #${ticketNo}`
-        : `Dine-In – Select Table – Order #${ticketNo}`;
-    }
-    if (orderType === 'Delivery') {
-      return deliveryCustomer
-        ? `Delivery – ${deliveryCustomer.name} – Order #${ticketNo}`
-        : `Delivery – Select Customer – Order #${ticketNo}`;
-    }
-    return `Takeaway – Order #${ticketNo}`;
-  })();
 
-  const iconColor = theme === 'dark' ? '#201a0c' : '#fbf5e8';
-  const inactiveIconColor = 'var(--muted)';
+  // Header chip: which table (dine-in) or customer (delivery) this order is for.
+  const contextLabel =
+    orderType === 'Dine-In'
+      ? dineInTable
+        ? `Table ${dineInTable.label}`
+        : 'Choose a table'
+      : deliveryCustomer
+        ? deliveryCustomer.name
+        : 'Choose a customer';
+
+  // How many of each dish are already in the order (badge on the dish card).
+  const qtyInTicket: Record<number, number> = {};
+  basket.forEach((b) => (qtyInTicket[b.item.id] = (qtyInTicket[b.item.id] || 0) + b.quantity));
+
+  // Each category gets a color: a dot in the category list, and the background of
+  // its dishes that have no photo yet. Picked by the category's position in the list.
+  const paletteForCategory = (catId: number) => {
+    const index = Math.max(0, categories.findIndex((c) => c.id === catId));
+    return CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
+  };
 
   return (
     <div className="pos-root" data-theme={theme}>
       <style>{`
-/* Customer Info - Updated */
-.customer-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-}
-
-.customer-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.customer-detail-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--muted-2);
-  background: var(--panel-2);
-  padding: 2px 10px 2px 6px;
-  border-radius: 12px;
-  border: 1px solid var(--hairline);
-}
-
-.customer-detail-item svg {
-  flex-shrink: 0;
-  color: var(--brass-soft);
-}
-
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+        /* =====================================================================
+           POS LAYOUT — redesign 2026-10 (design proposal "POS Screen Redesign")
+           Order/invoice LEFT · dishes MIDDLE · categories RIGHT, left-to-right.
+           Token names are unchanged so the modals below keep working.
+           ===================================================================== */
         .pos-root {
           font-family: 'Inter', sans-serif;
           width: 100%;
@@ -1035,845 +1060,598 @@ const handleSaveOrder = async (isPayment: boolean) => {
           -webkit-font-smoothing: antialiased;
           transition: background 0.25s ease, color 0.25s ease;
           position: relative;
-        }
-
-        /* ---------- DARK TOKENS ---------- */
-        .pos-root[data-theme='dark'] {
-          --bg: #141d18;
-          --bg-deep: #0e1512;
-          --panel: #1b2620;
-          --panel-2: #212e26;
-          --card: #24322a;
-          --card-hover: #2c3e34;
-          --hairline: #34453a;
-          --brass: #c9a24b;
-          --brass-soft: #e0c887;
-          --brass-dim: #8a6f34;
-          --rust: #b1573a;
-          --text-primary: #f3ecdc;
-          --text-heading: #f3ecdc;
-          --muted: #93a094;
-          --muted-2: #6f7d70;
-          --toggle-icon: #e0c887;
-          --overlay: rgba(6, 10, 8, 0.65);
           background: var(--bg);
           color: var(--text-primary);
         }
 
-        /* ---------- LIGHT TOKENS ---------- */
+        /* ---------- DARK TOKENS (lifted a few shades, brighter small text) ---------- */
+        .pos-root[data-theme='dark'] {
+          --bg: #1a2520;
+          --bg-deep: #131c18;
+          --panel: #22302a;
+          --panel-2: #2b3b33;
+          --card: #2b3b33;
+          --card-hover: #34473d;
+          --hairline: #3f5247;
+          --brass: #c9a24b;
+          --brass-soft: #e6cf8f;
+          --brass-dim: #9a7d3c;
+          --rust: #c96a4c;
+          --text-primary: #f6f0e2;
+          --text-heading: #f6f0e2;
+          --muted: #b3bfb3;
+          --muted-2: #93a094;
+          --toggle-icon: #e6cf8f;
+          --overlay: rgba(6, 10, 8, 0.65);
+          /* new tokens used by the redesigned layout */
+          --gold-text: #e6cf8f;
+          --pay-bg: #c9a24b;
+          --on-pay: #201a0c;
+          --step-bg: #131c18;
+          --danger-text: #f0a68c;
+          --danger-line: #7a3e2c;
+          --badge-bg: rgba(19, 28, 24, 0.78);
+        }
+
+        /* ---------- LIGHT TOKENS (warm cream, same family as the login page) ---------- */
         .pos-root[data-theme='light'] {
-          --bg: #f2ead6;
-          --bg-deep: #e3d3a4;
-          --panel: #f9f2df;
-          --panel-2: #ecdfb9;
-          --card: #fdf9ee;
-          --card-hover: #f7ecce;
-          --hairline: #d6c28e;
+          --bg: #f6efdf;
+          --bg-deep: #efe5cf;
+          --panel: #fffaf0;
+          --panel-2: #f3ead6;
+          --card: #ffffff;
+          --card-hover: #fbf3e0;
+          --hairline: #e2d6bb;
           --brass: #916b28;
           --brass-soft: #74551e;
           --brass-dim: #bd9142;
-          --rust: #9c4530;
-          --text-primary: #2b2115;
-          --text-heading: #201808;
-          --muted: #6e6045;
-          --muted-2: #8f7f5c;
+          --rust: #a3412a;
+          --text-primary: #221f1c;
+          --text-heading: #221f1c;
+          --muted: #5f584b;
+          --muted-2: #7a7262;
           --toggle-icon: #916b28;
           --overlay: rgba(43, 33, 21, 0.4);
-          background: var(--bg);
-          color: var(--text-primary);
+          --gold-text: #8a6420;
+          --pay-bg: #c9a24b;
+          --on-pay: #201a0c;
+          --step-bg: #f3ead6;
+          --danger-text: #a3412a;
+          --danger-line: #e3b4a3;
+          --badge-bg: rgba(34, 31, 28, 0.72);
         }
-
-        .pos-root[data-theme='light'] .item-card {
-          box-shadow: 0 4px 12px rgba(43,33,21,0.05);
-        }
-        .pos-root[data-theme='light'] .brand-mark,
-        .pos-root[data-theme='light'] .btn-pay {
-          color: #fbf5e8;
-        }
-        .pos-root[data-theme='light'] .item-card:hover .item-add {
-          color: #fbf5e8;
-        }
-        .pos-root[data-theme='light'] .order-switch button.active {
-          color: #fbf5e8;
-        }
-        .pos-root[data-theme='light'] .btn-modifier-save {
-          color: #fbf5e8;
-        }
+        .pos-root[data-theme='light'] .btn-modifier-save { color: #fbf5e8; }
 
         .serif { font-family: 'Fraunces', serif; }
         .mono { font-family: 'IBM Plex Mono', monospace; }
+        .pos-root button { font-family: inherit; }
 
         /* ---------- HEADER ---------- */
         .pos-header {
           height: 68px;
           flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          gap: 18px;
+          padding: 0 20px;
           background: var(--bg-deep);
           border-bottom: 1px solid var(--hairline);
+        }
+        .hdr-icon-btn {
+          width: 44px;
+          height: 44px;
+          flex-shrink: 0;
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          padding: 0 28px;
-          transition: background 0.25s ease, border-color 0.25s ease;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          z-index: 10;
+          justify-content: center;
+          border-radius: 12px;
+          border: 1px solid var(--hairline);
+          background: var(--panel);
+          color: var(--toggle-icon);
+          cursor: pointer;
+          transition: background 0.15s ease;
         }
-        .brand {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
+        .hdr-icon-btn:hover { background: var(--card-hover); }
+        .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
         .brand-mark {
           width: 40px;
           height: 40px;
-          border-radius: 8px;
-          background: linear-gradient(135deg, var(--brass-soft), var(--brass-dim));
+          flex-shrink: 0;
+          border-radius: 10px;
+          background: var(--pay-bg);
+          color: var(--on-pay);
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #201a0c;
-          font-family: 'Fraunces', serif;
           font-weight: 700;
-          font-size: 18px;
-          box-shadow: 0 3px 12px rgba(201,162,75,0.25);
+          font-size: 15px;
         }
         .brand-text h1 {
-          font-family: 'Fraunces', serif;
-          font-weight: 600;
-          font-size: 18px;
-          letter-spacing: 0.02em;
-          color: var(--text-heading);
           margin: 0;
+          font-size: 18px;
+          font-weight: 600;
+          line-height: 1;
+          color: var(--text-heading);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 260px;
         }
         .brand-text p {
-          font-size: 10.5px;
-          letter-spacing: 0.14em;
+          margin: 4px 0 0;
+          font-size: 12px;
+          letter-spacing: 0.06em;
           text-transform: uppercase;
-          color: var(--muted-2);
-          margin: 2px 0 0;
+          color: var(--muted);
         }
-
-        .header-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .theme-toggle {
-          width: 38px;
-          height: 38px;
-          border-radius: 8px;
-          border: 1px solid var(--hairline);
-          background: var(--panel);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          color: var(--toggle-icon);
-          transition: all 0.2s ease;
-          flex-shrink: 0;
-        }
-        .theme-toggle:hover {
-          background: var(--card-hover);
-          border-color: var(--brass-dim);
-          transform: scale(1.05);
-        }
-
         .order-switch {
           display: flex;
           gap: 4px;
-          background: var(--bg);
-          border: 1px solid var(--hairline);
-          border-radius: 10px;
           padding: 4px;
+          margin-left: auto;
+          border-radius: 14px;
+          background: var(--panel);
+          border: 1px solid var(--hairline);
         }
         .order-switch button {
-          font-family: 'Inter', sans-serif;
-          font-size: 11.5px;
-          font-weight: 600;
-          letter-spacing: 0.02em;
-          padding: 8px 18px;
-          border-radius: 7px;
-          border: none;
-          background: transparent;
-          color: var(--muted);
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        .order-switch button.active {
-          background: var(--brass);
-          color: #201a0c;
-          box-shadow: 0 2px 10px rgba(201,162,75,0.3);
-        }
-        .order-switch button:not(.active):hover {
-          color: var(--text-heading);
-        }
-
-        /* ---------- BODY GRID ---------- */
-        /* ORDER: Basket (left) | Menu (middle, flexible) | Category (right) */
-.pos-body {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 300px 1fr 220px;
-  overflow: hidden;
-}
-        /* ---------- CATEGORY RAIL (rightmost, column 3) ---------- */
-       .cat-rail {
-  background: var(--bg-deep);
-  border-left: 0px solid var(--hairline);
-  padding: 10px 0px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: background 0.25s ease, border-color 0.25s ease;
-}
-        .cat-label {
-          font-size: 8px;
-          font-weight: 700;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: var(--muted-2);
-          padding: 0 5px 5px;
-        }
-        .cat-btn {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          width: 100%;
-          padding: 12px;
-          border-radius: 9px;
-          border: 1px solid transparent;
-          background: transparent;
-          cursor: pointer;
-          text-align: left;
-          transition: all 0.2s ease;
-          position: relative;
-        }
-        .cat-btn:hover {
-          background: var(--panel-2);
-          transform: translateX(-2px);
-        }
-        .cat-btn.active {
-          background: var(--panel-2);
-          border-color: var(--hairline);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .cat-btn.active::before {
-          content: '';
-          position: absolute;
-          left: -12px;
-          top: 10px;
-          bottom: 10px;
-          width: 4px;
-          background: var(--brass);
-          border-radius: 0 4px 4px 0;
-          box-shadow: 0 0 10px var(--brass);
-        }
-        .cat-no {
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 10px;
-          color: var(--muted-2);
-          width: 16px;
-          flex-shrink: 0;
-        }
-        .cat-btn.active .cat-no { color: var(--brass); font-weight: 600; }
-        .cat-icon-wrap {
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          background: var(--panel);
-          border: 1px solid var(--hairline);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          transition: all 0.2s ease;
-        }
-        .cat-btn.active .cat-icon-wrap {
-          background: var(--brass);
-          border-color: var(--brass);
-          box-shadow: 0 2px 8px rgba(201,162,75,0.3);
-        }
-        .cat-btn span.label {
-          font-size: 11.5px;
-          font-weight: 500;
-          color: var(--muted);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .cat-btn.active span.label { color: var(--text-heading); font-weight: 600; }
-
-        /* ---------- MENU / PRODUCTS ---------- */
-        .menu-col {
-          background: var(--bg);
-          padding: 20px 22px;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        }
-        .menu-heading {
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          margin-bottom: 18px;
-        }
-        .menu-heading h2 {
-          font-family: 'Fraunces', serif;
-          font-style: italic;
-          font-weight: 500;
-          font-size: 24px;
-          color: var(--text-heading);
-          margin: 0;
-        }
-        .menu-heading span {
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 11px;
-          color: var(--muted-2);
-        }
-
-        .search-wrap {
-          position: relative;
-          margin-bottom: 22px;
-          flex-shrink: 0;
-        }
-        .search-wrap svg {
-          position: absolute;
-          left: 14px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--muted-2);
-        }
-        .search-wrap input {
-          width: 100%;
-          background: var(--panel);
-          border: 1px solid var(--hairline);
+          height: 40px;
+          padding: 0 20px;
+          border: 0;
           border-radius: 10px;
-          padding: 12px 16px 12px 42px;
-          font-size: 13px;
-          font-family: 'Inter', sans-serif;
-          color: var(--text-primary);
-          transition: all 0.2s ease;
-        }
-        .search-wrap input::placeholder { color: var(--muted-2); }
-        .search-wrap input:focus {
-          outline: none;
-          border-color: var(--brass-dim);
-          box-shadow: 0 0 0 3px rgba(201,162,75,0.15);
-        }
-
-        .items-scroll {
-          flex: 1;
-          overflow-y: auto;
-          padding-right: 4px;
-        }
-        .items-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-          gap: 12px;
-        }
-
-        .item-card {
-          background: var(--card);
-          border: 1px solid var(--hairline);
-          border-radius: 12px;
-          overflow: hidden;
+          background: transparent;
+          color: var(--muted);
+          font-size: 14px;
+          font-weight: 700;
           cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          position: relative;
+          transition: background 0.15s ease, color 0.15s ease;
         }
-        .item-card:hover {
-          background: var(--card-hover);
-          border-color: var(--brass-dim);
-          transform: translateY(-3px);
-          box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-        }
-        .item-card:active { transform: translateY(0) scale(0.98); }
-
-        .item-img-wrap {
-          width: 100%;
-          height: 84px;
-          background: var(--panel-2);
-          position: relative;
-          overflow: hidden;
+        .order-switch button:not(.active):hover { color: var(--text-heading); }
+        .order-switch button.active { background: var(--pay-bg); color: var(--on-pay); }
+        .context-chip {
+          height: 44px;
           display: flex;
           align-items: center;
-          justify-content: center;
-        }
-        .item-img-wrap img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          transition: transform 0.3s ease;
-        }
-        .item-card:hover .item-img-wrap img {
-          transform: scale(1.05);
-        }
-        .item-placeholder-icon {
-          color: var(--muted-2);
-          opacity: 0.6;
-        }
-
-        /* ✅ Badge back on top-RIGHT (default) */
-        .variant-badge {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          background: var(--bg-deep);
-          border: 1px solid var(--hairline);
-          color: var(--brass-soft);
-          font-size: 9.5px;
+          gap: 10px;
+          padding: 0 16px;
+          border-radius: 12px;
+          border: 1px dashed var(--brass-dim);
+          background: var(--panel);
+          color: var(--gold-text);
+          font-size: 14px;
           font-weight: 600;
-          padding: 3px 7px;
-          border-radius: 6px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          backdrop-filter: blur(4px);
+          cursor: pointer;
+          max-width: 280px;
         }
+        .context-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .context-chip:hover { background: var(--card-hover); }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+        .hdr-clock { font-size: 20px; font-weight: 600; color: var(--gold-text); }
 
-        /* ✅ Content is back to LTR — text hugs the LEFT edge */
-        .item-content {
-          padding: 10px 12px 12px;
-          display: flex;
-          flex-direction: column;
+        /* ---------- BODY: order (left) · dishes (middle) · categories (right) ---------- */
+        .pos-body {
           flex: 1;
-          justify-content: space-between;
-          direction: ltr;
-          text-align: left;
-        }
-        .item-name {
-          font-family: 'Fraunces', serif;
-          font-weight: 500;
-          font-size: 13.5px;
-          color: var(--text-heading);
-          line-height: 1.25;
-          text-align: left;
-        }
-        .item-desc {
-          font-size: 10.5px;
-          color: var(--muted);
-          margin-top: 4px;
-          line-height: 1.35;
-          display: -webkit-box;
-          -webkit-line-clamp: 1;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-          text-align: left;
+          min-height: 0;
+          display: grid;
+          grid-template-columns: 420px minmax(0, 1fr) 220px;
         }
 
-        /* ✅ Footer: price on LEFT, + button on RIGHT */
-        .item-footer {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-top: 10px;
-          padding-top: 8px;
-          border-top: 1px dashed var(--hairline);
-          flex-direction: row;
-        }
-        .item-price {
-          font-family: 'IBM Plex Mono', monospace;
-          font-weight: 600;
-          font-size: 14px;
-          color: var(--brass-soft);
-          direction: ltr;
-          unicode-bidi: embed;
-          text-align: left;
-        }
-        .item-price .from {
-          font-size: 10px;
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: var(--muted-2);
-          margin-right: 4px;
-          margin-left: 0;
-        }
-        .item-add {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          background: var(--panel-2);
-          border: 1px solid var(--hairline);
-          color: var(--muted);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-        }
-        .item-card:hover .item-add {
-          background: var(--brass);
-          border-color: var(--brass);
-          color: #201a0c;
-        }
-
-        .cat-state-msg {
-          font-size: 12px;
-          color: var(--muted-2);
-          padding: 10px;
-          text-align: center;
-        }
-        .items-state-msg {
-          font-size: 14px;
-          color: var(--muted-2);
-          text-align: center;
-          padding: 60px 0;
-          font-family: 'Fraunces', serif;
-          font-style: italic;
-        }
-
-        /* ---------- TICKET / BASKET (leftmost, column 1) ---------- */
+        /* ---------- ORDER / INVOICE ---------- */
         .ticket-col {
-          background: var(--bg-deep);
-          border-right: 1px solid var(--hairline);
           display: flex;
           flex-direction: column;
-          overflow: hidden;
-          transition: background 0.25s ease, border-color 0.25s ease;
-          box-shadow: 4px 0 15px rgba(0,0,0,0.05);
+          min-height: 0;
+          background: var(--panel);
+          border-right: 1px solid var(--hairline);
         }
         .ticket-head {
-          padding: 14px 22px 10px;
-          border-bottom: 1px dashed var(--hairline);
-          flex-shrink: 0;
-        }
-        .ticket-head-top {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 0;
+          gap: 12px;
+          padding: 16px 20px 12px;
+          border-bottom: 1px solid var(--hairline);
         }
-        .ticket-head-top h2 {
-          font-family: 'Fraunces', serif;
-          font-style: italic;
-          font-size: 15px;
-          font-weight: 500;
-          color: var(--text-heading);
-          margin: 0;
-          line-height: 1.3;
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .ticket-item-badge {
-          flex-shrink: 0;
-          font-family: 'IBM Plex Mono', monospace;
+        .ticket-head h2 { margin: 0; font-size: 22px; font-weight: 600; color: var(--text-heading); }
+        .ticket-sub { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
+        .ticket-status {
+          margin-left: auto;
+          padding: 5px 10px;
+          border-radius: 999px;
+          border: 1px solid var(--hairline);
+          background: var(--card);
+          color: var(--gold-text);
           font-size: 11px;
           font-weight: 700;
-          color: var(--brass);
-          background: var(--panel);
-          border: 1px solid var(--hairline);
-          padding: 3px 9px;
-          border-radius: 999px;
+          letter-spacing: 0.08em;
         }
-        .ticket-head-top h2.order-label-editable {
-          cursor: pointer;
-          transition: color 0.15s ease;
-        }
-        .ticket-head-top h2.order-label-editable:hover {
-          color: var(--brass-soft);
-          text-decoration: underline;
-          text-decoration-style: dotted;
-          text-underline-offset: 3px;
-        }
-        .ticket-body {
-          flex: 1;
-          overflow-y: auto;
-          padding: 6px 22px;
-        }
+        .ticket-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; }
         .ticket-empty {
           height: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 12px;
-          color: var(--muted-2);
-        }
-        .ticket-empty span { font-size: 13px; font-family: 'Fraunces', serif; font-style: italic; }
-
-        .ticket-line {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
           gap: 10px;
-          padding: 14px 0;
-          border-bottom: 1px dotted var(--hairline);
-          transition: background 0.15s ease;
-        }
-        .ticket-line:last-child { border-bottom: none; }
-        .ticket-line-details { flex: 1; min-width: 0; }
-        .ticket-line-name {
-          font-family: 'Fraunces', serif;
-          font-size: 14px;
-          font-weight: 500;
-          color: var(--text-primary);
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 4px;
-        }
-        .ticket-line-name .size-tag {
-          font-family: 'Inter', sans-serif;
-          font-size: 9.5px;
-          font-weight: 700;
-          color: var(--brass);
-          background: var(--panel);
-          border: 1px solid var(--hairline);
-          padding: 1px 6px;
-          border-radius: 4px;
-          text-transform: uppercase;
-        }
-        .ticket-line-name .mod-tag {
+          text-align: center;
           color: var(--muted);
-          font-weight: 600;
+          font-size: 14px;
         }
-        .ticket-line-price {
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 12px;
-          color: var(--brass-soft);
-          margin-top: 4px;
-        }
-        .ticket-line-actions {
+        .ticket-empty strong { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; color: var(--text-heading); }
+        .ticket-line { border-radius: 12px; }
+        .ticket-line + .ticket-line { margin-top: 2px; }
+        .ticket-line.is-open { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--brass-dim); }
+        /* Compact lines so more dishes fit before the list scrolls */
+        .tl-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; min-height: 44px; }
+        .tl-main {
+          all: unset;
+          flex: 1;
+          min-width: 0;
+          cursor: pointer;
           display: flex;
-          align-items: center;
-          gap: 4px;
-          flex-shrink: 0;
+          flex-direction: column;
+          gap: 3px;
         }
+        .tl-name-text {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--text-heading);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .ticket-line.is-comp .tl-name-text { text-decoration: line-through; opacity: 0.7; }
+        .size-tag {
+          margin-left: 6px;
+          padding: 1px 6px;
+          border-radius: 6px;
+          background: var(--panel-2);
+          color: var(--gold-text);
+          font-size: 11px;
+          font-weight: 700;
+          text-decoration: none;
+          display: inline-block;
+        }
+        .tl-meta { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tl-meta em { font-style: normal; color: var(--gold-text); }
+        .tl-unit { font-size: 13px; color: var(--muted-2); }
+        .tl-comp-reason { color: var(--gold-text); }
         .qty-stepper {
           display: flex;
           align-items: center;
-          gap: 6px;
-          background: var(--panel);
+          gap: 2px;
+          padding: 3px;
+          border-radius: 12px;
+          background: var(--step-bg);
           border: 1px solid var(--hairline);
-          border-radius: 8px;
-          padding: 4px;
-          flex-shrink: 0;
         }
         .qty-stepper button {
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
-          border: none;
+          width: 32px;
+          height: 32px;
+          border: 0;
+          border-radius: 9px;
           background: transparent;
-          color: var(--muted);
+          color: var(--gold-text);
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          transition: all 0.15s ease;
         }
-        .qty-stepper button:hover { background: var(--card-hover); color: var(--text-heading); }
-        .qty-value {
+        .qty-stepper button:hover { background: var(--card-hover); }
+        .qty-stepper .qty-value {
+          width: auto;
+          min-width: 28px;
+          padding: 0 4px;
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 12px;
+          font-size: 15px;
           font-weight: 600;
           color: var(--text-heading);
-          width: 20px;
-          text-align: center;
-          background: transparent;
-          border: none;
-          cursor: pointer;
-          border-radius: 4px;
-          padding: 2px 0;
-          transition: background 0.15s ease;
         }
-        .qty-value:hover { background: var(--card-hover); }
-        .comp-strike {
-          text-decoration: line-through;
-          color: var(--muted-2);
-          margin-right: 6px;
-        }
-        .comp-free {
-          color: var(--brass);
-          font-weight: 700;
-          text-transform: uppercase;
-          font-size: 10px;
-        }
-        .size-tag.comp-badge {
-          color: var(--brass);
-          border-color: var(--brass-dim);
-        }
-        .btn-modifier-line {
-          position: relative;
-          border: none;
-          background: transparent;
-          color: var(--muted-2);
-          cursor: pointer;
-          padding: 5px;
-          border-radius: 6px;
-          transition: color 0.15s ease, background 0.15s ease;
-        }
-        .btn-modifier-line:hover { color: var(--brass); background: var(--panel-2); }
-        .btn-modifier-line.has-mods { color: var(--brass); }
-        .btn-modifier-line .mod-count {
-          position: absolute;
-          top: -3px;
-          right: -3px;
-          background: var(--brass);
-          color: #201a0c;
-          font-size: 8px;
-          font-weight: 700;
-          min-width: 13px;
-          height: 13px;
-          border-radius: 999px;
+        .tl-price { width: 78px; text-align: right; font-size: 15px; font-weight: 600; color: var(--text-heading); }
+        .comp-strike { display: block; font-size: 12px; color: var(--muted-2); text-decoration: line-through; }
+        .comp-free { font-size: 13px; font-weight: 700; color: var(--gold-text); }
+        .tl-actions { display: flex; align-items: center; gap: 8px; padding: 0 8px 8px; }
+        .tl-actions .tl-unit { margin-right: auto; }
+        .line-chip {
+          height: 36px;
+          padding: 0 12px;
           display: flex;
           align-items: center;
-          justify-content: center;
-          padding: 0 2px;
-          line-height: 1;
-        }
-        .btn-remove-line {
-          border: none;
-          background: transparent;
-          color: var(--muted-2);
+          gap: 6px;
+          border-radius: 9px;
+          border: 1px solid var(--hairline);
+          background: var(--panel-2);
+          color: var(--text-heading);
+          font-size: 13px;
+          font-weight: 600;
           cursor: pointer;
-          padding: 5px;
-          border-radius: 6px;
-          transition: color 0.15s ease, background 0.15s ease;
         }
-        .btn-remove-line:hover { color: var(--rust); background: var(--panel-2); }
+        .line-chip:hover { background: var(--card-hover); }
+        .line-chip .mod-count {
+          min-width: 18px;
+          height: 18px;
+          border-radius: 999px;
+          background: var(--pay-bg);
+          color: var(--on-pay);
+          font-size: 11px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .line-chip.danger { margin-left: auto; background: transparent; border-color: var(--danger-line); color: var(--danger-text); }
 
-        .tear {
-          position: relative;
-          height: 14px;
-          flex-shrink: 0;
-          background:
-            radial-gradient(circle at 8px 0, transparent 6px, var(--bg-deep) 6.5px) repeat-x;
-          background-size: 16px 16px;
-          transition: background 0.25s ease;
+        /* Remarks: one line normally, grows only while typing in it */
+        .remarks { display: block; padding: 10px 20px 0; border-top: 1px solid var(--hairline); }
+        .remarks-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+        .order-notes-input-summary {
+          width: 100%;
+          height: 40px;
+          box-sizing: border-box;
+          resize: none;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          transition: height 0.15s ease;
+          padding: 9px 12px;
+          border-radius: 12px;
+          border: 1px solid var(--hairline);
+          background: var(--card);
+          color: var(--text-primary);
+          font-family: 'Inter', sans-serif;
+          font-size: 14px;
+          line-height: 1.4;
         }
-        .tear::before {
-          content: '';
-          position: absolute;
-          top: 0; left: 0; right: 0;
-          border-top: 1px dashed var(--hairline);
-        }
+        .order-notes-input-summary:focus { outline: none; border-color: var(--brass); height: 84px; overflow: auto; white-space: pre-wrap; }
+        .order-notes-input-summary::placeholder { color: var(--muted-2); }
 
-        .ticket-summary {
-          padding: 10px 22px 14px;
-          flex-shrink: 0;
-          background: var(--panel);
-          border-top: 1px solid var(--hairline);
-        }
-        .sum-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 12px;
-          color: var(--muted);
-          padding: 2px 0;
-        }
+        .ticket-summary { padding: 10px 20px; display: flex; flex-direction: column; gap: 5px; font-size: 14px; }
+        .sum-row { display: flex; align-items: center; justify-content: space-between; color: var(--muted); }
         .sum-row .mono { color: var(--text-primary); }
         .sum-total {
           display: flex;
+          align-items: baseline;
           justify-content: space-between;
-          align-items: center;
           margin-top: 4px;
-          padding-top: 6px;
+          padding-top: 10px;
           border-top: 1px dashed var(--hairline);
         }
-        .sum-total-label {
-          font-family: 'Fraunces', serif;
-          font-style: italic;
-          font-size: 14px;
-          color: var(--text-heading);
-        }
-        .sum-total-value {
-          font-family: 'IBM Plex Mono', monospace;
-          font-weight: 600;
-          font-size: 19px;
-          color: var(--brass-soft);
-        }
-
-        .delivery-row {
-          align-items: center;
-        }
+        .sum-total-label { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 600; color: var(--text-heading); }
+        .sum-total-value { font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 600; color: var(--gold-text); }
         .delivery-fee-input-wrap {
           display: flex;
           align-items: center;
           gap: 4px;
-          background: var(--panel-2);
+          padding: 4px 10px;
+          border-radius: 8px;
           border: 1px solid var(--hairline);
-          border-radius: 7px;
-          padding: 3px 8px;
+          background: var(--card);
         }
-        .delivery-fee-input-wrap .dfee-currency {
-          font-size: 11px;
-          color: var(--muted-2);
-        }
+        .delivery-fee-input-wrap .dfee-currency { font-size: 13px; color: var(--muted-2); }
         .delivery-fee-input-wrap input {
-          width: 56px;
+          width: 64px;
           background: transparent;
           border: none;
           outline: none;
           font-family: 'IBM Plex Mono', monospace;
-          font-size: 12px;
+          font-size: 14px;
           color: var(--text-primary);
           text-align: right;
         }
-        .delivery-fee-input-wrap:focus-within {
-          border-color: var(--brass-dim);
-        }
+        .delivery-fee-input-wrap:focus-within { border-color: var(--brass); }
 
         .quick-actions-row {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 6px;
-          margin-top: 10px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 8px;
+          padding: 0 20px 12px;
         }
         .btn-icon-action {
+          height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border-radius: 12px;
+          border: 1px solid var(--hairline);
+          background: var(--card);
+          color: var(--text-heading);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+        .btn-icon-action:hover:not(:disabled) { background: var(--card-hover); }
+        .btn-icon-action:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-icon-action.danger { background: transparent; border-color: var(--danger-line); color: var(--danger-text); }
+
+        .bottom-actions-row { display: flex; gap: 10px; padding: 0 20px 20px; }
+        .btn-hold {
+          width: 132px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-radius: 14px;
+          border: 1px solid var(--brass-dim);
+          background: transparent;
+          color: var(--gold-text);
+          font-size: 16px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .btn-hold:hover:not(:disabled) { background: var(--card-hover); }
+        .btn-pay {
+          flex: 1;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 22px;
+          border-radius: 14px;
+          border: none;
+          background: var(--pay-bg);
+          color: var(--on-pay);
+          font-size: 18px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: filter 0.15s ease, transform 0.1s ease;
+        }
+        .btn-pay .mono { font-size: 20px; }
+        .btn-pay:hover:not(:disabled) { filter: brightness(1.06); }
+        .btn-pay:active:not(:disabled) { transform: scale(0.99); }
+        .btn-pay:disabled, .btn-hold:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* ---------- DISHES ---------- */
+        .menu-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 24px; }
+        .menu-heading { display: flex; align-items: center; gap: 16px; }
+        .menu-heading h2 { margin: 0; font-size: 30px; font-weight: 600; line-height: 1.1; color: var(--text-heading); }
+        .menu-heading p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+        .search-wrap {
+          width: 340px;
+          height: 48px;
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 16px;
+          border-radius: 12px;
+          border: 1px solid var(--hairline);
+          background: var(--panel);
+          color: var(--muted);
+        }
+        .search-wrap:focus-within { border-color: var(--brass); }
+        .search-wrap input {
+          flex: 1;
+          min-width: 0;
+          background: transparent;
+          border: 0;
+          outline: none;
+          color: var(--text-primary);
+          font-size: 15px;
+          font-family: inherit;
+        }
+        .search-wrap input::placeholder { color: var(--muted-2); }
+        .items-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
+        /* Cards are placed starting from the RIGHT (next to the categories), as in the
+           original POS; the text inside each card stays left-to-right. */
+        .items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; direction: rtl; }
+        .items-grid > .item-card { direction: ltr; }
+        .item-card {
+          height: 176px;
+          padding: 0;
           display: flex;
           flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 3px;
-          padding: 7px 4px;
-          border-radius: 99px;
+          overflow: hidden;
+          text-align: left;
+          border-radius: 16px;
           border: 1px solid var(--hairline);
-          background: transparent;
+          background: var(--card);
           color: var(--text-heading);
           cursor: pointer;
-          transition: all 0.2s ease;
-          font-size: 10px;
-          font-weight: 600;
+          transition: background 0.15s ease, transform 0.1s ease;
         }
-        .btn-icon-action:hover {
-          background: var(--panel-2);
-          color: var(--text-heading);
-          border-color: var(--brass-dim);
-        }
-        .btn-icon-action.clear { color: var(--rust); border-color: rgba(177,87,58,0.35); }
-        .btn-icon-action.clear:hover { background: rgba(177,87,58,0.12); }
-
-        .btn-pay {
+        .item-card:hover { background: var(--card-hover); }
+        .item-card:active { transform: scale(0.98); }
+        .item-img-wrap {
+          position: relative;
+          height: 96px;
           width: 100%;
-          margin-top: 8px;
+          flex-shrink: 0;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 10px;
-          padding: 12px;
-          border-radius: 10px;
-          border: none;
-          background: linear-gradient(135deg, var(--brass-soft), var(--brass-dim));
-          color: #201a0c;
+          overflow: hidden;
+        }
+        .item-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
+        .item-initial { font-family: 'Fraunces', serif; font-size: 44px; font-weight: 600; }
+        .variant-badge {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: var(--badge-bg);
+          color: #e6cf8f;
+          font-size: 10px;
           font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .in-ticket-badge {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          min-width: 26px;
+          height: 26px;
+          padding: 0 6px;
+          box-sizing: border-box;
+          border-radius: 999px;
+          background: var(--pay-bg);
+          color: var(--on-pay);
           font-size: 13px;
-          letter-spacing: 0.02em;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .item-content {
+          flex: 1;
+          width: 100%;
+          box-sizing: border-box;
+          padding: 10px 14px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+        .item-name { font-size: 15px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .item-footer { display: flex; align-items: center; justify-content: space-between; }
+        .item-price { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600; color: var(--gold-text); }
+        .item-price .from { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-2); margin-right: 4px; }
+        .item-add {
+          width: 30px;
+          height: 30px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9px;
+          border: 1px solid var(--brass-dim);
+          color: var(--gold-text);
+        }
+        .items-state-msg { padding: 40px 0; text-align: center; color: var(--muted); font-size: 15px; }
+
+        /* ---------- CATEGORIES ---------- */
+        .cat-rail {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-height: 0;
+          overflow-y: auto;
+          padding: 16px 12px;
+          background: var(--bg-deep);
+          border-left: 1px solid var(--hairline);
+        }
+        .cat-label { padding: 0 10px 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2); }
+        .cat-btn {
+          min-height: 48px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 12px;
+          border: 0;
+          border-radius: 12px;
+          background: transparent;
+          color: var(--muted);
+          font-size: 14px;
+          font-weight: 600;
+          text-align: left;
           cursor: pointer;
-          box-shadow: 0 6px 20px rgba(201,162,75,0.25);
-          transition: all 0.2s ease;
+          transition: background 0.15s ease, color 0.15s ease;
         }
-        .btn-pay:hover:not(:disabled) {
-          box-shadow: 0 8px 25px rgba(201,162,75,0.38);
-          transform: translateY(-1px);
-        }
-        .btn-pay:active:not(:disabled) { transform: translateY(0) scale(0.98); }
-        .btn-pay:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+        .cat-btn:hover { background: var(--card); color: var(--text-heading); }
+        .cat-btn.active { background: var(--card); color: var(--text-heading); box-shadow: inset 0 0 0 1.5px var(--pay-bg); }
+        .cat-dot { width: 10px; height: 10px; flex-shrink: 0; border-radius: 999px; }
+        .cat-btn .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cat-count { font-size: 13px; color: var(--muted); }
+        .cat-state-msg { padding: 8px 10px; font-size: 13px; color: var(--muted); }
 
         /* ---------- MODALS ---------- */
         .modal-overlay {
@@ -1920,8 +1698,8 @@ const handleSaveOrder = async (isPayment: boolean) => {
           margin: 0;
         }
         .modal-close {
-          width: 28px;
-          height: 28px;
+          width: 36px;
+          height: 36px;
           border-radius: 8px;
           border: 1px solid var(--hairline);
           background: var(--panel-2);
@@ -2006,7 +1784,8 @@ const handleSaveOrder = async (isPayment: boolean) => {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 10px 12px;
+          min-height: 48px;
+          padding: 12px 14px;
           border-radius: 9px;
           border: 1px solid var(--hairline);
           background: var(--card);
@@ -2072,6 +1851,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         }
         .btn-modifier-cancel {
           flex: 1;
+          min-height: 46px;
           padding: 11px;
           border-radius: 9px;
           border: 1px solid var(--hairline);
@@ -2085,6 +1865,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
         .btn-modifier-cancel:hover { background: var(--panel-2); color: var(--text-heading); }
         .btn-modifier-save {
           flex: 2;
+          min-height: 46px;
           padding: 11px;
           border-radius: 9px;
           border: none;
@@ -2099,6 +1880,12 @@ const handleSaveOrder = async (isPayment: boolean) => {
         .btn-modifier-save:hover {
           transform: translateY(-1px);
           box-shadow: 0 6px 18px rgba(201,162,75,0.35);
+        }
+        .btn-modifier-save:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
         }
 
         /* ---------- QTY KEYPAD MODAL ---------- */
@@ -2117,12 +1904,12 @@ const handleSaveOrder = async (isPayment: boolean) => {
           gap: 8px;
         }
         .keypad-btn {
-          padding: 16px 0;
+          padding: 20px 0;
           border-radius: 10px;
           border: 1px solid var(--hairline);
           background: var(--card);
           color: var(--text-primary);
-          font-size: 16px;
+          font-size: 20px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.15s ease;
@@ -2145,8 +1932,8 @@ const handleSaveOrder = async (isPayment: boolean) => {
           border: 1px solid var(--hairline);
         }
         .comp-qty-btn {
-          width: 30px;
-          height: 30px;
+          width: 44px;
+          height: 44px;
           border-radius: 8px;
           border: 1px solid var(--hairline);
           background: var(--card);
@@ -2214,12 +2001,22 @@ const handleSaveOrder = async (isPayment: boolean) => {
           background: var(--panel);
         }
 
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 6px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); }
+
         /* ---------- CUSTOMER PICKER ---------- */
-        .customer-modal { width: 400px; }
+        .customer-modal {
+          width: 480px;
+          max-height: 90vh;
+        }
+
         .customer-search-wrap {
           position: relative;
-          margin-bottom: 14px;
+          margin-bottom: 16px;
         }
+
         .customer-search-wrap svg {
           position: absolute;
           left: 12px;
@@ -2227,6 +2024,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
           transform: translateY(-50%);
           color: var(--muted-2);
         }
+
         .customer-search-wrap input {
           width: 100%;
           background: var(--panel-2);
@@ -2237,41 +2035,159 @@ const handleSaveOrder = async (isPayment: boolean) => {
           font-family: 'Inter', sans-serif;
           color: var(--text-primary);
         }
+
         .customer-search-wrap input:focus {
           outline: none;
           border-color: var(--brass-dim);
         }
+
         .customer-list {
-          max-height: 220px;
+          max-height: 400px;
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 8px;
-          margin-bottom: 14px;
+          gap: 12px;
+          margin-bottom: 16px;
+          padding-right: 4px;
         }
-        .customer-row-phone { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
+
+        .customer-card {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 16px 18px;
+          border-radius: 12px;
+          border: 1.5px solid var(--hairline);
+          background: var(--card);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .customer-card:hover {
+          border-color: var(--brass-dim);
+          background: var(--card-hover);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        }
+
+        .customer-card:active {
+          transform: scale(0.98);
+        }
+
+        .customer-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .customer-name {
+          font-family: 'Fraunces', serif;
+          font-size: 17px;
+          font-weight: 600;
+          color: var(--text-heading);
+        }
+
+        .customer-note-badge {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--brass-soft);
+          background: var(--panel-2);
+          padding: 2px 10px 2px 6px;
+          border-radius: 12px;
+          border: 1px solid var(--hairline);
+          flex-shrink: 0;
+        }
+
+        .customer-note-badge svg {
+          color: var(--brass-soft);
+        }
+
+        .customer-details {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .customer-detail-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12.5px;
+          color: var(--text-primary);
+          background: var(--panel-2);
+          padding: 4px 14px 4px 10px;
+          border-radius: 16px;
+          border: 1px solid var(--hairline);
+          transition: all 0.15s ease;
+        }
+
+        .customer-detail-item:hover {
+          border-color: var(--brass-dim);
+        }
+
+        .customer-detail-item svg {
+          flex-shrink: 0;
+          width: 14px;
+          height: 14px;
+          color: var(--brass-soft);
+        }
+
+        .customer-note {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: var(--brass-soft);
+          background: var(--panel-2);
+          padding: 6px 14px;
+          border-radius: 8px;
+          border-left: 3px solid var(--brass);
+          width: 100%;
+          margin-top: 2px;
+        }
+
+        .customer-note svg {
+          flex-shrink: 0;
+          width: 14px;
+          height: 14px;
+          color: var(--brass-soft);
+        }
+
         .btn-add-customer {
           width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          padding: 11px;
-          border-radius: 9px;
-          border: 1px dashed var(--hairline);
+          padding: 12px;
+          border-radius: 10px;
+          border: 2px dashed var(--hairline);
           background: transparent;
           color: var(--brass);
-          font-size: 12px;
+          font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.2s ease;
         }
-        .btn-add-customer:hover { background: var(--panel-2); border-color: var(--brass-dim); }
+
+        .btn-add-customer:hover {
+          background: var(--panel-2);
+          border-color: var(--brass-dim);
+          transform: translateY(-1px);
+        }
+
         .new-customer-form {
           display: flex;
           flex-direction: column;
           gap: 10px;
         }
+
         .new-customer-form input {
           background: var(--panel-2);
           border: 1px solid var(--hairline);
@@ -2281,633 +2197,229 @@ const handleSaveOrder = async (isPayment: boolean) => {
           font-family: 'Inter', sans-serif;
           color: var(--text-primary);
         }
+
         .new-customer-form input:focus {
           outline: none;
           border-color: var(--brass-dim);
         }
-        .btn-modifier-save:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-          transform: none;
-          box-shadow: none;
+
+        .customer-list::-webkit-scrollbar {
+          width: 5px;
         }
 
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 6px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--brass-dim); }
-
-        /* ---------- CUSTOMER PICKER - UPDATED ---------- */
-.customer-modal { 
-  width: 440px; 
-  max-height: 90vh;
-}
-
-.customer-search-wrap {
-  position: relative;
-  margin-bottom: 14px;
-}
-
-.customer-search-wrap svg {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted-2);
-}
-
-.customer-search-wrap input {
-  width: 100%;
-  background: var(--panel-2);
-  border: 1px solid var(--hairline);
-  border-radius: 9px;
-  padding: 10px 12px 10px 36px;
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  color: var(--text-primary);
-}
-
-.customer-search-wrap input:focus {
-  outline: none;
-  border-color: var(--brass-dim);
-}
-
-/* Customer List - More Height */
-.customer-list {
-  max-height: 420px; /* ← Increased from 220px */
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 14px;
-  padding-right: 4px;
-}
-
-/* Customer Row Styles */
-.customer-row {
-  padding: 14px 16px !important;
-  min-height: 60px;
-}
-
-.customer-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-}
-
-.customer-name {
-  font-family: 'Fraunces', serif;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-heading);
-}
-
-.customer-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-
-.customer-detail-item {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--muted-2);
-  background: var(--panel-2);
-  padding: 2px 10px 2px 6px;
-  border-radius: 12px;
-  border: 1px solid var(--hairline);
-}
-
-.customer-detail-item svg {
-  flex-shrink: 0;
-  color: var(--brass-soft);
-}
-
-/* Note - Always on New Line */
-.customer-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--brass-soft);
-  background: var(--panel-2);
-  padding: 4px 12px;
-  border-radius: 8px;
-  border: 1px dashed var(--hairline);
-  width: 100%;
-  margin-top: 2px;
-}
-
-.customer-note svg {
-  flex-shrink: 0;
-  color: var(--brass-soft);
-}
-
-.customer-row-phone { 
-  font-size: 11px; 
-  color: var(--muted-2); 
-  margin-top: 2px; 
-}
-
-.btn-add-customer {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 11px;
-  border-radius: 9px;
-  border: 1px dashed var(--hairline);
-  background: transparent;
-  color: var(--brass);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-add-customer:hover { 
-  background: var(--panel-2); 
-  border-color: var(--brass-dim); 
-}
-
-.new-customer-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.new-customer-form input {
-  background: var(--panel-2);
-  border: 1px solid var(--hairline);
-  border-radius: 9px;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  color: var(--text-primary);
-}
-
-.new-customer-form input:focus {
-  outline: none;
-  border-color: var(--brass-dim);
-}
-
-.btn-modifier-save:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-/* ---------- CUSTOMER PICKER ---------- */
-.customer-modal { 
-  width: 480px; 
-  max-height: 90vh;
-}
-
-.customer-search-wrap {
-  position: relative;
-  margin-bottom: 16px;
-}
-
-.customer-search-wrap svg {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--muted-2);
-}
-
-.customer-search-wrap input {
-  width: 100%;
-  background: var(--panel-2);
-  border: 1px solid var(--hairline);
-  border-radius: 9px;
-  padding: 10px 12px 10px 36px;
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  color: var(--text-primary);
-}
-
-.customer-search-wrap input:focus {
-  outline: none;
-  border-color: var(--brass-dim);
-}
-
-/* Customer List */
-.customer-list {
-  max-height: 400px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-right: 4px;
-}
-
-/* Customer Card - Each customer in a nice box */
-.customer-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px;
-  border-radius: 12px;
-  border: 1.5px solid var(--hairline);
-  background: var(--card);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-
-.customer-card:hover {
-  border-color: var(--brass-dim);
-  background: var(--card-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
-}
-
-.customer-card:active {
-  transform: scale(0.98);
-}
-
-/* Card Header - Name + Note Badge */
-.customer-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.customer-name {
-  font-family: 'Fraunces', serif;
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-heading);
-}
-
-.customer-note-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--brass-soft);
-  background: var(--panel-2);
-  padding: 2px 10px 2px 6px;
-  border-radius: 12px;
-  border: 1px solid var(--hairline);
-  flex-shrink: 0;
-}
-
-.customer-note-badge svg {
-  color: var(--brass-soft);
-}
-
-/* Customer Details - Row with icons */
-.customer-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.customer-detail-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text-primary);
-  background: var(--panel-2);
-  padding: 4px 14px 4px 10px;
-  border-radius: 16px;
-  border: 1px solid var(--hairline);
-  transition: all 0.15s ease;
-}
-
-.customer-detail-item:hover {
-  border-color: var(--brass-dim);
-}
-
-.customer-detail-item svg {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  color: var(--brass-soft);
-}
-
-/* Customer Note - Full width, on new line */
-.customer-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--brass-soft);
-  background: var(--panel-2);
-  padding: 6px 14px;
-  border-radius: 8px;
-  border-left: 3px solid var(--brass);
-  width: 100%;
-  margin-top: 2px;
-}
-
-.customer-note svg {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  color: var(--brass-soft);
-}
-
-/* Add Customer Button */
-.btn-add-customer {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 10px;
-  border: 2px dashed var(--hairline);
-  background: transparent;
-  color: var(--brass);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-add-customer:hover { 
-  background: var(--panel-2); 
-  border-color: var(--brass-dim);
-  transform: translateY(-1px);
-}
-
-/* New Customer Form */
-.new-customer-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.new-customer-form input {
-  background: var(--panel-2);
-  border: 1px solid var(--hairline);
-  border-radius: 9px;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-family: 'Inter', sans-serif;
-  color: var(--text-primary);
-}
-
-.new-customer-form input:focus {
-  outline: none;
-  border-color: var(--brass-dim);
-}
-
-.btn-modifier-save:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-/* Scrollbar */
-.customer-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.customer-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.customer-list::-webkit-scrollbar-thumb {
-  background: var(--hairline);
-  border-radius: 10px;
-}
-
-.customer-list::-webkit-scrollbar-thumb:hover {
-  background: var(--brass-dim);
-}
-
-/* Backdrop Overlay with Blur */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.15s ease-out;
-}
-
-/* Card Container & Entry Animation */
-.modal-card-danger {
-  position: relative;
-  width: 100%;
-  max-width: 400px;
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  text-align: center;
-}
-
-/* Top Warning Icon Badge */
-.modal-alert-icon {
-  width: 48px;
-  height: 48px;
-  background-color: #fee2e2;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px auto;
-}
-
-/* Typography Hierarchy */
-.modal-body-content h3 {
-  margin: 0 0 8px 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.modal-sub {
-  margin: 0 0 24px 0;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  color: #64748b;
-}
-
-.modal-sub strong {
-  color: #dc2626;
-  font-weight: 600;
-}
-
-/* Button Layout */
-.modal-action-footer {
-  display: flex;
-  gap: 12px;
-}
-
-.btn-modal-secondary,
-.btn-modal-danger {
-  flex: 1;
-  height: 44px;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: none;
-}
-
-.btn-modal-secondary {
-  background-color: #f1f5f9;
-  color: #334155;
-}
-
-.btn-modal-secondary:hover:not(:disabled) {
-  background-color: #e2e8f0;
-}
-
-.btn-modal-danger {
-  background-color: #dc2626;
-  color: #ffffff;
-  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
-}
-
-.btn-modal-danger:hover:not(:disabled) {
-  background-color: #b91c1c;
-}
-
-.btn-modal-danger:disabled,
-.btn-modal-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Close Button (Top-Right) */
-.modal-close-corner {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  border-radius: 6px;
-  padding: 4px;
-}
-
-.modal-close-corner:hover:not(:disabled) {
-  color: #334155;
-  background-color: #f1f5f9;
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes scaleUp {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-/* ---------- ORDER NOTES (Summary Row) ---------- */
-.sum-row.notes-row {
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--hairline);
-}
-
-.order-notes-input-summary {
-  width: 100%;
-  min-width: 0;
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 12px;
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  color: var(--text-primary);
-  resize: vertical;
-  min-height: 30px;
-  max-height: 64px;
-  line-height: 1.4;
-  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-
-.order-notes-input-summary:hover {
-  background: var(--panel-2);
-  border-color: var(--brass-dim);
-}
-
-.order-notes-input-summary:focus {
-  outline: none;
-  background: var(--card);
-  border-color: var(--brass);
-  box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.15);
-}
-
-.order-notes-input-summary::placeholder {
-  color: var(--muted-2);
-  font-weight: 400;
-  font-style: italic;
-  font-size: 12px;
-  opacity: 0.75;
-}
+        .customer-list::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .customer-list::-webkit-scrollbar-thumb {
+          background: var(--hairline);
+          border-radius: 10px;
+        }
+
+        .customer-list::-webkit-scrollbar-thumb:hover {
+          background: var(--brass-dim);
+        }
+
+        /* Backdrop Overlay with Blur */
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background-color: rgba(15, 23, 42, 0.6);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.15s ease-out;
+        }
+
+        /* Card Container & Entry Animation */
+        .modal-card-danger {
+          position: relative;
+          width: 100%;
+          max-width: 400px;
+          background: #ffffff;
+          border-radius: 16px;
+          padding: 24px;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+          animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+          text-align: center;
+        }
+
+        /* Top Warning Icon Badge */
+        .modal-alert-icon {
+          width: 48px;
+          height: 48px;
+          background-color: #fee2e2;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 16px auto;
+        }
+
+        /* Typography Hierarchy */
+        .modal-body-content h3 {
+          margin: 0 0 8px 0;
+          font-size: 1.25rem;
+          font-weight: 600;
+          color: #0f172a;
+        }
+
+        .modal-sub {
+          margin: 0 0 24px 0;
+          font-size: 0.875rem;
+          line-height: 1.5;
+          color: #64748b;
+        }
+
+        .modal-sub strong {
+          color: #dc2626;
+          font-weight: 600;
+        }
+
+        /* Button Layout */
+        .modal-action-footer {
+          display: flex;
+          gap: 12px;
+        }
+
+        .btn-modal-secondary,
+        .btn-modal-danger {
+          flex: 1;
+          height: 44px;
+          border-radius: 8px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          border: none;
+        }
+
+        .btn-modal-secondary {
+          background-color: #f1f5f9;
+          color: #334155;
+        }
+
+        .btn-modal-secondary:hover:not(:disabled) {
+          background-color: #e2e8f0;
+        }
+
+        .btn-modal-danger {
+          background-color: #dc2626;
+          color: #ffffff;
+          box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+        }
+
+        .btn-modal-danger:hover:not(:disabled) {
+          background-color: #b91c1c;
+        }
+
+        .btn-modal-danger:disabled,
+        .btn-modal-secondary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        /* Close Button (Top-Right) */
+        .modal-close-corner {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          background: transparent;
+          border: none;
+          color: #94a3b8;
+          cursor: pointer;
+          border-radius: 6px;
+          padding: 4px;
+        }
+
+        .modal-close-corner:hover:not(:disabled) {
+          color: #334155;
+          background-color: #f1f5f9;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes scaleUp {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .btn-modifier-danger {
+          background: var(--rust);
+          color: #fff;
+          box-shadow: none;
+        }
+        .btn-modifier-danger:hover {
+          background: var(--rust);
+          filter: brightness(1.1);
+        }
       `}</style>
 
       {/* HEADER */}
       <header className="pos-header">
+        {onClose && (
+          <button className="hdr-icon-btn" onClick={onClose} aria-label="Back to dashboard" title="Back to dashboard">
+            <LayoutGrid className="w-5 h-5" />
+          </button>
+        )}
         <div className="brand">
           <div className="brand-mark serif">RES</div>
           <div className="brand-text">
-            <h1>{}</h1>
-            <p>A product from NRSoftware </p>
+            <h1 className="serif">{restaurantName}</h1>
+            <p>POS Terminal</p>
           </div>
         </div>
-        <div className="header-right">
-          <div className="order-switch" dir='rtl'>
-            {(['Dine-In', 'Takeaway', 'Delivery'] as const).map((type) => (
-              <button
-                key={type}
-                className={orderType === type ? 'active' : ''}
-                onClick={() => handleOrderTypeChange(type)}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
+
+        <div className="order-switch" role="group" aria-label="Order type">
+          {(['Dine-In', 'Takeaway', 'Delivery'] as const).map((type) => (
+            <button
+              key={type}
+              className={orderType === type ? 'active' : ''}
+              onClick={() => handleOrderTypeChange(type)}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+
+        {/* Table (dine-in) or customer (delivery) — opens the existing pickers */}
+        {orderType !== 'Takeaway' && (
           <button
-            className="theme-toggle"
+            className="context-chip"
+            onClick={() => (orderType === 'Dine-In' ? setShowTablePicker(true) : setShowCustomerPicker(true))}
+          >
+            {orderType === 'Dine-In' ? <Armchair className="w-4 h-4" /> : <User className="w-4 h-4" />}
+            <span>{contextLabel}</span>
+          </button>
+        )}
+
+        <div className="header-right">
+          <span className="hdr-clock mono">{clock}</span>
+          <button
+            className="hdr-icon-btn theme-toggle"
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            aria-label={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}
-            title={theme === 'dark' ? 'Switch to day mode' : 'Switch to night mode'}
+            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </div>
       </header>
 
-      {/* pos-body children: BASKET → MENU → CATEGORY */}
+      {/* pos-body: ORDER (left) → DISHES (middle) → CATEGORIES (right) */}
       <div className="pos-body">
 
-        {/* ---------- BASKET / TICKET (leftmost, column 1) ---------- */}
-        <aside className="ticket-col" dir='rtl' style={{ position: 'relative' }}>
+        {/* ---------- ORDER / INVOICE (left) ---------- */}
+        <aside className="ticket-col" aria-label="Current order" style={{ position: 'relative' }}>
           {isLoadingOrder && (
             <div
               style={{
@@ -2919,66 +2431,87 @@ const handleSaveOrder = async (isPayment: boolean) => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 10,
-                background: theme === 'dark' ? 'rgba(18,19,22,0.88)' : 'rgba(255,255,255,0.9)',
+                background: 'var(--overlay)',
                 backdropFilter: 'blur(2px)',
-                borderRadius: 12,
               }}
             >
               <Loader2 className="w-6 h-6" style={{ animation: 'kb-spin 0.8s linear infinite' }} />
-              <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.85 }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>
                 Loading ticket #{activeOrder?.ticketNo ?? ''}…
               </span>
             </div>
           )}
+
           <div className="ticket-head">
-            <div className="ticket-head-top">
-              <h2
-                className={orderType !== 'Takeaway' ? 'order-label-editable' : ''}
-                onClick={() => {
-                  if (orderType === 'Dine-In') setShowTablePicker(true);
-                  if (orderType === 'Delivery') setShowCustomerPicker(true);
-                }}
-                title={orderType !== 'Takeaway' ? 'Tap to change' : undefined}
-              >
-                {orderLabel}
-              </h2>
-              <span className="ticket-item-badge" title={`${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}>
-                {itemCount}
-              </span>
+            <div style={{ minWidth: 0 }}>
+              <h2 className="serif">Order #{ticketNo}</h2>
+              <p className="ticket-sub">
+                {orderType}
+                {orderType === 'Dine-In' && dineInTable ? ` · Table ${dineInTable.label}` : ''}
+                {orderType === 'Delivery' && deliveryCustomer ? ` · ${deliveryCustomer.name}` : ''}
+                {` · ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
+              </p>
             </div>
+            <span className="ticket-status">{currentOrderId ? 'HELD' : 'NEW'}</span>
           </div>
 
           <div className="ticket-body">
             {basket.length === 0 ? (
               <div className="ticket-empty">
                 <ShoppingBag className="w-8 h-8" strokeWidth={1.25} />
-                <span>Ticket is empty — select items from menu</span>
+                <strong>No items yet</strong>
+                <span>Tap a dish to add it.</span>
               </div>
             ) : (
               basket.map((b) => {
                 const hasLinkedGroups = (b.item.modifierGroupIds || []).length > 0;
-                const lineTotal = lineUnitPrice(b) * b.quantity;
+                const unitPrice = lineUnitPrice(b);
+                const lineTotal = unitPrice * b.quantity;
                 const fullPriceTotal = (b.item.price + modifiersTotal(b)) * b.quantity;
+                const mods = b.modifiers || [];
+                const isOpen = selectedLineId === b.cartItemId;
+
                 return (
-                  <div key={b.cartItemId} className="ticket-line">
-                    <div className="ticket-line-details">
-                      <div className="ticket-line-name">
-                        {b.item.name}
-                        {b.variantSize && <span className="size-tag">{b.variantSize}</span>}
-                        {(b.modifiers || []).map((m) => (
-                          <span key={`${m.groupId}-${m.optionId}`} className="size-tag mod-tag">
-                            {m.optionName}
+                  <div key={b.cartItemId} className={`ticket-line ${b.comp ? 'is-comp' : ''} ${isOpen ? 'is-open' : ''}`}>
+                    <div className="tl-row">
+                      {/* Tap the name to show this line's actions */}
+                      <button className="tl-main" onClick={() => setSelectedLineId(isOpen ? null : b.cartItemId)}>
+                        <span className="tl-name-text">
+                          {b.item.name}
+                          {b.variantSize && <span className="size-tag">{b.variantSize}</span>}
+                        </span>
+                        {(mods.length > 0 || b.comp) && (
+                          <span className="tl-meta">
+                            {mods.map((m, i) => (
+                              <span key={`${m.groupId}-${m.optionId}`}>
+                                {i > 0 ? ' · ' : ''}
+                                {m.optionName}
+                                {m.price > 0 && <em> +${m.price.toFixed(2)}</em>}
+                              </span>
+                            ))}
+                            {b.comp && <span className="tl-comp-reason">{mods.length > 0 ? ' · ' : ''}Free: {b.comp.reason}</span>}
                           </span>
-                        ))}
-                        {b.comp && (
-                          <span className="size-tag comp-badge">🎁 {b.comp.reason}</span>
                         )}
+                      </button>
+
+                      {/* Quantity is always one tap away */}
+                      <div className="qty-stepper">
+                        <button onClick={() => updateQuantity(b.cartItemId, -1)} aria-label="Remove one">
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <button className="qty-value" onClick={() => openQtyEditor(b)} title="Type exact quantity">
+                          {b.quantity}
+                        </button>
+                        <button onClick={() => updateQuantity(b.cartItemId, 1)} aria-label="Add one">
+                          <Plus className="w-4 h-4" />
+                        </button>
                       </div>
-                      <div className="ticket-line-price mono">
+
+                      <div className="tl-price mono">
                         {b.comp ? (
                           <>
                             <span className="comp-strike">${fullPriceTotal.toFixed(2)}</span>
-                            <span className="comp-free">Comp</span>
+                            <span className="comp-free">Free</span>
                           </>
                         ) : (
                           `$${lineTotal.toFixed(2)}`
@@ -2986,55 +2519,44 @@ const handleSaveOrder = async (isPayment: boolean) => {
                       </div>
                     </div>
 
-                    <div className="ticket-line-actions">
-                      <div className="qty-stepper">
-                        <button onClick={() => updateQuantity(b.cartItemId, -1)}>
-                          <Minus className="w-3 h-3" />
+                    {isOpen && (
+                      <div className="tl-actions">
+                        {/* Unit price only for the tapped line, to keep the list compact */}
+                        <span className="tl-unit mono">${unitPrice.toFixed(2)} each</span>
+                        {hasLinkedGroups && (
+                          <button className="line-chip" onClick={() => openModifierPicker(b)}>
+                            <SlidersHorizontal className="w-4 h-4" />
+                            Options
+                            {mods.length > 0 && <span className="mod-count">{mods.length}</span>}
+                          </button>
+                        )}
+                        <button className="line-chip" onClick={() => toggleComp(b)}>
+                          <Gift className="w-4 h-4" />
+                          {b.comp ? 'Remove free' : 'Make free'}
                         </button>
-                        <button className="qty-value" onClick={() => openQtyEditor(b)} title="Type exact quantity">
-                          {b.quantity}
-                        </button>
-                        <button onClick={() => updateQuantity(b.cartItemId, 1)}>
-                          <Plus className="w-3 h-3" />
+                        <button className="line-chip danger" style={{ marginLeft: 0 }} onClick={() => removeItem(b.cartItemId)}>
+                          <Trash2 className="w-4 h-4" />
+                          Remove
                         </button>
                       </div>
-
-                      <button
-                        className={`btn-modifier-line ${b.comp ? 'has-mods' : ''}`}
-                        onClick={() => toggleComp(b)}
-                        title={b.comp ? 'Remove comp' : 'Comp this item'}
-                      >
-                        <Gift className="w-3.5 h-3.5" />
-                      </button>
-
-                      {hasLinkedGroups && (
-                        <button
-                          className={`btn-modifier-line ${b.modifiers.length > 0 ? 'has-mods' : ''}`}
-                          onClick={() => openModifierPicker(b)}
-                          title="Link modifiers"
-                        >
-                          <SlidersHorizontal className="w-3.5 h-3.5" />
-                          {b.modifiers.length > 0 && (
-                            <span className="mod-count">{b.modifiers.length}</span>
-                          )}
-                        </button>
-                      )}
-
-                      <button
-                        className="btn-remove-line"
-                        onClick={() => removeItem(b.cartItemId)}
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
 
-          <div className="tear" />
+          {/* Remarks for the whole order (saved as the order's notes) */}
+          <label className="remarks">
+            <span className="remarks-label">Order remarks</span>
+            <textarea
+              className="order-notes-input-summary"
+              placeholder="Order remarks: allergies, requests, delivery instructions…"
+              value={orderNotes}
+              onChange={(e) => setOrderNotes(e.target.value)}
+              rows={1}
+            />
+          </label>
 
           <div className="ticket-summary">
             <div className="sum-row">
@@ -3042,14 +2564,15 @@ const handleSaveOrder = async (isPayment: boolean) => {
               <span className="mono">${subtotal.toFixed(2)}</span>
             </div>
             {orderType === 'Delivery' && (
-              <div className="sum-row delivery-row">
-                <span>Delivery Fee</span>
+              <div className="sum-row">
+                <span>Delivery fee</span>
                 <div className="delivery-fee-input-wrap">
                   <span className="dfee-currency mono">$</span>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
+                    aria-label="Delivery fee"
                     value={deliveryFee}
                     onChange={(e) => setDeliveryFee(e.target.value)}
                   />
@@ -3061,184 +2584,142 @@ const handleSaveOrder = async (isPayment: boolean) => {
               <span className="mono">${tax.toFixed(2)}</span>
             </div>
             <div className="sum-total">
-              <span className="sum-total-label">Total due</span>
+              <span className="sum-total-label">Total</span>
               <span className="sum-total-value">${total.toFixed(2)}</span>
             </div>
-                        <div className="sum-row notes-row">
-              <textarea
-                className="order-notes-input-summary"
-                placeholder="Special requests, allergies, or delivery instructions…"
-                value={orderNotes}
-                onChange={(e) => setOrderNotes(e.target.value)}
-                rows={1}
-              />
-            </div>
-            {/* <div className="quick-actions-row">
-             <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
-  <Printer className="w-3.5 h-3.5" />
-  {isPrinting ? 'Generating…' : 'Print'}
-</button>
-              <button className="btn-icon-action" onClick={handleOpenDrawer} title="Open cash drawer">
-                <Archive className="w-4 h-4" />
-                <span>Drawer</span>
-              </button>
-              <button className="btn-icon-action clear" onClick={() => setBasket([])} title="Clear ticket">
-                <RotateCcw className="w-4 h-4" />
-                <span>Clear</span>
-              </button>
-              <button className="btn-icon-action" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(false)}>
-  <Receipt className="w-4 h-4" />
-  {isSaving ? 'Processing...' : 'Hold'}
-</button>
-            </div>
+          </div>
 
-           <button className="btn-pay" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(true)}>
-  <CreditCard className="w-4 h-4" />
-  {isSaving ? 'Processing...' : `Take Payment · $${total.toFixed(2)}`}
-           </button> */}
+          <div className="quick-actions-row">
+            <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
+              <Printer className="w-4 h-4" />
+              <span>{isPrinting ? 'Printing…' : 'Print'}</span>
+            </button>
+            <button className="btn-icon-action" onClick={handleOpenDrawer} title="Open cash drawer">
+              <Archive className="w-4 h-4" />
+              <span>Drawer</span>
+            </button>
+            <button className="btn-icon-action" onClick={() => setShowClearConfirm(true)} title="Clear ticket" disabled={basket.length === 0}>
+              <RotateCcw className="w-4 h-4" />
+              <span>Clear</span>
+            </button>
+            <button
+              className="btn-icon-action danger"
+              onClick={() => setShowDeleteConfirm(true)}
+              title="Delete order"
+              disabled={!currentOrderId || isSaving || isDeleting}
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete</span>
+            </button>
+          </div>
 
-<div className="pos-actions-container">
-  {/* Top Quick Actions Row: Print, Drawer, Clear, and Delete */}
-  <div className="quick-actions-row">
-    <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
-      <Printer className="w-3.5 h-3.5" />
-      <span>{isPrinting ? 'Generating…' : 'Print'}</span>
-    </button>
-
-    <button className="btn-icon-action" onClick={handleOpenDrawer} title="Open cash drawer">
-      <Archive className="w-4 h-4" />
-      <span>Drawer</span>
-    </button>
-
-    <button className="btn-icon-action clear" onClick={() => setBasket([])} title="Clear ticket">
-      <RotateCcw className="w-4 h-4" />
-      <span>Clear</span>
-    </button>
-
-    {/* Delete Order Button */}
-<button 
-  className="btn-icon-action danger" 
-  onClick={() => setShowDeleteConfirm(true)}
-  title="Delete order"
-  disabled={!currentOrderId || isSaving || isDeleting}
->
-  <Trash2 className="w-4 h-4" />
-  <span>Delete</span>
-</button>
-  </div>
-
-  {/* Bottom Row: 50% Hold | 50% Take Payment */}
-  <div className="bottom-actions-row" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-    <button 
-      className="btn-icon-action hold" 
-      style={{ flex: 1, justifyContent: 'center' }}
-      disabled={basket.length === 0 || isSaving} 
-      onClick={() => handleSaveOrder(false)}
-    >
-      <Receipt className="w-4 h-4" />
-      <span>{isSaving ? 'Processing...' : 'Hold'}</span>
-    </button>
-
-    <button 
-      className="btn-pay" 
-      style={{ flex: 1, justifyContent: 'center' }}
-      disabled={basket.length === 0 || isSaving} 
-      onClick={() => handleSaveOrder(true)}
-    >
-      <CreditCard className="w-4 h-4" />
-      <span>{isSaving ? 'Processing...' : `Payment `}</span>
-    </button>
-  </div>
-</div>
-
+          {/* Hold / Pay — always visible at the bottom */}
+          <div className="bottom-actions-row">
+            <button className="btn-hold" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(false)}>
+              <Pause className="w-4 h-4" />
+              <span>{isSaving ? 'Saving…' : 'Hold'}</span>
+            </button>
+            <button className="btn-pay" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(true)}>
+              <span>{isSaving ? 'Processing…' : 'Pay'}</span>
+              <span className="mono">${total.toFixed(2)}</span>
+            </button>
           </div>
         </aside>
 
-        {/* ---------- MENU (middle, flexible column 2) ---------- */}
-        <main className="menu-col" dir='rtl'>
+        {/* ---------- DISHES (middle) ---------- */}
+        <main className="menu-col">
           <div className="menu-heading">
-            <h2>{activeCategory?.label || 'All Items'}</h2>
-            <span className="mono">{String(filteredItems.length).padStart(2, '0')} items available</span>
-          </div>
-
-          <div className="search-wrap">
-            <Search className="w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search items by name or keywords…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <div style={{ minWidth: 0 }}>
+              <h2 className="serif">{searchQuery.trim() ? 'Search results' : activeCategory?.label || 'All items'}</h2>
+              <p>
+                {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
+                {searchQuery.trim() ? ` matching “${searchQuery.trim()}”` : ' · tap to add, tap again for more'}
+              </p>
+            </div>
+            <label className="search-wrap">
+              <Search className="w-4 h-4" />
+              <input
+                type="text"
+                aria-label="Search the whole menu"
+                placeholder="Search the whole menu…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </label>
           </div>
 
           <div className="items-scroll">
             {isLoadingItems ? (
               <div className="items-state-msg">Loading the menu…</div>
             ) : filteredItems.length === 0 ? (
-              <div className="items-state-msg">No items found matching your search</div>
+              <div className="items-state-msg">No dishes found.</div>
             ) : (
               <div className="items-grid">
-                {filteredItems.map((item) => (
-                  <div key={item.id} className="item-card" onClick={() => handleItemClick(item)}>
-                    <div className="item-img-wrap">
-                      {item.image ? (
-                        <img src={item.image} alt={item.name} loading="lazy" />
-                      ) : (
-                        <Sparkles className="w-6 h-6 item-placeholder-icon" />
-                      )}
-                      {item.hasVariants && <span className="variant-badge">Options</span>}
-                    </div>
-                    <div className="item-content">
-                      <div>
+                {filteredItems.map((item) => {
+                  const palette = paletteForCategory(item.catId);
+                  const inTicket = qtyInTicket[item.id] || 0;
+                  return (
+                    <button key={item.id} className="item-card" onClick={() => handleItemClick(item)}>
+                      <div
+                        className="item-img-wrap"
+                        style={{ background: theme === 'dark' ? palette.dark : palette.light }}
+                      >
+                        {item.image ? (
+                          <img src={item.image} alt="" loading="lazy" />
+                        ) : (
+                          // No photo yet: first letter on the category's color
+                          <span className="item-initial" style={{ color: theme === 'dark' ? '#e6cf8f' : '#6b4a14' }}>
+                            {item.name.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                        {item.hasVariants && <span className="variant-badge">Options</span>}
+                        {inTicket > 0 && <span className="in-ticket-badge">{inTicket}</span>}
+                      </div>
+                      <div className="item-content">
                         <div className="item-name">{item.name}</div>
-                        {item.description && <div className="item-desc">{item.description}</div>}
+                        <div className="item-footer">
+                          <span className="item-price">
+                            {item.hasVariants && <span className="from">From</span>}
+                            ${item.price.toFixed(2)}
+                          </span>
+                          <span className="item-add" aria-hidden="true">
+                            <Plus className="w-4 h-4" />
+                          </span>
+                        </div>
                       </div>
-                      <div className="item-footer">
-                        <span className="item-price">
-                          {item.hasVariants && <span className="from">From</span>}
-                          ${item.price.toFixed(2)}
-                        </span>
-                        <span className="item-add">
-                          <Plus className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         </main>
 
-        {/* ---------- CATEGORY RAIL (rightmost, column 3) ---------- */}
-        <aside className="cat-rail" dir='rtl'>
+        {/* ---------- CATEGORIES (right) ---------- */}
+        <nav className="cat-rail" aria-label="Categories">
           <span className="cat-label">Categories</span>
 
           {isLoadingCategories && <div className="cat-state-msg">Loading categories…</div>}
           {error && <div className="cat-state-msg" style={{ color: 'var(--rust)' }}>{error}</div>}
 
           {!isLoadingCategories && !error && categories.map((cat) => {
-            const Icon = cat.icon;
-            const isActive = activeCat === cat.id;
+            const isActive = activeCat === cat.id && !searchQuery.trim();
             return (
               <button
                 key={cat.id}
                 className={`cat-btn ${isActive ? 'active' : ''}`}
-                onClick={() => setActiveCat(cat.id)}
+                onClick={() => {
+                  setActiveCat(cat.id);
+                  setSearchQuery('');
+                }}
               >
-                <span className="cat-no mono">{cat.no}</span>
-                <span className="cat-icon-wrap">
-                  <Icon
-                    className="w-4 h-4"
-                    color={isActive ? iconColor : undefined}
-                    style={!isActive ? { color: inactiveIconColor } : undefined}
-                  />
-                </span>
+                <span className="cat-dot" style={{ background: paletteForCategory(cat.id).dot }} />
                 <span className="label" title={cat.label}>{cat.label}</span>
+                <span className="cat-count mono">{itemsPerCategory[cat.id] || 0}</span>
               </button>
             );
           })}
-        </aside>
+        </nav>
       </div>
 
       {/* VARIANT SIZE PICKER */}
@@ -3487,72 +2968,106 @@ const handleSaveOrder = async (isPayment: boolean) => {
           </div>
         </div>
       )}
-{/* DELETE ORDER CONFIRMATION */}
-{showDeleteConfirm && (
-  <div 
-    className="modal-overlay backdrop-blur-sm" 
-    onClick={() => !isDeleting && setShowDeleteConfirm(false)}
-  >
-    <div className="modal-card modal-card-danger" onClick={(e) => e.stopPropagation()}>
-      
-      {/* Visual Alert Icon Header */}
-      <div className="modal-alert-icon">
-        <AlertTriangle className="w-6 h-6 text-red-500" />
-      </div>
 
-      <div className="modal-body-content">
-        <h3>Delete Order #{ticketNo}?</h3>
-        <p className="modal-sub">
-          This action will permanently cancel   the ticket and release the assigned table. This step <strong>cannot be undone</strong>.
-        </p>
-      </div>
+      {/* CLEAR TICKET CONFIRMATION */}
+      {showClearConfirm && (
+        <div className="modal-overlay" onClick={() => setShowClearConfirm(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Clear this ticket?</h3>
+              <button className="modal-close" onClick={() => setShowClearConfirm(false)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="modal-sub">
+              All {itemCount} {itemCount === 1 ? 'item' : 'items'} will be removed from the basket. Nothing is saved
+              until you press Hold or Pay.
+            </p>
+            <div className="modifier-modal-footer" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+              <button className="btn-modifier-cancel" onClick={() => setShowClearConfirm(false)}>
+                Keep items
+              </button>
+              <button
+                className="btn-modifier-save btn-modifier-danger"
+                onClick={() => {
+                  setBasket([]);
+                  setSelectedLineId(null);
+                  setShowClearConfirm(false);
+                }}
+              >
+                Clear ticket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="modal-action-footer">
-        <button 
-          className="btn-modal-secondary" 
-          onClick={() => setShowDeleteConfirm(false)} 
-          disabled={isDeleting}
+      {/* DELETE ORDER CONFIRMATION */}
+      {showDeleteConfirm && (
+        <div
+          className="modal-overlay backdrop-blur-sm"
+          onClick={() => !isDeleting && setShowDeleteConfirm(false)}
         >
-          Keep Order
-        </button>
+          <div className="modal-card modal-card-danger" onClick={(e) => e.stopPropagation()}>
 
-        <button 
-          className="btn-modal-danger" 
-          onClick={handleDeleteOrder} 
-          disabled={isDeleting}
-        >
-          {isDeleting ? (
-            <span className="flex items-center gap-2">
-              <span className="spinner-sm" /> Deleting…
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Trash2 className="w-4 h-4" />
-              Delete Order
-            </span>
-          )}
-        </button>
-      </div>
+            {/* Visual Alert Icon Header */}
+            <div className="modal-alert-icon">
+              <AlertTriangle className="w-6 h-6 text-red-500" />
+            </div>
 
-      <button 
-        className="modal-close-corner" 
-        onClick={() => setShowDeleteConfirm(false)} 
-        disabled={isDeleting}
-        title="Close"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  </div>
-)}
+            <div className="modal-body-content">
+              <h3>Delete Order #{ticketNo}?</h3>
+              <p className="modal-sub">
+                This action will permanently cancel the ticket and release the assigned table. This step <strong>cannot be undone</strong>.
+              </p>
+            </div>
+
+            <div className="modal-action-footer">
+              <button
+                className="btn-modal-secondary"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Keep Order
+              </button>
+
+              <button
+                className="btn-modal-danger"
+                onClick={handleDeleteOrder}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="spinner-sm" /> Deleting…
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Trash2 className="w-4 h-4" />
+                    Delete Order
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <button
+              className="modal-close-corner"
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={isDeleting}
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* TABLE PICKER (Dine-In) */}
       {showTablePicker && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[1000] p-4"
           onClick={() => setShowTablePicker(false)}
         >
-          <div 
+          <div
             className="bg-[#121316] border-2 border-zinc-700 rounded-2xl p-8 shadow-2xl w-[850px] max-w-[98vw]"
             onClick={(e) => e.stopPropagation()}
           >
@@ -3562,7 +3077,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
                 <h2 className="m-0 text-2xl font-extrabold text-white tracking-wide">Select a Table</h2>
                 <p className="text-base text-zinc-300 mt-1 font-medium">Tap any open table to seat this order</p>
               </div>
-              <button 
+              <button
                 className="bg-zinc-800 border border-zinc-600 text-zinc-200 p-3 rounded-xl hover:text-white hover:bg-zinc-700 transition-colors"
                 onClick={() => setShowTablePicker(false)}
                 aria-label="Close modal"
@@ -3574,11 +3089,11 @@ const handleSaveOrder = async (isPayment: boolean) => {
             {/* High-Visibility Legend */}
             <div className="flex gap-6 text-sm font-bold text-zinc-200 mb-6 bg-zinc-900/80 p-3 rounded-xl border border-zinc-800">
               <span className="flex items-center gap-2">
-                <span className="w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-emerald-400/30" /> 
+                <span className="w-4 h-4 rounded-full bg-emerald-500 ring-2 ring-emerald-400/30" />
                 <span className="text-emerald-400">Available</span>
               </span>
               <span className="flex items-center gap-2">
-                <span className="w-4 h-4 rounded-full bg-rose-500 ring-2 ring-rose-400/30" /> 
+                <span className="w-4 h-4 rounded-full bg-rose-500 ring-2 ring-rose-400/30" />
                 <span className="text-rose-400">Occupied</span>
               </span>
             </div>
@@ -3595,10 +3110,10 @@ const handleSaveOrder = async (isPayment: boolean) => {
                     onClick={() => selectTable(t)}
                     className={`
                       flex flex-col justify-between p-5 rounded-xl border-2 transition-all cursor-pointer min-h-[120px]
-                      ${isOccupied 
-                        ? 'bg-rose-950/30 border-rose-800/80 cursor-not-allowed opacity-80' 
-                        : isSelected 
-                          ? 'bg-amber-950/40 border-amber-500 shadow-lg shadow-amber-500/20 scale-[1.02]' 
+                      ${isOccupied
+                        ? 'bg-rose-950/30 border-rose-800/80 cursor-not-allowed opacity-80'
+                        : isSelected
+                          ? 'bg-amber-950/40 border-amber-500 shadow-lg shadow-amber-500/20 scale-[1.02]'
                           : 'bg-zinc-900 border-zinc-700 hover:border-amber-400 hover:bg-zinc-800'
                       }
                     `}
@@ -3613,7 +3128,7 @@ const handleSaveOrder = async (isPayment: boolean) => {
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="mt-4 flex justify-between items-end text-xs font-medium">
                       <span className={isOccupied ? 'text-rose-300 font-bold' : 'text-emerald-400 font-bold'}>
                         {isOccupied ? 'Occupied' : 'Available'}
@@ -3630,135 +3145,134 @@ const handleSaveOrder = async (isPayment: boolean) => {
         </div>
       )}
 
-{/* CUSTOMER PICKER (Delivery) */}
-{showCustomerPicker && (
-  <div className="modal-overlay" onClick={() => setShowCustomerPicker(false)}>
-    <div className="modal-card customer-modal" onClick={(e) => e.stopPropagation()}>
-      <div className="modal-head">
-        <h3>Select Delivery Customer</h3>
-        <button className="modal-close" onClick={() => setShowCustomerPicker(false)}>
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {/* CUSTOMER PICKER (Delivery) */}
+      {showCustomerPicker && (
+        <div className="modal-overlay" onClick={() => setShowCustomerPicker(false)}>
+          <div className="modal-card customer-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Select Delivery Customer</h3>
+              <button className="modal-close" onClick={() => setShowCustomerPicker(false)}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-      {!isAddingCustomer ? (
-        <>
-          <div className="customer-search-wrap">
-            <Search className="w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search by name, phone, email, address..."
-              value={customerSearch}
-              onChange={(e) => setCustomerSearch(e.target.value)}
-            />
-          </div>
+            {!isAddingCustomer ? (
+              <>
+                <div className="customer-search-wrap">
+                  <Search className="w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search by name, phone, email, address..."
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                  />
+                </div>
 
-          <div className="customer-list">
-            {filteredCustomers.length === 0 ? (
-              <div className="modifier-empty-msg">No matching customers found.</div>
-            ) : (
-              filteredCustomers.map((c) => (
-                <div
-                  key={c.id}
-                  className="customer-card"
-                  onClick={() => selectCustomer(c)}
-                >
-                  <div className="customer-card-header">
-                    <div className="customer-name">{c.name}</div>
-                    
-                  </div>
-                  <div className="customer-details">
-                    {c.phone && (
-                      <span className="customer-detail-item">
-                        <Phone className="w-3.5 h-3.5" />
-                        {c.phone}
-                      </span>
-                    )}
-                    {c.email && (
-                      <span className="customer-detail-item">
-                        <Mail className="w-3.5 h-3.5" />
-                        {c.email}
-                      </span>
-                    )}
-                    {c.address && (
-                      <span className="customer-detail-item">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {c.address}
-                      </span>
-                    )}
-                  </div>
-                  {c.notes && (
-                    <div className="customer-note">
-                      <FileText className="w-3.5 h-3.5" />
-                      {c.notes}
-                    </div>
+                <div className="customer-list">
+                  {filteredCustomers.length === 0 ? (
+                    <div className="modifier-empty-msg">No matching customers found.</div>
+                  ) : (
+                    filteredCustomers.map((c) => (
+                      <div
+                        key={c.id}
+                        className="customer-card"
+                        onClick={() => selectCustomer(c)}
+                      >
+                        <div className="customer-card-header">
+                          <div className="customer-name">{c.name}</div>
+                        </div>
+                        <div className="customer-details">
+                          {c.phone && (
+                            <span className="customer-detail-item">
+                              <Phone className="w-3.5 h-3.5" />
+                              {c.phone}
+                            </span>
+                          )}
+                          {c.email && (
+                            <span className="customer-detail-item">
+                              <Mail className="w-3.5 h-3.5" />
+                              {c.email}
+                            </span>
+                          )}
+                          {c.address && (
+                            <span className="customer-detail-item">
+                              <MapPin className="w-3.5 h-3.5" />
+                              {c.address}
+                            </span>
+                          )}
+                        </div>
+                        {c.notes && (
+                          <div className="customer-note">
+                            <FileText className="w-3.5 h-3.5" />
+                            {c.notes}
+                          </div>
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
-              ))
+
+                <button
+                  className="btn-add-customer"
+                  onClick={() => setIsAddingCustomer(true)}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Add New Customer
+                </button>
+              </>
+            ) : (
+              <div className="new-customer-form">
+                <input
+                  type="text"
+                  placeholder="Full Name *"
+                  value={newCustomerName}
+                  onChange={(e) => setNewCustomerName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Phone Number"
+                  value={newCustomerPhone}
+                  onChange={(e) => setNewCustomerPhone(e.target.value)}
+                />
+                <input
+                  type="email"
+                  placeholder="Email Address"
+                  value={newCustomerEmail}
+                  onChange={(e) => setNewCustomerEmail(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Delivery Address"
+                  value={newCustomerAddress}
+                  onChange={(e) => setNewCustomerAddress(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Notes (e.g. gate code)"
+                  value={newCustomerNotes}
+                  onChange={(e) => setNewCustomerNotes(e.target.value)}
+                />
+
+                <div className="modifier-modal-footer" style={{ marginTop: 10 }}>
+                  <button
+                    className="btn-modifier-cancel"
+                    onClick={() => setIsAddingCustomer(false)}
+                  >
+                    Back to Search
+                  </button>
+                  <button
+                    className="btn-modifier-save"
+                    disabled={!newCustomerName.trim()}
+                    onClick={handleCreateCustomer}
+                  >
+                    Save &amp; Select
+                  </button>
+                </div>
+              </div>
             )}
-          </div>
-
-          <button
-            className="btn-add-customer"
-            onClick={() => setIsAddingCustomer(true)}
-          >
-            <UserPlus className="w-4 h-4" />
-            Add New Customer
-          </button>
-        </>
-      ) : (
-        <div className="new-customer-form">
-          <input
-            type="text"
-            placeholder="Full Name *"
-            value={newCustomerName}
-            onChange={(e) => setNewCustomerName(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Phone Number"
-            value={newCustomerPhone}
-            onChange={(e) => setNewCustomerPhone(e.target.value)}
-          />
-          <input
-            type="email"
-            placeholder="Email Address"
-            value={newCustomerEmail}
-            onChange={(e) => setNewCustomerEmail(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Delivery Address"
-            value={newCustomerAddress}
-            onChange={(e) => setNewCustomerAddress(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Notes (e.g. gate code)"
-            value={newCustomerNotes}
-            onChange={(e) => setNewCustomerNotes(e.target.value)}
-          />
-
-          <div className="modifier-modal-footer" style={{ marginTop: 10 }}>
-            <button
-              className="btn-modifier-cancel"
-              onClick={() => setIsAddingCustomer(false)}
-            >
-              Back to Search
-            </button>
-            <button
-              className="btn-modifier-save"
-              disabled={!newCustomerName.trim()}
-              onClick={handleCreateCustomer}
-            >
-              Save &amp; Select
-            </button>
           </div>
         </div>
       )}
-    </div>
-  </div>
-)}
     </div>
   );
 }

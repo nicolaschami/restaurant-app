@@ -74,7 +74,9 @@ export default function KDSContainer() {
     const connect = () => {
       const httpBase: string = (api.defaults?.baseURL as string) || window.location.origin;
       const wsBase = httpBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
-      socket = new WebSocket(`${wsBase}/ws?restaurantId=${RESTAURANT_ID}`);
+      // The server checks this login token and picks the restaurant room from it.
+      const token = encodeURIComponent(localStorage.getItem('token') || '');
+      socket = new WebSocket(`${wsBase}/ws?token=${token}`);
 
       socket.onmessage = (event) => {
         try {
