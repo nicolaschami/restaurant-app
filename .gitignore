@@ -9,3 +9,5 @@ npm-debug.log*
 
 # OS specific
 .DS_Store
+# Claude Code personal settings (stay on this computer)
+.claude/settings.local.json
