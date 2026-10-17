@@ -1,9 +1,89 @@
 import { FastifyInstance } from 'fastify';
 import { eq, and,sql ,desc,inArray} from 'drizzle-orm';
 import { db } from "../db";
-import { stockTransactions, stockDetails } from '../db/schema';
+import { stockTransactions, stockDetails, rawMaterials } from '../db/schema';
 import type { CreateStockTransactionPayload } from '../db/schema';
 import { getRestaurantId } from '../lib/tenant.js';
+
+// ==========================================================================
+// STOCK MOVEMENTS
+//
+// A saved purchase is POSTED: its quantities are added to the raw materials'
+// current_stock right away. The purchase lines are the history ("ledger");
+// raw_materials.current_stock is the running balance. Both change together,
+// inside the same database transaction, so they always agree.
+//
+// Units: no conversion yet — the quantity entered is added as is.
+// ==========================================================================
+
+type StockLine = { rawMaterialId: number; qty: number; unitCost?: number; discountPct?: number };
+
+class StockError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StockError';
+  }
+}
+
+// sign = +1 to add the quantities (post), -1 to take them back out (before an edit).
+// When adding, the material's last purchase price becomes the line's cost after its discount.
+async function moveStock(tx: any, restaurantId: number, lines: StockLine[], sign: 1 | -1) {
+  const valid = lines.filter((l) => l.rawMaterialId && Number.isFinite(l.qty));
+  if (valid.length === 0) return;
+
+  // Every raw material must belong to this restaurant.
+  const ids = [...new Set(valid.map((l) => l.rawMaterialId))];
+  const owned = await tx
+    .select({ id: rawMaterials.id })
+    .from(rawMaterials)
+    .where(and(inArray(rawMaterials.id, ids), eq(rawMaterials.restaurantId, restaurantId)));
+  if (owned.length !== ids.length) {
+    throw new StockError('One or more items are not raw materials of this restaurant.');
+  }
+
+  for (const line of valid) {
+    const change = sign * line.qty;
+    const set: Record<string, any> = {
+      currentStock: sql`COALESCE(${rawMaterials.currentStock}, 0) + ${change}`,
+    };
+    if (sign > 0 && line.unitCost !== undefined) {
+      const netUnitCost = line.unitCost * (1 - (line.discountPct || 0) / 100);
+      set.lastPurchasePrice = netUnitCost.toFixed(4);
+    }
+    await tx.update(rawMaterials).set(set).where(eq(rawMaterials.id, line.rawMaterialId));
+  }
+}
+
+// Two kinds of transaction share the same tables and screens:
+//   PUR = purchase         → stock goes UP,   numbers GRN-0001…
+//   RP  = purchase return  → stock goes DOWN, numbers RP-0001…
+type TxKind = 'PUR' | 'RP';
+const txKind = (value: unknown): TxKind => (String(value ?? '').toUpperCase() === 'RP' ? 'RP' : 'PUR');
+const stockSign = (kind: TxKind): 1 | -1 => (kind === 'RP' ? -1 : 1);
+const numberPrefix = (kind: TxKind) => (kind === 'RP' ? 'RP' : 'GRN');
+
+// Next number for a restaurant and kind: GRN-0001… or RP-0001…
+// pg_advisory_xact_lock holds a lock (per restaurant and kind) until the
+// transaction ends, so a second save waits and then sees the first one's number.
+async function nextPurchaseNumber(tx: any, restaurantId: number, kind: TxKind = 'PUR'): Promise<string> {
+  const prefix = numberPrefix(kind);
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'purchase-number-' + prefix}), ${restaurantId})`);
+  const [row] = await tx.execute(sql`
+    SELECT COALESCE(MAX(SUBSTRING("GRNNumber" FROM ${'^' + prefix + '-([0-9]+)$'})::int), 0) + 1 AS next
+    FROM stocktransactions
+    WHERE "RestaurantID" = ${restaurantId}
+  `);
+  return `${prefix}-${String((row as { next: number }).next).padStart(4, '0')}`;
+}
+
+// The lines of a request body, in the form moveStock() needs.
+const stockLinesFromItems = (items: any[]): StockLine[] =>
+  items.map((item: any) => ({
+    rawMaterialId: Number(item.rawMaterialId ?? item.rawMaterialID ?? item.RawMaterialID ?? item.id),
+    qty: Number(item.quantity ?? item.qty ?? 0),
+    unitCost: Number(item.unitCost ?? item.unit_cost ?? 0),
+    discountPct: Number(item.discountPct ?? item.discount_pct ?? 0),
+  }));
 
 export default async function stockTransactionRoutes(fastify: FastifyInstance) {
 
@@ -84,11 +164,13 @@ export default async function stockTransactionRoutes(fastify: FastifyInstance) {
   // 2. GET /api/stock-transactions/:id?restaurantId=1
   // Fetch a single transaction ensuring it belongs to the restaurant
   // ==========================================
-fastify.get<{ Querystring: { restaurantId: string } }>(
+fastify.get<{ Querystring: { restaurantId: string; type?: string } }>(
     '/api/stock-transactions',
     async (request, reply) => {
       // The restaurant comes from the login token; ?restaurantId is ignored.
       const parsedRestaurantId = getRestaurantId(request);
+      // ?type=RP → purchase returns only; anything else → purchases only.
+      const kind = txKind(request.query.type);
 
       try {
         // 1. Fetch main stock transactions with date cast as raw string
@@ -111,7 +193,15 @@ fastify.get<{ Querystring: { restaurantId: string } }>(
             type: stockTransactions.type,
           })
           .from(stockTransactions)
-          .where(eq(stockTransactions.restaurantId, parsedRestaurantId))
+          .where(
+            and(
+              eq(stockTransactions.restaurantId, parsedRestaurantId),
+              // Old purchases may have another/empty type: everything that is not RP is a purchase.
+              kind === 'RP'
+                ? eq(stockTransactions.type, 'RP')
+                : sql`COALESCE(${stockTransactions.type}, '') <> 'RP'`
+            )
+          )
           .orderBy(desc(stockTransactions.transactionId));
 
         if (!transactions.length) {
@@ -152,7 +242,7 @@ fastify.post('/api/stock-transactions', async (request, reply) => {
 
   // Extract variables safely checking all casing variations
   const supplierName = body.supplierName ?? body.supplier_name ?? body.SupplierName;
-  const grnNumber = body.grnNumber ?? body.grn_number ?? body.GRNNumber;
+  // (The purchase number is assigned by the server below, not taken from the body.)
   const receivedAt = body.receivedAt ?? body.received_at ?? body.TransactionDate;
   const reference = body.reference ?? body.Reference;
   const comment = body.comment ?? body.Comment;
@@ -160,26 +250,31 @@ fastify.post('/api/stock-transactions', async (request, reply) => {
   const discountAmount = body.discountAmount ?? body.discount ?? body.DiscountAmount ?? 0;
   const taxAmount = body.taxAmount ?? body.tax ?? body.TaxAmount ?? 0;
   const netTotal = body.netTotal ?? body.net_total ?? body.NetTotal ?? 0;
-  const status = body.status ?? body.Status ?? 'DRAFT';
-  const type = body.type ?? 'PUR';
+  // Every saved purchase is posted (its stock is applied below).
+  const status = 'POSTED';
+  // PUR (purchase) or RP (purchase return) — the only difference between the two.
+  const type: TxKind = txKind(body.type);
 
   try {
    const result = await db.transaction(async (tx) => {
   // Extract values cleanly from request body
   const body = request.body as Record<string, any>;
 
-  const generatedTxNumber = `TX-${Date.now().toString().slice(-6)}`;
+  // The purchase number is chosen HERE, never by the screen: GRN-0001, GRN-0002…
+  // per restaurant. The lock makes two purchases saved at the same moment wait
+  // for each other, so they can never get the same number.
+  const purchaseNumber = await nextPurchaseNumber(tx, restaurantId, type);
 
 const headerPayload: any = {
-  // Required field that failed the NOT NULL constraint:
-  TransactionNumber: body.transactionNumber || body.TransactionNumber || generatedTxNumber,
-  transactionNumber: body.transactionNumber || body.TransactionNumber || generatedTxNumber,
+  // One number shown everywhere (list, detail, purchase screen).
+  TransactionNumber: purchaseNumber,
+  transactionNumber: purchaseNumber,
 
   RestaurantID: Number(restaurantId),
   restaurantId: Number(restaurantId),
 
-  GRNNumber: grnNumber ? String(grnNumber) : null,
-  grnNumber: grnNumber ? String(grnNumber) : null,
+  GRNNumber: purchaseNumber,
+  grnNumber: purchaseNumber,
 
   SupplierName: String(supplierName || ''),
   supplierName: String(supplierName || ''),
@@ -263,12 +358,18 @@ const detailsPayload = items.map((item: any) => {
     unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
     discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
     lineTotal: String(item.lineTotal ?? item.line_total ?? 0),
-    type: 'PUR',
+    type, // PUR or RP, same as the header
   };
 });
 
 
 console.log('***** EXECUTING DETAILS INSERT ===', detailsPayload,"  ****************");
+
+// Posted → add the received quantities to stock (same transaction: all or nothing).
+// Done BEFORE writing the lines, so an item of another restaurant is refused
+// with a clear message.
+// Purchase → stock up (+); return → stock down (−).
+await moveStock(tx, restaurantId, stockLinesFromItems(items), stockSign(type));
 
 const insertedDetails = await tx
   .insert(stockDetails)
@@ -280,6 +381,9 @@ const insertedDetails = await tx
 
     return reply.code(201).send({ message: 'Transaction saved successfully', data: result });
   } catch (error: any) {
+    if (error instanceof StockError) {
+      return reply.code(400).send({ error: error.message });
+    }
     console.error('=== DB ERROR ===', error);
     return reply.code(500).send({ error: 'Failed to create transaction', details: error?.message || String(error) });
   }
@@ -378,7 +482,7 @@ fastify.put<{ Params: { id: string }; Body: any }>(
 
     // Casing-tolerant extraction (same as POST)
     const supplierName  = body.supplierName ?? body.supplier_name ?? body.SupplierName;
-    const grnNumber     = body.grnNumber ?? body.grn_number ?? body.GRNNumber;
+    // (The purchase number never changes on edit, so it is not read from the body.)
     const receivedAt    = body.receivedAt ?? body.received_at ?? body.TransactionDate;
     const reference     = body.reference ?? body.Reference;
     const comment       = body.comment ?? body.Comment;
@@ -386,8 +490,9 @@ fastify.put<{ Params: { id: string }; Body: any }>(
     const discountAmount = body.discountAmount ?? body.discount ?? body.DiscountAmount ?? 0;
     const taxAmount     = body.taxAmount ?? body.tax ?? body.TaxAmount ?? 0;
     const netTotal      = body.netTotal ?? body.net_total ?? body.NetTotal ?? 0;
-    const status        = body.status ?? body.Status ?? 'DRAFT';
-    const type          = body.type ?? body.Type ?? 'PUR';
+    // Saving = posted. An old draft becomes posted (and counts in stock) when edited.
+    const status        = 'POSTED';
+    // (The type — PUR or RP — never changes on edit; it is read from the saved row below.)
 
     if (!supplierName || !String(supplierName).trim()) {
       return reply.code(400).send({ error: 'Supplier is required.' });
@@ -398,13 +503,27 @@ fastify.put<{ Params: { id: string }; Body: any }>(
 
     try {
       const result = await db.transaction(async (tx) => {
+        // Was this purchase already counted in stock? (old drafts were not)
+        const [before] = await tx
+          .select({ status: stockTransactions.status, type: stockTransactions.type })
+          .from(stockTransactions)
+          .where(
+            and(
+              eq(stockTransactions.transactionId, transactionId),
+              eq(stockTransactions.restaurantId, Number(restaurantId))
+            )
+          );
+        if (!before) throw new Error('NOT_FOUND');
+        const wasPosted = String(before.status || '').toUpperCase() === 'POSTED';
+        const type: TxKind = txKind(before.type); // purchase stays purchase, return stays return
+
         // Build a clean, schema-shaped header payload (do NOT spread raw body)
         const headerPayload: Record<string, any> = {
           RestaurantID: Number(restaurantId),
           restaurantId: Number(restaurantId),
 
-          GRNNumber: grnNumber ? String(grnNumber) : null,
-          grnNumber: grnNumber ? String(grnNumber) : null,
+          // The purchase number is NOT updated: it was given when the purchase
+          // was created and never changes.
 
           SupplierName: String(supplierName),
           supplierName: String(supplierName),
@@ -433,7 +552,7 @@ fastify.put<{ Params: { id: string }; Body: any }>(
           Status: String(status),
           status: String(status),
 
-          type: String(type),
+          type, // unchanged
 
           updatedAt: new Date(),
         };
@@ -455,6 +574,22 @@ fastify.put<{ Params: { id: string }; Body: any }>(
           .returning();
 
         if (!updatedTransaction) throw new Error('NOT_FOUND');
+
+        // If it was posted, first undo the effect of its OLD lines on stock;
+        // the new lines are applied again below. Net effect = only the difference.
+        if (wasPosted) {
+          const oldLines = await tx
+            .select({ rawMaterialId: stockDetails.RawMaterialId, qty: stockDetails.qty })
+            .from(stockDetails)
+            .where(eq(stockDetails.transactionId, transactionId));
+          await moveStock(
+            tx,
+            Number(restaurantId),
+            oldLines.map((l) => ({ rawMaterialId: Number(l.rawMaterialId), qty: Number(l.qty) })),
+            // Undo the old effect: a purchase had added (+), so take out; a return had removed (−), so put back.
+            (-stockSign(type)) as 1 | -1
+          );
+        }
 
         // Delete old lines
         await tx
@@ -481,8 +616,13 @@ fastify.put<{ Params: { id: string }; Body: any }>(
           unitCost: String(item.unitCost ?? item.unit_cost ?? 0),
           discountPct: String(item.discountPct ?? item.discount_pct ?? 0),
           lineTotal: String(item.lineTotal ?? item.line_total ?? 0),
-          type: String(item.type || type || 'PUR'),
+          type, // PUR or RP, same as the header
         }));
+
+        // Apply the NEW lines: purchase → stock up (and last purchase price updated),
+        // return → stock down. Before writing the lines, so an item of another
+        // restaurant is refused clearly.
+        await moveStock(tx, Number(restaurantId), stockLinesFromItems(items), stockSign(type));
 
         const insertedDetails = await tx
           .insert(stockDetails)
@@ -497,6 +637,9 @@ fastify.put<{ Params: { id: string }; Body: any }>(
         data: result,
       });
     } catch (error: any) {
+      if (error instanceof StockError) {
+        return reply.code(400).send({ error: error.message });
+      }
       if (error instanceof Error && error.message === 'NOT_FOUND') {
         return reply.code(404).send({
           error: 'Stock transaction not found for this restaurant',
