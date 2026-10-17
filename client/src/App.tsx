@@ -123,13 +123,34 @@ export function App() {
       case 'purchase':
         return (
           <PurchaseReceiptForm
+            key="PUR"
             onCancel={() => setActiveTab('purchaselist')}
           />
         );
       case 'purchaselist':
         return (
           <PurchaseList
-        //    onNewPurchase={() => setActiveTab('purchase')}
+            key="PUR"
+            // "+ New purchase" opens the same screen as Transactions → Purchase
+            onNewPurchase={() => setActiveTab('purchase')}
+          />
+        );
+      // Purchase returns: the same screens as purchases, with type RP
+      // (stock goes down instead of up).
+      case 'returnpurchase':
+        return (
+          <PurchaseReceiptForm
+            key="RP"
+            kind="RP"
+            onCancel={() => setActiveTab('returnpurchaselist')}
+          />
+        );
+      case 'returnpurchaselist':
+        return (
+          <PurchaseList
+            key="RP"
+            kind="RP"
+            onNewPurchase={() => setActiveTab('returnpurchase')}
           />
         );
       case 'categories':

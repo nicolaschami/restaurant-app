@@ -5,16 +5,20 @@ interface PurchaseTransactionEditModalProps {
   transactionId: number;
   restaurantId?: number;
   onClose: () => void;
+  onSaved?: () => void; // called after a successful save (the list then reloads)
+  kind?: 'PUR' | 'RP'; // purchase or purchase return
 }
 
-const PurchaseTransactionEditModal: FC<PurchaseTransactionEditModalProps> = ({ transactionId, restaurantId = 1, onClose }) => (
+const PurchaseTransactionEditModal: FC<PurchaseTransactionEditModalProps> = ({ transactionId, restaurantId = 1, onClose, onSaved, kind = 'PUR' }) => (
   <div className="pt-edit-modal-backdrop" role="dialog" aria-modal="true" aria-label="Edit purchase transaction">
     <div className="pt-edit-modal-shell">
       <PurchaseTransactionScreen
         mode="edit"
+        kind={kind}
         transactionId={transactionId}
         restaurantId={restaurantId}
         onCancel={onClose}
+        onSaved={onSaved}
       />
     </div>
     <style>{`

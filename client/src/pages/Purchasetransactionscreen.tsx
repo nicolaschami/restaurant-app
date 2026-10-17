@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type FC } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
+import { MaterialSearch, materialInfo, num } from '../components/MaterialSearch';
 
 // ==========================================
 // TYPES
@@ -47,9 +48,15 @@ interface PurchaseLineItem {
 
 interface PurchaseReceiptFormProps {
   mode?: 'create' | 'edit';
+  // PUR = purchase (stock goes up), RP = purchase return (stock goes down).
+  // Same screen, same tables — only the type differs.
+  kind?: 'PUR' | 'RP';
   transactionId?: number;
   restaurantId?: number;
   onCancel?: () => void;
+  // Called after an EDIT was saved on the server, so the purchase list can reload
+  // (otherwise it keeps showing the old net total).
+  onSaved?: () => void;
   onSave?: (payload: {
     grnNumber: string;
     supplier: string;
@@ -301,9 +308,9 @@ const ReceiptStyles = () => (
     .pr-hero-top { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
     .pr-eyebrow { margin: 0 0 3px; color: #7b858d; font-size: 9px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
     .pr-title-row { display: flex; align-items: center; gap: 9px; }
-    .pr-title { margin: 0; font-size: clamp(22px, 3vw, 28px); font-weight: 800; letter-spacing: -.055em; line-height: 1; }
+    .pr-title { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.03em; line-height: 1.2; }
     .pr-receiving-tag { padding: 4px 7px; border: 1px solid rgba(240,161,94,.52); border-radius: 99px; color: var(--lime); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-    .pr-receipt-id { margin: 5px 0 0; color: #6f7981; font: 500 10px/1.2 'DM Mono', monospace; }
+    .pr-receipt-id { margin: 0; color: #6f7981; font: 500 11px/1.2 'DM Mono', monospace; }
     .pr-status { position: relative; z-index: 1; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid #e1e5e8; border-radius: 10px; background: rgba(255,255,255,.82); color: #3d474d; box-shadow: 0 3px 10px rgba(30, 36, 40, .06); white-space: nowrap; }
     .pr-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 4px rgba(240,161,94,.16); }
     .pr-status-copy { color: #3d474d; font-size: 11px; font-weight: 700; }
@@ -452,6 +459,34 @@ const ReceiptStyles = () => (
     .pr-items-head { min-height: 36px; padding: 0 10px; background: #f7faf7; border-bottom: 1px solid var(--line); color: #718078; font-size: 9px; font-weight: 800; letter-spacing: .095em; text-transform: uppercase; }
     .pr-items-head span:nth-child(3), .pr-items-head span:nth-child(4), .pr-items-head span:nth-child(5), .pr-items-head span:nth-child(6), .pr-items-head span:nth-child(7) { text-align: right; }
     .pr-item-row { min-height: 59px; padding: 9px 10px; border-bottom: 1px solid #edf1ed; }
+
+    /* ---- Save problems: banner + highlighted lines ---- */
+    .pr-form-alert {
+      display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; padding: 12px 14px;
+      border: 1px solid #f1c5bb; border-radius: 12px; background: #fff4f1; color: #7a2e20;
+      animation: pr-alert-in .18s ease-out;
+    }
+    @keyframes pr-alert-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .pr-form-alert-icon {
+      display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+      background: #ba513f; color: #fff; font-weight: 800; font-size: 14px;
+    }
+    .pr-form-alert-text { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; line-height: 1.45; }
+    .pr-form-alert-text strong { font-size: 13px; }
+    .pr-form-alert-hint { color: #9a5546; font-size: 11.5px; }
+    .pr-form-alert-action {
+      flex-shrink: 0; height: 32px; padding: 0 12px; border: 1px solid #e6a597; border-radius: 8px;
+      background: #fff; color: #7a2e20; font: 700 12px/1 'Manrope', sans-serif; cursor: pointer;
+    }
+    .pr-form-alert-action:hover { background: #ffe9e3; }
+    .pr-form-alert-close {
+      flex-shrink: 0; width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent;
+      color: #9a5546; font-size: 18px; line-height: 1; cursor: pointer;
+    }
+    .pr-form-alert-close:hover { background: #ffe9e3; }
+    .pr-item-row.is-invalid { background: #fff7f5; box-shadow: inset 3px 0 0 #ba513f; }
+    .pr-row-input.is-invalid { border-color: #e6a597; background: #fff; }
+    .pr-row-input.is-invalid::placeholder { color: #ba513f; font-weight: 700; }
     .pr-item-row:last-of-type { border-bottom: 0; }
     .pr-item-no { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 7px; background: #f2f6f2; color: #738078; font: 500 10px/1 'DM Mono', monospace; }
     .pr-row-input, .pr-row-select {
@@ -575,9 +610,11 @@ const initialHeaderState = {
 
 const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
   mode = 'create',
+  kind = 'PUR',
   transactionId,
   restaurantId = 1,
   onCancel,
+  onSaved,
   onSave,
 }) => {
   console.log('[PurchaseReceiptForm]', {
@@ -588,8 +625,14 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Purchase or purchase return: only the labels and the stock direction differ.
+  const isReturn = kind === 'RP';
+  const docLabel = isReturn ? 'Return purchase' : 'Purchase';
+  // Lines highlighted in red after a failed save (no raw material chosen).
+  const [invalidLineIds, setInvalidLineIds] = useState<string[]>([]);
 
-  const [grnNumber, setGrnNumber] = useState('GRN-0148');
+  // Empty for a new purchase: the server gives the number (GRN-0001…) when it is saved.
+  const [grnNumber, setGrnNumber] = useState('');
 
   // ✅ FIX: Split into two independent loading flags. Never initialize to `true`
   // (the transaction effect will raise it as soon as it actually starts fetching).
@@ -790,14 +833,26 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
     fetchInitialData();
   }, [restaurantId]);
 
+  // Reload the raw materials (stock, last price) — after a save changed them,
+  // so the item search never shows an old stock number.
+  const reloadMaterials = async () => {
+    try {
+      const res = await api.get('/raw-materials');
+      const data = res.data?.rawMaterials ?? res.data?.data ?? res.data;
+      if (Array.isArray(data)) setProductList(data);
+    } catch (error) {
+      console.error('Failed to reload raw materials:', error);
+    }
+  };
+
   const handleCreateAnotherReceipt = () => {
     const resetDate = todayISO();
-    const nextGrnNumber = `GRN-${Date.now().toString().slice(-6)}`;
+    reloadMaterials(); // fresh stock for the next purchase
 
     setSupplierName('');
     setSupplier('');
     setSelectedSupplierDetails(null);
-    setGrnNumber(nextGrnNumber);
+    setGrnNumber(''); // the next number is given by the server on save
     setReference('');
     setComment('');
     setDate(resetDate);
@@ -867,24 +922,42 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
   };
 
   const handleSave = async () => {
+    // Checks before saving. Problems are shown inside the screen (banner +
+    // highlighted lines) instead of a browser popup.
+    setErrorMessage(null);
+
     if (!selectedSupplierDetails) {
-      alert('Please select a valid supplier from the dropdown list.');
+      setInvalidLineIds([]);
+      setErrorMessage('Choose a supplier from the list before saving.');
+      supplierInputRef.current?.focus();
       return;
     }
 
     if (!items.length) {
-      alert('Please add at least one item before saving.');
+      setInvalidLineIds([]);
+      setErrorMessage('Add at least one item before saving.');
       return;
     }
 
-    const hasInvalidItem = items.some((item) => !item.raw_material_id);
-    if (hasInvalidItem) {
-      alert('One or more items do not have a valid raw material ID. Please select them from the suggestion list.');
+    // Every line must be a raw material chosen from the list (that is what
+    // updates the stock). Highlight the lines that are not, and go to the first.
+    const invalid = items.filter((item) => !item.raw_material_id).map((item) => item.id);
+    if (invalid.length > 0) {
+      setInvalidLineIds(invalid);
+      const lineNumbers = items
+        .map((item, index) => (invalid.includes(item.id) ? index + 1 : null))
+        .filter((n): n is number => n !== null);
+      setErrorMessage(
+        `${invalid.length === 1 ? 'Line' : 'Lines'} ${lineNumbers.join(', ')} ${invalid.length === 1 ? 'needs' : 'need'} an item chosen from the list.`
+      );
+      const first = itemNameRefs.current[invalid[0]];
+      first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      first?.focus();
       return;
     }
 
+    setInvalidLineIds([]);
     setIsSubmitting(true);
-    setErrorMessage(null);
 
     try {
       const supplierId = selectedSupplierDetails?.supplierCode
@@ -893,6 +966,7 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
 
       const payload = {
         restaurantId: 1,
+        type: kind, // PUR or RP (the server ignores it on edit: the type never changes)
 
         supplierName: supplier.trim() || selectedSupplierDetails?.supplierName || "Prime Meats & Produce Co.",
 
@@ -932,19 +1006,28 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
           transactionId,
         );
 
+        onSaved?.(); // let the list reload its totals
         onCancel?.();
       } else {
-        await api.post('/stock-transactions', payload);
+        const response = await api.post('/stock-transactions', payload);
 
-        console.log(
-          '[PurchaseReceiptForm] New transaction created',
-        );
+        // Show the number the server gave this purchase (GRN-0001…).
+        const saved = response.data?.data || {};
+        setGrnNumber(saved.GRNNumber ?? saved.grnNumber ?? '');
 
+        reloadMaterials(); // the stock just changed
         setIsSaved(true);
       }
     } catch (error: any) {
       console.error('Backend Error Response:', error.response?.data);
-      setErrorMessage(error.response?.data?.message || 'Failed to save transaction.');
+      // The server sends its reason in `error` (e.g. "One or more items are not raw
+      // materials of this restaurant."). No response at all = server not reachable.
+      setInvalidLineIds([]);
+      setErrorMessage(
+        !error.response
+          ? 'Cannot reach the server. Check that the API is running, then save again.'
+          : error.response.data?.error || error.response.data?.message || 'The purchase could not be saved. Please try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -1130,38 +1213,41 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
   const netTotal = taxableAmount + tax;
   const itemCount = items.length;
 
+  // Fill a line from a raw material: name, id, unit, and the cost — the last
+  // purchase price when there is one, otherwise the cost price.
+  const applyMaterial = (itemId: string, product: Product) => {
+    const info = materialInfo(product);
+    updateItem(itemId, {
+      name: product.name,
+      raw_material_id: product.id,
+      unit: info.unit,
+      unitCost: info.lastPrice ?? info.costPrice ?? 0,
+    });
+  };
+
+  // Typing in the item box: an exact name match still fills the line (as before);
+  // anything else is kept as free text and unlinked from a raw material.
   const handleProductSelect = (itemId: string, value: string) => {
     const matchedProduct = ProductList.find(
       (product) => product.name.toLowerCase() === value.trim().toLowerCase()
     );
 
     if (matchedProduct) {
-      const productData = matchedProduct as any;
-
-      const unit = productData.unit || productData.Unit || 'kg';
-
-      let costPrice = productData.cost_price || productData.costPrice || 0;
-      if (typeof costPrice === 'string') {
-        costPrice = parseFloat(costPrice) || 0;
-      }
-
-      console.log('Selected product:', {
-        name: matchedProduct.name,
-        unit: unit,
-        costPrice: costPrice,
-        rawData: productData,
-      });
-
-      updateItem(itemId, {
-        name: matchedProduct.name,
-        raw_material_id: matchedProduct.id,
-        unit: unit,
-        unitCost: costPrice,
-      });
+      applyMaterial(itemId, matchedProduct);
     } else {
-      updateItem(itemId, { name: value });
+      updateItem(itemId, { name: value, raw_material_id: null });
     }
   };
+
+  // For the material search: which supplier is selected (its items are listed
+  // first) and which raw materials are already on which line numbers.
+  const selectedSupplierId = num(
+    (selectedSupplierDetails as any)?.supplierId ?? (selectedSupplierDetails as any)?.id
+  );
+  const linesByMaterial: Record<number, number[]> = {};
+  items.forEach((line, index) => {
+    if (line.raw_material_id) (linesByMaterial[line.raw_material_id] ||= []).push(index + 1);
+  });
 
   // ==========================================================
   // ✅ FIX: Show a loading screen while either fetch is running.
@@ -1192,9 +1278,14 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
               </svg>
             </div>
 
-            <p className="pr-success-kicker">Receipt saved</p>
+            <p className="pr-success-kicker">{isReturn ? 'Return saved' : 'Receipt saved'}</p>
             <h3 id="receipt-success-title" className="pr-success-modal-title">Successfully done</h3>
-            <p className="pr-success-modal-copy">The goods receipt has been saved successfully and is ready for review.</p>
+            <p className="pr-success-modal-copy">
+              {grnNumber
+                ? <>{docLabel} <strong>{grnNumber}</strong> is saved. </>
+                : `The ${docLabel.toLowerCase()} is saved. `}
+              {isReturn ? 'Its quantities were removed from stock.' : 'Its quantities were added to stock.'}
+            </p>
 
             <div className="pr-success-actions">
               <button
@@ -1202,7 +1293,7 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
                 onClick={handleCreateAnotherReceipt}
                 className="pr-success-action pr-success-action-primary"
               >
-                Create another Transaction
+                {isReturn ? 'Create another return' : 'Create another purchase'}
               </button>
               <button
                 type="button"
@@ -1225,13 +1316,19 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
         <section className="pr-card" aria-label="Goods receipt form">
           <div className="pr-hero">
             <div className="pr-hero-top">
-              <div>
-                <p className="pr-eyebrow">Inbound inventory</p>
-                <div className="pr-title-row">
-                  <h1 className="pr-title">Receive goods</h1>
-                  <span className="pr-receiving-tag">Draft</span>
-                </div>
-                <p className="pr-receipt-id">RECEIPT / {grnNumber || 'UNASSIGNED'}</p>
+              {/* One compact line: title · status · receipt number */}
+              <div className="pr-title-row">
+                <h1 className="pr-title">
+                  {mode === 'edit' ? `Edit ${docLabel.toLowerCase()}` : docLabel}
+                </h1>
+                {/* Saving posts the purchase: its quantities are added to stock. */}
+                <span
+                  className="pr-receiving-tag"
+                  title={isReturn ? 'Saving removes the quantities from stock' : 'Saving adds the quantities to stock'}
+                >
+                  {mode === 'edit' ? 'Posted' : 'New'}
+                </span>
+                <span className="pr-receipt-id">{grnNumber || 'Number given on save'}</span>
               </div>
               <div className="pr-topbar-actions">
                 <button className="pr-btn pr-btn-quiet" type="button" onClick={onCancel}>Cancel</button>
@@ -1458,13 +1555,62 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
             <section className="pr-lines" aria-label="Receipt line items">
               <div className="pr-lines-toolbar">
                 <div className="pr-section-heading">
-                  <h2 className="pr-section-title">Items received</h2>
+                  <h2 className="pr-section-title">{isReturn ? 'Items returned' : 'Items received'}</h2>
                   <span className="pr-section-note">{itemCount} {itemCount === 1 ? 'line' : 'lines'}</span>
                 </div>
                 <button className="pr-add-row" type="button" onClick={addItem}>
                   <PlusIcon /> Add item
                 </button>
               </div>
+
+              {/* Save problems, shown here instead of a browser popup */}
+              {(() => {
+                // Lines still missing an item (the message updates as they are fixed).
+                const stillInvalid = items
+                  .map((item, index) => ({ item, no: index + 1 }))
+                  .filter(({ item }) => invalidLineIds.includes(item.id) && !item.raw_material_id);
+                const emptyOnes = stillInvalid.filter(({ item }) => !item.name?.trim());
+                const lineProblem = invalidLineIds.length > 0;
+                if (lineProblem && stillInvalid.length === 0) return null; // all fixed
+                const message = lineProblem
+                  ? `${stillInvalid.length === 1 ? 'Line' : 'Lines'} ${stillInvalid.map((l) => l.no).join(', ')} ${stillInvalid.length === 1 ? 'needs' : 'need'} an item chosen from the list.`
+                  : errorMessage;
+                if (!message) return null;
+                return (
+                  <div className="pr-form-alert" role="alert">
+                    <span className="pr-form-alert-icon" aria-hidden="true">!</span>
+                    <div className="pr-form-alert-text">
+                      <strong>Can't save yet</strong>
+                      <span>{message}</span>
+                      {lineProblem && (
+                        <span className="pr-form-alert-hint">
+                          Click the highlighted box, type the item, and pick it from the list. Only items from the list update the stock.
+                        </span>
+                      )}
+                    </div>
+                    {emptyOnes.length > 0 && (
+                      <button
+                        type="button"
+                        className="pr-form-alert-action"
+                        onClick={() => setItems((prev) => prev.filter((item) => !emptyOnes.some((e) => e.item.id === item.id)))}
+                      >
+                        Remove {emptyOnes.length} empty {emptyOnes.length === 1 ? 'line' : 'lines'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="pr-form-alert-close"
+                      onClick={() => {
+                        setErrorMessage(null);
+                        setInvalidLineIds([]);
+                      }}
+                      aria-label="Dismiss"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })()}
 
               <div className="pr-table-wrap">
                 <div className="pr-items-head" aria-hidden="true">
@@ -1479,23 +1625,27 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
                   </div>
                 ) : items.map((item, index) => {
                   const lineTotal = lineTotalOf(item);
+                  // Red highlight after a failed save, until an item is chosen.
+                  const isInvalid = invalidLineIds.includes(item.id) && !item.raw_material_id;
                   return (
-                    <div className="pr-item-row" key={item.id}>
+                    <div className={`pr-item-row ${isInvalid ? 'is-invalid' : ''}`} key={item.id}>
                       <span className="pr-item-no">{String(index + 1).padStart(2, '0')}</span>
-                      <input
-                        className="pr-row-input"
-                        ref={(element) => {
+                      <MaterialSearch
+                        inputClassName={`pr-row-input${isInvalid ? ' is-invalid' : ''}`}
+                        placeholder={isInvalid ? 'Choose an item from the list…' : undefined}
+                        value={item.name ?? ''}
+                        products={ProductList}
+                        supplierId={selectedSupplierId}
+                        usedOnLines={Object.fromEntries(
+                          Object.entries(linesByMaterial).map(([id, lines]) => [id, lines.filter((n) => n !== index + 1)])
+                        )}
+                        ariaLabel={`Item, row ${index + 1}`}
+                        inputRef={(element) => {
                           itemNameRefs.current[item.id] = element;
                         }}
-                        list="pr-material-list"
-                        value={item.name ?? ''}
-                        onChange={(event) => {
-                          const selectedName = event.target.value;
-                          handleProductSelect(item.id, selectedName);
-                        }}
-                        onKeyDown={handleEnterAsTab}
-                        placeholder="Item name"
-                        aria-label={`Item name, row ${index + 1}`}
+                        onTextChange={(text) => handleProductSelect(item.id, text)}
+                        onPick={(product) => applyMaterial(item.id, product)}
+                        onFocusNext={(input) => focusAdjacentField(input, 1)}
                       />
                       <input
                         className="pr-row-input"
@@ -1547,11 +1697,6 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
                     </div>
                   );
                 })}
-                <datalist id="pr-material-list">
-                  {ProductList?.map((material: Product) => (
-                    <option key={material.id} value={material.name} />
-                  ))}
-                </datalist>
                 <div className="pr-table-foot">
                   <span>All values update automatically</span>
                   <span>{itemCount} {itemCount === 1 ? 'receipt item' : 'receipt items'}</span>

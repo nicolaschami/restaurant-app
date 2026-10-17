@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { api } from '../api';
 import PurchaseTransactionEditModal from './PurchaseTransactionEditModal';
+import { MaterialSearch, type MaterialLike } from '../components/MaterialSearch';
 
 interface PurchaseTransaction {
   id: number;
@@ -15,6 +16,17 @@ interface PurchaseTransaction {
   tax: number;
   net: number;
   status: 'Draft' | 'Posted' | 'Cancelled';
+  // The lines of this purchase (used by the "Item" filter).
+  lines: PurchaseLine[];
+}
+
+interface PurchaseLine {
+  rawMaterialId: number | null;
+  name: string;
+  unit: string;
+  qty: number;
+  unitCost: number;
+  lineTotal: number;
 }
 
 interface PurchaseTransactionDetail extends PurchaseTransaction {
@@ -48,12 +60,21 @@ type SortKey = keyof Pick<
 type SortDirection = 'asc' | 'desc';
 
 interface PurchaseTransactionsListProps {
+  // PUR = purchases, RP = purchase returns (same list, filtered by type).
+  kind?: 'PUR' | 'RP';
   onNewPurchase?: () => void;
   onEditPurchase?: (transactionId: number) => void;
   restaurantId?: number;
 }
 
 type ApiTransaction = Record<string, any>;
+
+// Is this purchase line the chosen item? Match on the raw material id; for old
+// lines saved without an id, fall back to the same name.
+const lineIsItem = (line: PurchaseLine, item: { id: number; name: string }) =>
+  line.rawMaterialId !== null && line.rawMaterialId !== undefined
+    ? Number(line.rawMaterialId) === item.id
+    : line.name.trim().toLowerCase() === item.name.trim().toLowerCase();
 
 const formatMoney = (value: number) =>
   `$${value.toLocaleString(undefined, {
@@ -471,6 +492,7 @@ const DatePicker: FC<DatePickerProps> = ({
 const PurchaseTransactionsList: FC<
   PurchaseTransactionsListProps
 > = ({
+  kind = 'PUR',
   onNewPurchase,
   onEditPurchase,
   restaurantId = 1,
@@ -505,6 +527,15 @@ const PurchaseTransactionsList: FC<
   const [selectedDetail, setSelectedDetail] =
     useState<PurchaseTransactionDetail | null>(null);
 
+  // Quick filter for the lines inside the detail view ("Filter items…").
+  // Every typed word must appear in the item name, in any order.
+  const [detailItemQuery, setDetailItemQuery] = useState('');
+  const detailItemWords = detailItemQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const detailItems = (selectedDetail?.items || []).filter((item) => {
+    const name = (item.name || '').toLowerCase();
+    return detailItemWords.every((word) => name.includes(word));
+  });
+
   const [isDetailLoading, setIsDetailLoading] =
     useState(false);
 
@@ -512,6 +543,32 @@ const PurchaseTransactionsList: FC<
 
   const [editingTransactionId, setEditingTransactionId] =
     useState<number | null>(null);
+
+  // Bumped after an edit is saved → the list below reloads with the new totals.
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // "Item" filter: the raw material chosen in the search box, and what is typed.
+  const [materials, setMaterials] = useState<MaterialLike[]>([]);
+  const [itemFilter, setItemFilter] = useState<{ id: number; name: string } | null>(null);
+  const [itemFilterText, setItemFilterText] = useState('');
+
+  const clearItemFilter = () => {
+    setItemFilter(null);
+    setItemFilterText('');
+    setPage(1);
+  };
+
+  // Raw materials for the item search. Reloaded after an edit is saved
+  // (reloadKey), because saving a purchase changes the stock.
+  useEffect(() => {
+    api
+      .get('/raw-materials')
+      .then((res) => {
+        const data = res.data?.rawMaterials ?? res.data?.data ?? res.data;
+        setMaterials(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => console.error('Failed to load raw materials:', err));
+  }, [reloadKey]);
 
   /* ---------------------------------------------------------------------- */
   /* Load transactions                                                      */
@@ -526,6 +583,7 @@ const PurchaseTransactionsList: FC<
         const res = await api.get('/stock-transactions', {
           params: {
             restaurantId,
+            type: kind, // only purchases, or only returns
           },
         });
 
@@ -659,6 +717,16 @@ const PurchaseTransactionsList: FC<
               ),
 
               status,
+
+              lines: details.map((d: ApiTransaction) => ({
+                rawMaterialId:
+                  d.RawMaterialId ?? d.rawMaterialId ?? d.raw_material_id ?? null,
+                name: String(d.itemname ?? d.itemName ?? d.name ?? ''),
+                unit: String(d.unit ?? ''),
+                qty: Number(d.qty ?? d.quantity ?? 0),
+                unitCost: Number(d.unitCost ?? d.unitcost ?? 0),
+                lineTotal: Number(d.lineTotal ?? d.linetotal ?? 0),
+              })),
             };
           }
         );
@@ -676,7 +744,7 @@ const PurchaseTransactionsList: FC<
     };
 
     loadTransactions();
-  }, [restaurantId]);
+  }, [restaurantId, reloadKey, kind]);
 
   /* ---------------------------------------------------------------------- */
   /* Filtering and sorting                                                  */
@@ -719,11 +787,17 @@ const PurchaseTransactionsList: FC<
           !toDate ||
           transaction.date <= toDate;
 
+        // "Item" filter: keep only the purchases that contain this raw material.
+        const matchesItem =
+          !itemFilter ||
+          transaction.lines.some((line) => lineIsItem(line, itemFilter));
+
         return (
           matchesSearch &&
           matchesStatus &&
           matchesFrom &&
-          matchesTo
+          matchesTo &&
+          matchesItem
         );
       })
       .sort((a, b) => {
@@ -744,6 +818,7 @@ const PurchaseTransactionsList: FC<
       });
   }, [
     fromDate,
+    itemFilter,
     search,
     sortDirection,
     sortKey,
@@ -751,6 +826,33 @@ const PurchaseTransactionsList: FC<
     toDate,
     transactions,
   ]);
+
+  // For the chosen item: its lines in the filtered purchases (newest first) and
+  // a price summary — how often it was bought, how much, and at what price.
+  const itemStats = useMemo(() => {
+    if (!itemFilter) return null;
+    const purchases = filteredTransactions
+      .map((t) => ({ t, lines: t.lines.filter((line) => lineIsItem(line, itemFilter)) }))
+      .filter((p) => p.lines.length > 0)
+      .sort((a, b) => b.t.date.localeCompare(a.t.date));
+    const allLines = purchases.flatMap((p) => p.lines);
+    const totalQty = allLines.reduce((sum, line) => sum + line.qty, 0);
+    const totalCost = allLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const prices = allLines.map((line) => line.unitCost).filter((price) => price > 0);
+    const last = purchases[0];
+    return {
+      count: purchases.length,
+      totalQty,
+      totalCost,
+      unit: allLines[0]?.unit || '',
+      average: totalQty > 0 ? totalCost / totalQty : 0,
+      lowest: prices.length ? Math.min(...prices) : 0,
+      highest: prices.length ? Math.max(...prices) : 0,
+      last: last
+        ? { price: last.lines[0].unitCost, date: last.t.date, supplier: last.t.supplierName }
+        : null,
+    };
+  }, [filteredTransactions, itemFilter]);
 
   const totalPages = Math.max(
     1,
@@ -790,6 +892,7 @@ const PurchaseTransactionsList: FC<
     setStatus('All');
     setFromDate('');
     setToDate('');
+    clearItemFilter();
     setPage(1);
   };
 
@@ -801,6 +904,8 @@ const PurchaseTransactionsList: FC<
     transaction: PurchaseTransaction
   ) => {
     setSelected(transaction);
+    // Start with the item chosen in the list's Item filter (if any), else empty.
+    setDetailItemQuery(itemFilter ? itemFilter.name : '');
     setSelectedDetail(null);
     setDetailError('');
     setIsDetailLoading(true);
@@ -1175,6 +1280,37 @@ const PurchaseTransactionsList: FC<
           flex: 1 1 240px;
           min-width: 180px;
         }
+
+        /* ---- Item filter ---- */
+        .pt-filter-group.pt-filter-group-item { flex: 1 1 220px; min-width: 200px; }
+        .pt-item-wrap { position: relative; }
+        .pt-item-input {
+          width: 100%; height: 38px; padding: 0 2rem 0 0.75rem;
+          border: 1px solid #e3d7c5; border-radius: 8px; background: #fcfaf7;
+          color: #2b1f1a; font-size: 0.8125rem; font-weight: 500; font-family: inherit;
+          transition: all 0.18s ease;
+        }
+        .pt-item-input::placeholder { color: #b7a99c; font-weight: 400; }
+        .pt-item-input:focus {
+          outline: none; border-color: #8b5a2b; background: #ffffff;
+          box-shadow: 0 0 0 4px rgba(139, 90, 43, 0.10);
+        }
+        .pt-item-wrap.is-set .pt-item-input { border-color: #d18a58; background: #fbf1ea; font-weight: 700; }
+        .pt-item-clear {
+          position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+          width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent;
+          color: #8a7a6d; font-size: 18px; line-height: 1; cursor: pointer;
+        }
+        .pt-item-clear:hover { background: #f2ebe1; color: #2b1f1a; }
+        .pt-item-stats {
+          display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 1.25rem;
+          padding: 0.65rem 1.5rem; border-bottom: 1px solid #f2ebe1; background: #fbf1ea;
+          color: #6b5a4e; font-size: 0.8125rem;
+        }
+        .pt-item-stats b { color: #2b1f1a; font-weight: 700; }
+        .pt-item-stats-name { color: #a9521b; font-size: 0.875rem; }
+        .pt-item-bought { white-space: nowrap; color: #a9521b; font-weight: 600; }
+        .pt-item-bought span { display: block; }
 
         .pt-filter-group {
           display: flex;
@@ -1814,6 +1950,61 @@ const PurchaseTransactionsList: FC<
           white-space: nowrap;
         }
 
+        .pt-detail-items-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          margin: 0.6rem 0 0.4rem;
+        }
+        .pt-detail-items-head .pt-detail-section-title { margin: 0; }
+        .pt-detail-filter {
+          position: relative;
+          display: flex;
+          align-items: center;
+          flex: 0 1 260px;
+          height: 32px;
+          padding: 0 0.5rem 0 2rem;
+          border: 1px solid #e3d7c5;
+          border-radius: 8px;
+          background: #fcfaf7;
+        }
+        .pt-detail-filter:focus-within {
+          border-color: #8b5a2b;
+          background: #ffffff;
+          box-shadow: 0 0 0 3px rgba(139, 90, 43, 0.10);
+        }
+        .pt-detail-filter svg {
+          position: absolute;
+          left: 0.6rem;
+          width: 14px;
+          height: 14px;
+          color: #b7a99c;
+        }
+        .pt-detail-filter input {
+          flex: 1;
+          min-width: 0;
+          border: 0;
+          outline: none;
+          background: transparent;
+          color: #2b1f1a;
+          font-size: 0.8rem;
+          font-family: inherit;
+        }
+        .pt-detail-filter input::placeholder { color: #b7a99c; }
+        .pt-detail-filter button {
+          width: 22px;
+          height: 22px;
+          border: 0;
+          border-radius: 5px;
+          background: transparent;
+          color: #8a7a6d;
+          font-size: 16px;
+          line-height: 1;
+          cursor: pointer;
+        }
+        .pt-detail-filter button:hover { background: #f2ebe1; color: #2b1f1a; }
+
         .pt-detail-section-title {
           margin: 0.8rem 0 0.35rem;
           color: #6e4223;
@@ -2306,7 +2497,7 @@ const PurchaseTransactionsList: FC<
       <div className="pt-shell">
         <header className="pt-head">
           <h1 className="pt-title">
-            Purchase Transactions
+            {kind === 'RP' ? 'Return Purchases' : 'Purchase Transactions'}
           </h1>
 
           <button
@@ -2315,7 +2506,7 @@ const PurchaseTransactionsList: FC<
             onClick={onNewPurchase}
           >
             <PlusIcon />
-            New purchase
+            {kind === 'RP' ? 'New return' : 'New purchase'}
           </button>
         </header>
 
@@ -2336,6 +2527,42 @@ const PurchaseTransactionsList: FC<
                 placeholder="Search transaction, supplier, date, amount…"
                 aria-label="Search purchase transactions"
               />
+            </div>
+
+            {/* Item filter: only the purchases that contain this raw material */}
+            <div className="pt-filter-group pt-filter-group-item">
+              <span className="pt-filter-label">Item</span>
+              <div className={`pt-item-wrap ${itemFilter ? 'is-set' : ''}`}>
+                <MaterialSearch
+                  value={itemFilterText}
+                  products={materials}
+                  inputClassName="pt-item-input"
+                  placeholder="Any item — name, code, barcode"
+                  ariaLabel="Filter purchases by item"
+                  onTextChange={(text) => {
+                    setItemFilterText(text);
+                    // Typing again (or clearing the box) removes the current item filter.
+                    if (itemFilter) setItemFilter(null);
+                    setPage(1);
+                  }}
+                  onPick={(material) => {
+                    setItemFilter({ id: material.id, name: material.name });
+                    setItemFilterText(material.name);
+                    setPage(1);
+                  }}
+                />
+                {(itemFilter || itemFilterText) && (
+                  <button
+                    type="button"
+                    className="pt-item-clear"
+                    onClick={clearItemFilter}
+                    aria-label="Clear item filter"
+                    title="Clear item filter"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="pt-filter-group">
@@ -2443,6 +2670,39 @@ const PurchaseTransactionsList: FC<
             </div>
           </div>
 
+          {/* Price summary for the chosen item */}
+          {itemFilter && itemStats && (
+            <div className="pt-item-stats" aria-live="polite">
+              <strong className="pt-item-stats-name">{itemFilter.name}</strong>
+              {itemStats.count === 0 ? (
+                <span>Not bought in the selected period.</span>
+              ) : (
+                <>
+                  <span>
+                    Bought <b>{itemStats.count}</b> {itemStats.count === 1 ? 'time' : 'times'}
+                  </span>
+                  <span>
+                    Total <b>{Math.round(itemStats.totalQty * 100) / 100} {itemStats.unit}</b> ·{' '}
+                    <b>{formatMoney(itemStats.totalCost)}</b>
+                  </span>
+                  <span>
+                    Average <b>{formatMoney(itemStats.average)}</b>
+                    {itemStats.unit && ` / ${itemStats.unit}`}
+                  </span>
+                  <span>
+                    Lowest <b>{formatMoney(itemStats.lowest)}</b> · Highest <b>{formatMoney(itemStats.highest)}</b>
+                  </span>
+                  {itemStats.last && (
+                    <span>
+                      Last <b>{formatMoney(itemStats.last.price)}</b> on {formatDate(itemStats.last.date)}
+                      {itemStats.last.supplier && ` · ${itemStats.last.supplier}`}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <div className="pt-table-wrap">
             {isLoading ? (
               <div className="pt-loading">
@@ -2522,7 +2782,13 @@ const PurchaseTransactionsList: FC<
                           {sortIndicator(key)}
                         </button>
                       </th>
-                    ))}
+                    )).flatMap((th, i) =>
+                      // With an item filter, an extra column after "# /items" shows
+                      // how much of that item each purchase had, and at what price.
+                      itemFilter && i === 4
+                        ? [th, <th className="pt-th pt-th-item" key="item-bought">Item bought</th>]
+                        : [th]
+                    )}
 
                     <th className="pt-th">
                       Status
@@ -2589,6 +2855,18 @@ const PurchaseTransactionsList: FC<
                         <td className="pt-td pt-number">
                           {transaction.itemCount}
                         </td>
+
+                        {itemFilter && (
+                          <td className="pt-td pt-number pt-item-bought">
+                            {transaction.lines
+                              .filter((line) => lineIsItem(line, itemFilter))
+                              .map((line, i) => (
+                                <span key={i}>
+                                  {Math.round(line.qty * 100) / 100} {line.unit} × {formatMoney(line.unitCost)}
+                                </span>
+                              ))}
+                          </td>
+                        )}
 
                         <td className="pt-td pt-number">
                           {formatMoney(
@@ -2842,10 +3120,36 @@ const PurchaseTransactionsList: FC<
                   </div>
                 </div>
 
-                <p className="pt-detail-section-title">
-                  Items received ·{' '}
-                  {selectedDetail.items.length}
-                </p>
+                {/* Title + a quick filter for the lines of THIS purchase */}
+                <div className="pt-detail-items-head">
+                  <p className="pt-detail-section-title">
+                    Items received ·{' '}
+                    {detailItemWords.length > 0
+                      ? `${detailItems.length} of ${selectedDetail.items.length}`
+                      : selectedDetail.items.length}
+                  </p>
+                  {selectedDetail.items.length > 0 && (
+                    <div className="pt-detail-filter">
+                      <SearchIcon />
+                      <input
+                        value={detailItemQuery}
+                        onChange={(event) => setDetailItemQuery(event.target.value)}
+                        placeholder="Filter items…"
+                        aria-label="Filter the items of this purchase"
+                      />
+                      {detailItemQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setDetailItemQuery('')}
+                          aria-label="Clear item filter"
+                          title="Clear"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className="pt-detail-items">
                   <table>
@@ -2870,8 +3174,14 @@ const PurchaseTransactionsList: FC<
                             transaction.
                           </td>
                         </tr>
+                      ) : detailItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={6}>
+                            No item matches “{detailItemQuery.trim()}”.
+                          </td>
+                        </tr>
                       ) : (
-                        selectedDetail.items.map(
+                        detailItems.map(
                           (item) => (
                             <tr key={item.id}>
                               <td>
@@ -3052,10 +3362,12 @@ const PurchaseTransactionsList: FC<
       {editingTransactionId !== null && (
         <PurchaseTransactionEditModal
           transactionId={editingTransactionId}
+          kind={kind}
           restaurantId={restaurantId}
           onClose={() =>
             setEditingTransactionId(null)
           }
+          onSaved={() => setReloadKey((k) => k + 1)}
         />
       )}
     </main>

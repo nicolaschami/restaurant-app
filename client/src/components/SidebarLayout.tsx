@@ -123,10 +123,15 @@ export default function SidebarLayout({
   ];
 
   // Transaction Sub-items
-  const transactionSubItems = [
-    { id: 'purchase', label: 'Purchase', icon: Receipt },
-    { id: 'purchaselist', label: 'Purchase List', icon: ListFilter },
+  // "Purchase" (new receipt) is opened from the Purchase List's "+ New purchase"
+  // button, so it has no menu entry of its own. `alsoActiveFor`: while that screen
+  // is open, "Purchase List" stays highlighted and the Transactions group open.
+  const transactionSubItems: { id: string; label: string; icon: typeof ListFilter; alsoActiveFor?: string[] }[] = [
+    { id: 'purchaselist', label: 'Purchase List', icon: ListFilter, alsoActiveFor: ['purchase'] },
+    { id: 'returnpurchaselist', label: 'Return Purchase', icon: RotateCcw, alsoActiveFor: ['returnpurchase'] },
   ];
+  const isTransactionItemActive = (item: (typeof transactionSubItems)[number]) =>
+    activeTab === item.id || !!item.alsoActiveFor?.includes(activeTab);
 
   const settingSubItems = [
     { id: 'tables', label: 'Tables', icon: Table2 },
@@ -267,7 +272,7 @@ export default function SidebarLayout({
     if (partnerSubItems.some((item) => item.id === activeTab)) {
       setIsPartnersOpen(true);
     }
-    if (transactionSubItems.some((item) => item.id === activeTab)) {
+    if (transactionSubItems.some(isTransactionItemActive)) {
       setIsTransactionOpen(true);
     }
     if (settingSubItems.some((item) => item.id === activeTab)) {
@@ -361,21 +366,6 @@ export default function SidebarLayout({
             <ShoppingCart className={`w-4 h-4 shrink-0 ${activeTab === 'pos' ? 'text-[#c9a24b]' : ''}`} />
             {!isCollapsed && <span className="truncate">POS Terminal</span>}
           </button>
-
-          {/* Logout — also in the main menu so it's always easy to find
-              (the footer button can be hidden below a long, scrolled menu) */}
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              className={`w-full flex items-center ${
-                isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
-              } py-2 rounded-md text-xs font-medium text-red-400 hover:bg-red-500/10 transition`}
-              title="Logout"
-            >
-              <LogOut className="w-4 h-4 shrink-0" />
-              {!isCollapsed && <span className="truncate">Logout</span>}
-            </button>
-          )}
 
           {/* Products Group */}
           <div>
@@ -504,7 +494,7 @@ export default function SidebarLayout({
               <div className="mt-0.5 ml-2 pl-2 border-l border-[#2a3a32] space-y-0.5">
                 {transactionSubItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+                  const isActive = isTransactionItemActive(item);
                   return (
                     <button
                       key={item.id}
