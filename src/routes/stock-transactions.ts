@@ -196,10 +196,11 @@ fastify.get<{ Querystring: { restaurantId: string; type?: string } }>(
           .where(
             and(
               eq(stockTransactions.restaurantId, parsedRestaurantId),
-              // Old purchases may have another/empty type: everything that is not RP is a purchase.
+              // Old purchases may have another/empty type: everything that is not RP is a purchase,
+              // except SAL = stock taken out by POS sales (made at payment, never shown here).
               kind === 'RP'
                 ? eq(stockTransactions.type, 'RP')
-                : sql`COALESCE(${stockTransactions.type}, '') <> 'RP'`
+                : sql`COALESCE(${stockTransactions.type}, '') NOT IN ('RP', 'SAL')`
             )
           )
           .orderBy(desc(stockTransactions.transactionId));
@@ -514,6 +515,10 @@ fastify.put<{ Params: { id: string }; Body: any }>(
             )
           );
         if (!before) throw new Error('NOT_FOUND');
+        // Sale documents (SAL) belong to a paid POS order: they are not purchases.
+        if (String(before.type || '').toUpperCase() === 'SAL') {
+          throw new StockError('This stock document comes from a POS sale and cannot be edited here.');
+        }
         const wasPosted = String(before.status || '').toUpperCase() === 'POSTED';
         const type: TxKind = txKind(before.type); // purchase stays purchase, return stays return
 

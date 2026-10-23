@@ -36,6 +36,8 @@ interface MenuItem {
   hasVariants?: boolean;
   variantPrices?: VariantPrice[];
   rawMaterials?: { materialId: number | string; name: string; cost: number | string; quantity: number | string }[];
+  isInventoryTracked?: boolean; // "Countable": each sale takes 1 of stockMaterialId out of stock
+  stockMaterialId?: number | null;
 }
 
 interface RawMaterialOption {
@@ -276,6 +278,8 @@ export default function Products({ onLogout }: ProductsProps) {
   const [selectedModifierIds, setSelectedModifierIds] = useState<number[]>([]);
   const [countryTax, setCountryTax] = useState<string>('0.00');
   const [isInventoryTracked, setIsInventoryTracked] = useState<boolean>(false);
+  // Countable items (e.g. a Pepsi can) are sold from ONE raw material: 1 per sale.
+  const [stockMaterialId, setStockMaterialId] = useState<number | null>(null);
   const [hasVariants, setHasVariants] = useState<boolean>(false);
 
   const [variants, setVariants] = useState<
@@ -376,8 +380,53 @@ export default function Products({ onLogout }: ProductsProps) {
   const getItemCostPrice = (item: RawMaterialOption) =>
     parseCost(item.cost_price ?? item.costPrice ?? item.unitCost ?? item.unit_cost ?? item.cost ?? item.price);
 
+  // Countable item: when its stock item (raw material) is chosen, import the raw
+  // material's information into the menu item, so nothing is typed twice:
+  //   - name → Menu / Invoice / Kitchen name (only the empty ones; typed names are kept)
+  //   - price we pay → Cost Price (last purchase price, else the cost price on its card)
+  // Selling prices are not imported: a raw material has no selling price.
+  const importFromStockItem = (materialId: number | null) => {
+    setStockMaterialId(materialId);
+    const m: any = masterMaterialsList.find((x) => String(x.id) === String(materialId));
+    if (!m) return;
+    const name = String(m.name || '').trim();
+    if (name) {
+      if (!menuName.trim()) setMenuName(name);
+      if (!invoiceName.trim()) setInvoiceName(name);
+      if (!kitchenName.trim()) setKitchenName(name);
+    }
+    const cost = parseCost(m.lastPurchasePrice ?? m.last_purchase_price) || getItemCostPrice(m);
+    if (cost > 0 && rawMaterials.length === 0) {
+      // no ingredients → the cost of one unit sold is the cost of one stock item
+      setIsManualCost(true);
+      setCostPrice(cost.toFixed(2));
+    }
+  };
+
+  // "Import from raw material" at the top of the form: an item bought and sold as is
+  // (e.g. Pepsi 750 ML) becomes a Countable menu item sold from that raw material.
+  const importRawMaterial = (materialId: number | null) => {
+    if (!materialId) return;
+    setIsInventoryTracked(true);
+    importFromStockItem(materialId);
+  };
+
+  // Raw materials can be created while this page is open (another tab / screen):
+  // reload the list each time the form opens so a new one (e.g. Pepsi) can be picked.
+  const reloadRawMaterials = () => {
+    api
+      .get('/raw-materials')
+      .then((res) => {
+        const d = res?.data;
+        const list = Array.isArray(d) ? d : Array.isArray(d?.rawMaterials) ? d.rawMaterials : Array.isArray(d?.data) ? d.data : [];
+        setMasterMaterialsList(list);
+      })
+      .catch(() => {});
+  };
+
   const handleOpenModal = (item?: MenuItem) => {
     setFormError(null);
+    reloadRawMaterials();
     setSelectedFiles([]);
     setModifierSearchQuery('');
     if (item) {
@@ -397,6 +446,15 @@ export default function Products({ onLogout }: ProductsProps) {
       setImagePreviews(item.images || []);
       const itemHasVariants = Boolean(item.hasVariants);
       setHasVariants(itemHasVariants);
+      setIsInventoryTracked(Boolean(item.isInventoryTracked));
+      setStockMaterialId(item.stockMaterialId ?? null);
+      // Manual cost = the saved cost is not the sum of the ingredients (typed by hand,
+      // or imported from the stock item). Keep it, don't overwrite it with the recipe cost.
+      const recipeCost = (item.rawMaterials || []).reduce(
+        (sum: number, rm: any) => sum + parseCost(rm.cost ?? rm.unitCost) * (parseCost(rm.quantity) || 1),
+        0
+      );
+      setIsManualCost(Math.abs(parseCost(item.costPrice) - recipeCost) > 0.005);
       if (Array.isArray(item.variantPrices) && item.variantPrices.length > 0) {
         setVariants(item.variantPrices.map((v) => ({
           size: v.size || v.name || '',
@@ -430,6 +488,9 @@ export default function Products({ onLogout }: ProductsProps) {
       setPriceDineIn('0.00'); setPriceTakeaway('0.00'); setPriceDelivery('0.00'); setPriceWaiter('0.00'); setCostPrice('0.00');
       setDescription(''); setIsAvailable(true); setImagePreviews([]); setSelectedModifierIds([]); setRawMaterials([]);
       setHasVariants(false);
+      setIsInventoryTracked(false);
+      setStockMaterialId(null);
+      setIsManualCost(false);
       setVariants([
         { size: 'Small', dineIn: '', takeaway: '', delivery: '', waiter: '' },
         { size: 'Medium', dineIn: '', takeaway: '', delivery: '', waiter: '' },
@@ -464,6 +525,10 @@ export default function Products({ onLogout }: ProductsProps) {
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     if (!menuName.trim()) { setFormError('Menu Name is required.'); return; }
+    if (isInventoryTracked && !stockMaterialId) {
+      setFormError('Countable item: choose its stock item (the raw material it is sold from).');
+      return;
+    }
     try {
       setFormError(null);
       const newlyUploadedUrls = await uploadFilesToServer(selectedFiles);
@@ -485,6 +550,8 @@ export default function Products({ onLogout }: ProductsProps) {
         modifierGroupIds: selectedModifierIds.map((id) => Number(id)),
         rawMaterials: rawMaterials.map((rm) => ({ materialId: rm.materialId, name: rm.name, cost: parseCost(rm.unitCost), quantity: parseCost(rm.quantity), totalCost: parseCost(rm.totalCost) })),
         hasVariants: Boolean(hasVariants),
+        isInventoryTracked: Boolean(isInventoryTracked),
+        stockMaterialId: isInventoryTracked ? stockMaterialId : null,
         variantPrices: hasVariants ? variants.map((v) => ({ size: (v.size ?? '').trim(), dineIn: parseCost(v.dineIn), takeaway: parseCost(v.takeaway), delivery: parseCost(v.delivery), waiter: parseCost(v.waiter) })) : [],
       };
       if (editingItem) await api.patch(`/menu-items/${editingItem.id}`, payload);
@@ -492,7 +559,7 @@ export default function Products({ onLogout }: ProductsProps) {
       setIsModalOpen(false);
       fetchInitialData();
     } catch (err: any) {
-      setFormError(err.response?.data?.message || 'Failed to save menu item.');
+      setFormError(err.response?.data?.error || err.response?.data?.message || 'Failed to save menu item.');
     }
   };
 
@@ -767,8 +834,8 @@ export default function Products({ onLogout }: ProductsProps) {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[88vh] flex flex-col overflow-hidden border border-slate-100">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 lg:pl-60 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full h-[calc(100vh-1rem)] flex flex-col overflow-hidden border border-slate-100">
             <div className="px-6 py-4 bg-[#1c1917] flex items-center justify-between shrink-0 border-b-2 border-[#c2621f]">
               <div className="flex items-center gap-2.5">
                 <div className="w-1.5 h-7 rounded-full bg-gradient-to-b from-[#c2621f] to-[#8a3f16]"></div>
@@ -787,6 +854,31 @@ export default function Products({ onLogout }: ProductsProps) {
                   {formError && (
                     <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-600 text-xs font-medium">
                       <AlertCircle size={15} className="shrink-0" /><span>{formError}</span>
+                    </div>
+                  )}
+                  {/* Import from raw material: for things bought and sold as is (Pepsi, water…) */}
+                  {!editingItem && (
+                    <div className="rounded-lg border border-dashed border-[#c2621f]/40 bg-[#fdece1]/40 p-2">
+                      <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#b5541f]">
+                        <Box size={13} />
+                        Import from raw material
+                        <span className="font-normal text-slate-500">(name + cost, Countable ticked)</span>
+                      </label>
+                      <Select
+                        isSearchable
+                        placeholder="Choose a raw material, e.g. Pepsi 750 ML…"
+                        value={
+                          isInventoryTracked && stockMaterialId
+                            ? { value: stockMaterialId, label: masterMaterialsList.find((m) => String(m.id) === String(stockMaterialId))?.name || `#${stockMaterialId}` }
+                            : null
+                        }
+                        onChange={(opt: any) => importRawMaterial(opt ? Number(opt.value) : null)}
+                        options={masterMaterialsList.map((m: any) => ({
+                          value: m.id,
+                          label: `${m.name}${m.unit ? ` (${m.unit})` : ''}`,
+                        }))}
+                        styles={customSelectStyles}
+                      />
                     </div>
                   )}
                   <div>
@@ -825,6 +917,27 @@ export default function Products({ onLogout }: ProductsProps) {
                       </label>
                     </div>
                   </div>
+                  {/* Countable → the raw material this item is sold from; each sale takes 1 out of stock */}
+                  {isInventoryTracked && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Stock item <span className="font-normal text-slate-400">(each sale takes 1 out of stock · name and cost are imported)</span>
+                      </label>
+                      <Select
+                        isSearchable
+                        isClearable
+                        placeholder="Choose the raw material…"
+                        value={
+                          stockMaterialId
+                            ? { value: stockMaterialId, label: masterMaterialsList.find((m) => String(m.id) === String(stockMaterialId))?.name || `#${stockMaterialId}` }
+                            : null
+                        }
+                        onChange={(opt: any) => importFromStockItem(opt ? Number(opt.value) : null)}
+                        options={masterMaterialsList.map((m) => ({ value: m.id, label: m.name }))}
+                        styles={customSelectStyles}
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Description (Public)</label>
                     <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description shown to customers..." className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] outline-none resize-none transition" />
@@ -867,7 +980,7 @@ export default function Products({ onLogout }: ProductsProps) {
                     {rawMaterials.length === 0 ? (
                       <p className="text-[11px] text-slate-400 italic py-1">No raw materials added yet.</p>
                     ) : (
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
                         <div className="grid grid-cols-12 gap-1.5 px-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                           <span className="col-span-5">Material (Search)</span>
                           <span className="col-span-2 text-center">Unit Cost</span>
@@ -961,7 +1074,7 @@ export default function Products({ onLogout }: ProductsProps) {
                           <span className="col-span-2">Waiter</span>
                           <span className="col-span-1 text-center"></span>
                         </div>
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        <div className="space-y-1.5 max-h-[45vh] overflow-y-auto pr-1">
                           {variants.map((variant, vIdx) => (
                             <div key={vIdx} className="grid grid-cols-12 gap-1.5 items-center bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm">
                               <div className="col-span-3">

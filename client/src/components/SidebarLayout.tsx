@@ -140,8 +140,9 @@ export default function SidebarLayout({
     { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
   ];
 
-  // Full Reports Hierarchy
-  const reportCategories = [
+  // Full Reports Hierarchy (the plan). Only the reports listed in READY_REPORTS
+  // are shown in the menu; add a report id there once its screen is built.
+  const allReportCategories = [
     {
       id: 'financial',
       label: 'Financial Reports',
@@ -194,6 +195,7 @@ export default function SidebarLayout({
         { id: 'report-current-stock', label: 'Current Stock', icon: PackageCheck },
         { id: 'report-low-stock', label: 'Low Stock', icon: AlertTriangle },
         { id: 'report-stock-movement', label: 'Stock Movement', icon: ArrowLeftRight },
+        { id: 'report-purchases-supplier', label: 'Purchases by Supplier', icon: Receipt },
         { id: 'report-ingredient-consumption', label: 'Ingredient Consumption', icon: Wheat },
         { id: 'report-spoilage-waste', label: 'Waste / Spoilage', icon: Trash2 },
         { id: 'report-stock-adjustments', label: 'Stock Adjustments', icon: Sliders },
@@ -263,6 +265,12 @@ export default function SidebarLayout({
       ],
     },
   ];
+
+  // Reports that really exist today. Groups left without any ready report are hidden.
+  const READY_REPORTS = new Set(['report-current-stock', 'report-stock-movement', 'report-purchases-supplier', 'report-daily-sales', 'report-z-report']);
+  const reportCategories = allReportCategories
+    .map((group) => ({ ...group, items: group.items.filter((item) => READY_REPORTS.has(item.id)) }))
+    .filter((group) => group.items.length > 0);
 
   // Auto-expand groups when activeTab matches
   useEffect(() => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRef } from 'react';
 import { api } from '../api';
+import PaymentModal, { type PaymentMethod, type PaymentResult } from '../components/PaymentModal';
 import { generateReceiptPDF } from '../services/pdfService';
 import {
   Coffee,
@@ -280,6 +281,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   const [orderNotes, setOrderNotes] = useState<string>('');
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // Payment window (opened by the Pay button).
+  const [showPayment, setShowPayment] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rawMenuItems, setRawMenuItems] = useState<ApiMenuItem[]>([]);
@@ -858,34 +861,115 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       console.log('[SAVE] blocked — already saving');
       return;
     }
+    if (!readyToSave()) return;
 
-    console.log('[SAVE] start', { isPayment, basketLength: basket.length, orderType, currentOrderId });
-
-    if (basket.length === 0) {
-      console.log('[SAVE] blocked — empty basket');
-      return;
-    }
-    if (orderType === 'Dine-In' && !dineInTable) {
-      console.log('[SAVE] blocked — no table selected, opening picker');
-      setShowTablePicker(true);
-      return;
-    }
-    if (orderType === 'Delivery' && !deliveryCustomer) {
-      console.log('[SAVE] blocked — no customer selected, opening picker');
-      setShowCustomerPicker(true);
+    // Pay → open the payment window. The order is saved (and paid) only when the
+    // cashier completes the payment there — see handleConfirmPayment.
+    if (isPayment) {
+      setShowPayment(true);
       return;
     }
 
+    // Hold → save the order as open and go back to the dashboard.
     savingRef.current = true;
     setIsSaving(true);
     setError(null);
-
     try {
+      const saved = await persistOrder();
+      finishTicket(saved.wasNew);
+    } catch (err: any) {
+      console.error('[SAVE] failed:', err);
+      setError(err.response?.data?.message || err.response?.data?.error || 'Failed to save order. Please try again.');
+    } finally {
+      setIsSaving(false);
+      savingRef.current = false;
+    }
+  };
+
+  // Checks before saving: something in the basket, and a table (dine-in) or a
+  // customer (delivery). Opens the right picker when one is missing.
+  const readyToSave = (): boolean => {
+    if (basket.length === 0) return false;
+    if (orderType === 'Dine-In' && !dineInTable) {
+      setShowTablePicker(true);
+      return false;
+    }
+    if (orderType === 'Delivery' && !deliveryCustomer) {
+      setShowCustomerPicker(true);
+      return false;
+    }
+    return true;
+  };
+
+  // Clears the screen for the next order.
+  //   - After Hold: goes back to the dashboard (same as before).
+  //   - After a payment ("New order"): stays in the POS with a fresh, empty order.
+  const finishTicket = (wasNew: boolean, stayInPos = false) => {
+    setBasket([]);
+    setDineInTable(null);
+    setDeliveryCustomer(null);
+    setDeliveryFee('0.00');
+    setOrderNotes('');
+    setSelectedLineId(null);
+    if (wasNew) setTicketNo((prev) => prev + 1);
+    setCurrentOrderId(null);
+    if (stayInPos) {
+      // The new order starts like a fresh POS: first category, empty search.
+      setActiveCat(categories[0]?.id ?? null);
+      setSearchQuery('');
+      onResetOrder?.(); // forget the order that was opened from the dashboard, if any
+    } else {
+      onClose?.();
+    }
+  };
+
+  // Payment window: 1) save the order as open (so nothing is lost if the payment
+  // fails), 2) the server takes the payment and closes the order in one step,
+  // 3) cash → open the drawer. Errors are thrown with a readable message, which
+  // the window shows.
+  const handleConfirmPayment = async (method: PaymentMethod, amountReceived: number): Promise<PaymentResult> => {
+    if (savingRef.current) throw new Error('Already saving — please wait.');
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      const saved = await persistOrder();
+      const res = await api.post(`/orders/${saved.id}/pay`, { method, amountReceived });
+      const payment = res.data?.payment || {};
+
+      let drawerFailed = false;
+      if (method === 'CASH') {
+        try {
+          await api.post('/open-drawer', { printerName: localStorage.getItem('pos_printer_name') || 'POS-80' });
+        } catch {
+          drawerFailed = true; // the payment is saved anyway; the cashier can use the Drawer button
+        }
+      }
+
+      return {
+        method,
+        amountDue: String(payment.amountDue ?? total.toFixed(2)),
+        amountReceived: String(payment.amountReceived ?? amountReceived.toFixed(2)),
+        changeGiven: String(payment.changeGiven ?? '0.00'),
+        message: res.data?.message || 'Payment complete.',
+        drawerFailed,
+      };
+    } catch (err: any) {
+      throw new Error(err.response?.data?.error || err.response?.data?.message || err.message || 'The payment could not be saved.');
+    } finally {
+      setIsSaving(false);
+      savingRef.current = false;
+    }
+  };
+
+  // Saves the current ticket as an OPEN order (new → create, existing → update)
+  // and returns its id. It does not clear the screen. Used by Hold and by Pay.
+  const persistOrder = async (): Promise<{ id: number; wasNew: boolean }> => {
+    {
       const orderPayload = {
         restaurantId: 1,
         ticketNo,
-        orderStatus: isPayment ? 'CLOSED' : 'open',
-        tableStatus: isPayment ? 'free' : 'occupied',
+        orderStatus: 'open',
+        tableStatus: 'occupied',
         orderType,
         tableId: orderType === 'Dine-In' ? dineInTable?.id : null,
         tableLabel: orderType === 'Dine-In' ? dineInTable?.label : null,
@@ -919,15 +1003,19 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
 
       console.log('[SAVE] currentOrderId =', currentOrderId, '→ branch:', currentOrderId ? 'UPDATE' : 'CREATE');
 
+      const wasNew = !currentOrderId;
       let savedOrderId = currentOrderId;
       if (currentOrderId) {
-        const res = await api.put(`/orders/${currentOrderId}`, orderPayload);
-        console.log('[SAVE] PUT response', res.data);
+        await api.put(`/orders/${currentOrderId}`, orderPayload);
       } else {
         const res = await api.post('/orders', orderPayload);
         savedOrderId = res.data?.order?.id ?? null;
-        console.log('[SAVE] POST response, new id =', savedOrderId);
       }
+      if (!savedOrderId) throw new Error('The order could not be saved.');
+
+      // Remember the id: if the payment then fails, trying again updates this
+      // order instead of creating a second one.
+      setCurrentOrderId(savedOrderId);
 
       const tableRes = await api
         .get('/tables', { params: { restaurantId: 1 } })
@@ -939,21 +1027,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         setTables((prev) => prev.map((t) => (t.id === dineInTable.id ? { ...t, status: 'occupied' } : t)));
       }
 
-      setBasket([]);
-      setDineInTable(null);
-      setDeliveryCustomer(null);
-      setDeliveryFee('0.00');
-      if (!currentOrderId) setTicketNo((prev) => prev + 1);
-      setCurrentOrderId(null);
-
-      console.log('[SAVE] success, done. saved order id =', savedOrderId);
-      onClose?.();
-    } catch (err: any) {
-      console.error('[SAVE] failed:', err);
-      setError(err.response?.data?.message || err.response?.data?.error || 'Failed to save order. Please try again.');
-    } finally {
-      setIsSaving(false);
-      savingRef.current = false;
+      return { id: savedOrderId, wasNew };
     }
   };
 
@@ -2721,6 +2795,21 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           })}
         </nav>
       </div>
+
+      {/* PAYMENT WINDOW */}
+      {showPayment && (
+        <PaymentModal
+          orderLabel={`Order #${ticketNo} · ${orderType}${orderType === 'Dine-In' && dineInTable ? ` · Table ${dineInTable.label}` : ''}`}
+          total={total}
+          onCancel={() => setShowPayment(false)}
+          onConfirm={handleConfirmPayment}
+          onDone={() => {
+            setShowPayment(false);
+            // Stay in the POS with a fresh order (always the next ticket number).
+            finishTicket(true, true);
+          }}
+        />
+      )}
 
       {/* VARIANT SIZE PICKER */}
       {variantModalItem && (

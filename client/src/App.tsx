@@ -16,6 +16,11 @@ import RestaurantSettings from './pages/RestaurantSettings';
 import PurchaseReceiptForm from './pages/Purchasetransactionscreen';
 import PurchaseList from './pages/PurchaseTransactionsList';
 import Login from './pages/Login';
+import CurrentStockReport from './pages/CurrentStockReport';
+import StockMovementReport from './pages/StockMovementReport';
+import PurchasesReport from './pages/PurchasesReport';
+import DailySalesReport from './pages/DailySalesReport';
+import ZReportPage from './pages/ZReportPage';
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
@@ -81,6 +86,13 @@ export function App() {
   }
 
   const renderContent = () => {
+    // Reports that are built. Any other "report-…" tab shows the "under development" page.
+    if (activeTab === 'report-current-stock') return <CurrentStockReport />;
+    if (activeTab === 'report-stock-movement') return <StockMovementReport />;
+    if (activeTab === 'report-purchases-supplier') return <PurchasesReport />;
+    if (activeTab === 'report-daily-sales') return <DailySalesReport />;
+    if (activeTab === 'report-z-report') return <ZReportPage />;
+
     if (activeTab.startsWith('report-')) {
       const reportTitle = activeTab
         .replace('report-', '')

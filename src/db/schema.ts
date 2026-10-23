@@ -281,7 +281,8 @@ export const users = pgTable('users', {
     // Add these columns inside menuItems table in db/schema.ts
 countryTax: numeric('country_tax', { precision: 5, scale: 2 }).default('0.00'), // e.g., 15.00 for 15%
 ingredients: text('ingredients'), // Raw materials / ingredients list
-isInventoryTracked: boolean('is_inventory_tracked').default(false), // Quantitative tracking checkbox
+isInventoryTracked: boolean('is_inventory_tracked').default(false), // "Countable" box: each sale takes 1 of stockMaterialId out of stock
+stockMaterialId: integer('stock_material_id'), // raw material a Countable item is sold from (e.g. Pepsi can)
 hasVariants: boolean('has_variants').default(false), // Enables Size-based pricing
 variantPrices: jsonb('variant_prices'), // Holds sizes & prices e.g., [{ name: 'Small', price: 10 }, { name: 'Large', price: 15 }]
 rawMaterials: jsonb('raw_materials').$type<RawMaterialItem[]>().default([]),
@@ -319,8 +320,23 @@ export const orders = pgTable('orders', {
     
   });
 
-  // 4. OrdersItems 
-  
+// Payments of POS orders — one row per paid order (cash OR one card).
+// Created by sql/2026-10-20_order_payments.sql.
+export const orderPayments = pgTable('order_payments', {
+  id: serial('id').primaryKey(),
+  restaurantId: integer('restaurant_id').notNull().references(() => restaurants.id, { onDelete: 'cascade' }),
+  orderId: integer('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  method: varchar('method', { length: 20 }).notNull(), // CASH | VISA | MASTERCARD | DEBIT
+  amountDue: numeric('amount_due', { precision: 10, scale: 2 }).notNull(),
+  amountReceived: numeric('amount_received', { precision: 10, scale: 2 }).notNull(),
+  changeGiven: numeric('change_given', { precision: 10, scale: 2 }).notNull().default('0'),
+  currency: varchar('currency', { length: 3 }).notNull().default('USD'),
+  cashierId: integer('cashier_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+  // 4. OrdersItems
+
 export const orderItems = pgTable('order_items', {
   id: serial('id').primaryKey(),
   orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }),
@@ -413,7 +429,7 @@ export const stockDetails = pgTable('stockdetails', {
 
   itemname: varchar('itemname', { length: 255 }).notNull(),
   unit: varchar('unit', { length: 50 }),
-  qty: numeric('qty', { precision: 10, scale: 2 }).default('0.00'),
+  qty: numeric('qty', { precision: 12, scale: 3 }).default('0.000'),
   unitCost: numeric('unitcost', { precision: 10, scale: 2 }).default('0.00'),
   discountPct: numeric('discountpct', { precision: 5, scale: 2 }).default('0.00'),
   lineTotal: numeric('linetotal', { precision: 10, scale: 2 }).default('0.00'),

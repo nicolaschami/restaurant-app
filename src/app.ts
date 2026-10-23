@@ -17,6 +17,7 @@ import {
   menuItems,
   orderItems,
   menuItemModifiers,
+  rawMaterials,
 } from './db/schema.js';
 
 // Route Imports
@@ -37,6 +38,9 @@ import printerRoutes from './routes/silent-print.js';
 import  stockTransactionRoutes from './routes/stock-transactions.js';
 import restaurantRoutes from './routes/restaurants.js';
 import dashboardRoutes from './routes/dashboard.js';
+import paymentRoutes from './routes/payments.js';
+import reportRoutes from './routes/reports.js';
+import zReportRoutes from './routes/zReports.js';
 import {
   getRestaurantId,
   assertOrderInRestaurant,
@@ -246,6 +250,26 @@ fastify.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 
+// "Countable" (isInventoryTracked) menu items are sold from ONE raw material:
+// each unit sold takes 1 of it out of stock (see routes/payments.ts).
+// Returns the stock item id to save, or an error text when it is not valid.
+async function countableStockItem(
+  restaurantId: number,
+  isInventoryTracked: boolean,
+  stockMaterialId: unknown
+): Promise<{ id: number | null } | { error: string }> {
+  if (!isInventoryTracked) return { id: null }; // not countable → no stock item
+  const id = Number(stockMaterialId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return { error: 'A Countable item needs its stock item: choose the raw material it is sold from.' };
+  }
+  const [owned] = await db
+    .select({ id: rawMaterials.id })
+    .from(rawMaterials)
+    .where(and(eq(rawMaterials.id, id), eq(rawMaterials.restaurantId, restaurantId)));
+  return owned ? { id } : { error: 'The stock item is not a raw material of this restaurant.' };
+}
+
 // Create Menu Item
 fastify.post(
   '/api/menu-items',
@@ -281,6 +305,10 @@ fastify.post(
       });
     }
 
+    const isInventoryTracked = Boolean(body.isInventoryTracked);
+    const stockItem = await countableStockItem(restaurantId, isInventoryTracked, body.stockMaterialId);
+    if ('error' in stockItem) return reply.status(400).send({ error: stockItem.error });
+
     const newItem = await db.transaction(async (tx) => {
       const [insertedItem] = await tx
         .insert(menuItems)
@@ -302,6 +330,8 @@ fastify.post(
           hasVariants: Boolean(body.hasVariants),
           variantPrices: body.variantPrices || [],
           rawMaterials: body.rawMaterials || [],
+          isInventoryTracked,
+          stockMaterialId: stockItem.id,
         })
         .returning();
 
@@ -439,6 +469,17 @@ fastify.patch(
     if (body.hasVariants !== undefined) updateData.hasVariants = Boolean(body.hasVariants);
     if (body.variantPrices !== undefined) updateData.variantPrices = body.variantPrices;
     if (body.rawMaterials !== undefined) updateData.rawMaterials = body.rawMaterials;
+    if (body.isInventoryTracked !== undefined || body.stockMaterialId !== undefined) {
+      const isInventoryTracked = Boolean(body.isInventoryTracked ?? existing.isInventoryTracked);
+      const stockItem = await countableStockItem(
+        getRestaurantId(request),
+        isInventoryTracked,
+        body.stockMaterialId ?? existing.stockMaterialId
+      );
+      if ('error' in stockItem) return reply.status(400).send({ error: stockItem.error });
+      updateData.isInventoryTracked = isInventoryTracked;
+      updateData.stockMaterialId = stockItem.id;
+    }
 
     const updatedItem = await db.transaction(async (tx) => {
       let item = existing;
@@ -826,14 +867,19 @@ fastify.register(drawerRoutes);
 fastify.register(restaurantRoutes);
 fastify.register(stockTransactionRoutes);
 fastify.register(dashboardRoutes);
+fastify.register(paymentRoutes);
+fastify.register(reportRoutes);
+fastify.register(zReportRoutes);
 
 
 
 // --- Start Server ---
 const start = async () => {
   try {
-    await fastify.listen({ port: 3000, host: '0.0.0.0' });
-    console.log('Server running on http://127.0.0.1:3000');
+    // PORT can be set in .env (default 3000), e.g. to run a second copy for tests.
+    const port = Number(process.env.PORT) || 3000;
+    await fastify.listen({ port, host: '0.0.0.0' });
+    console.log(`Server running on http://127.0.0.1:${port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
