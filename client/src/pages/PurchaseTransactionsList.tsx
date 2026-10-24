@@ -1,4 +1,5 @@
 
+import { money } from '../lib/restaurantSettings';
 import { useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { api } from '../api';
 import PurchaseTransactionEditModal from './PurchaseTransactionEditModal';
@@ -76,11 +77,8 @@ const lineIsItem = (line: PurchaseLine, item: { id: number; name: string }) =>
     ? Number(line.rawMaterialId) === item.id
     : line.name.trim().toLowerCase() === item.name.trim().toLowerCase();
 
-const formatMoney = (value: number) =>
-  `$${value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+// Money in the restaurant's currency (Settings → Restaurant Info).
+const formatMoney = (value: number) => money(value);
 
 const formatDate = (value: string) => {
   if (!value) return '—';

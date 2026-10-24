@@ -25,6 +25,9 @@ interface UpdateRestaurantBody {
   receipt_header?: string;
   receipt_footer?: string;
   tax_number?: string;
+  tax_rate?: number | string; // restaurant tax rate in % (0–100)
+  tax_name?: string; // "VAT", "TVA", "Sales tax"…
+  prices_include_tax?: boolean; // true = menu prices already include the tax
   isActive?: boolean;
 }
 
@@ -56,11 +59,23 @@ export default async function restaurantRoutes(fastify: FastifyInstance) {
           receipt_header,
           receipt_footer,
           tax_number,
+          tax_rate,
+          tax_name,
+          prices_include_tax,
           isActive,
         } = request.body;
 
         if (!name || !phone) {
           return reply.status(400).send({ error: 'Name and phone are required.' });
+        }
+        // One currency per restaurant, as a 3-letter code (USD, EUR, GBP…).
+        const currencyCode = currency ? String(currency).trim().toUpperCase() : undefined;
+        if (currencyCode !== undefined && !/^[A-Z]{3}$/.test(currencyCode)) {
+          return reply.status(400).send({ error: 'The currency must be a 3-letter code, e.g. USD, EUR, GBP.' });
+        }
+        const rate = tax_rate === undefined || tax_rate === '' ? undefined : Number(tax_rate);
+        if (rate !== undefined && (!Number.isFinite(rate) || rate < 0 || rate > 100)) {
+          return reply.status(400).send({ error: 'The tax rate must be between 0 and 100 %.' });
         }
 
         const [updatedRestaurant] = await db
@@ -75,12 +90,15 @@ export default async function restaurantRoutes(fastify: FastifyInstance) {
             state_province,
             postal_code,
             country,
-            currency,
+            currency: currencyCode,
             timezone,
             logoUrl,
             receipt_header,
             receipt_footer,
             tax_number,
+            tax_rate: rate === undefined ? undefined : rate.toFixed(2),
+            tax_name: tax_name === undefined ? undefined : String(tax_name).trim().slice(0, 30) || 'VAT',
+            prices_include_tax: prices_include_tax === undefined ? undefined : Boolean(prices_include_tax),
             // isActive is NOT updated here on purpose: switching a restaurant
             // on/off is the platform's decision (e.g. subscription), not the restaurant's.
             updatedAt: new Date(),
@@ -131,6 +149,29 @@ export default async function restaurantRoutes(fastify: FastifyInstance) {
 //   });
 
 
+
+  // GET /api/restaurant/settings — the money settings of the user's restaurant
+  // (currency + tax), loaded by every screen after login.
+  fastify.get('/api/restaurant/settings', async (request, reply) => {
+    const restaurantId = getRestaurantId(request);
+    const r = await db.query.restaurants.findFirst({ where: eq(restaurants.id, restaurantId) });
+    if (!r) return reply.status(404).send({ error: 'Restaurant not found.' });
+    return reply.send({
+      name: r.name,
+      currency: r.currency || 'USD',
+      taxRate: Number(r.tax_rate ?? 0),
+      taxName: r.tax_name || 'VAT',
+      pricesIncludeTax: Boolean(r.prices_include_tax),
+      taxNumber: r.tax_number || '',
+      timezone: r.timezone || 'UTC',
+      // for the printed receipt
+      phone: r.phone || '',
+      address: [r.address_line1, r.address_line2, r.city].filter(Boolean).join(', '),
+      logoUrl: r.logoUrl || '',
+      receiptHeader: r.receipt_header || '',
+      receiptFooter: r.receipt_footer || '',
+    });
+  });
 
  fastify.get(
       '/api/restaurant/:id',

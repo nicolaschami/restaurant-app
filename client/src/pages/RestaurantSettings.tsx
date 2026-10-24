@@ -12,6 +12,9 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { api } from '../api';
+import { COUNTRIES, CURRENCIES, TIME_ZONES, findCountry } from '../lib/countries';
+import { loadRestaurantSettings } from '../lib/restaurantSettings';
+import { toast } from '../components/Toaster';
 
 // Interface matching all 19 database columns
 interface Restaurant {
@@ -31,19 +34,21 @@ interface Restaurant {
   receipt_header: string | null;
   receipt_footer: string | null;
   tax_number: string | null;
+  tax_rate: string | number | null; // restaurant tax rate in %
+  tax_name: string | null; // "VAT", "TVA"…
+  prices_include_tax: boolean; // true = menu prices already include the tax
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
 }
 
-type TabType = 'general' | 'location' | 'financial' | 'receipts' | 'system';
+type TabType = 'general' | 'location' | 'financial' | 'receipts';
 
 const TABS: { id: TabType; label: string; icon: typeof Store; accent: string }[] = [
-  { id: 'general', label: 'General & Brand', icon: Store, accent: '#4C7A5E' },
-  { id: 'location', label: 'Location', icon: MapPin, accent: '#5B7C99' },
-  { id: 'financial', label: 'Financial', icon: CreditCard, accent: '#B8863B' },
-  { id: 'receipts', label: 'Receipt Layout', icon: Printer, accent: '#8A6F34' },
-  { id: 'system', label: 'System & Audit', icon: Clock, accent: '#6B6560' },
+  { id: 'general', label: 'General & Brand', icon: Store, accent: '#c9a24b' },
+  { id: 'location', label: 'Location', icon: MapPin, accent: '#c9a24b' },
+  { id: 'financial', label: 'Financial', icon: CreditCard, accent: '#c9a24b' },
+  { id: 'receipts', label: 'Receipt Layout', icon: Printer, accent: '#c9a24b' },
 ];
 
 export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantId?: number }) {
@@ -52,6 +57,7 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0); // +1 = reload the saved values ("Discard changes")
 
   const [formData, setFormData] = useState<Restaurant>({
     id: restaurantId,
@@ -70,6 +76,9 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
     receipt_header: '',
     receipt_footer: '',
     tax_number: '',
+    tax_rate: '0',
+    tax_name: 'VAT',
+    prices_include_tax: false,
     is_active: true,
   });
 
@@ -81,11 +90,16 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
 
         const res = await api.get(`/restaurant/${restaurantId}`);
 
-        if (res.data.restaurant) {
-          setFormData(res.data.restaurant);
-        } else {
-          setFormData(res.data);
-        }
+        const r = res.data.restaurant ?? res.data;
+        const c = findCountry(r.country);
+        setFormData({
+          ...r,
+          country: c ? c.code : r.country,
+          // the server's names are camelCase for these columns
+          logo_url: r.logoUrl ?? r.logo_url ?? '',
+          created_at: r.createdAt ?? r.created_at,
+          updated_at: r.updatedAt ?? r.updated_at,
+        });
       } catch (err: any) {
         if (err.response?.status === 401) {
           setError('Unauthorized. Please log in again.');
@@ -102,7 +116,7 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
     if (restaurantId) {
       fetchRestaurantData();
     }
-  }, [restaurantId]);
+  }, [restaurantId, reloadKey]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -116,6 +130,41 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
     }
   };
 
+  // Logo: upload a picture (JPG, PNG, WEBP, GIF); it is kept when you click Save.
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const uploadLogo = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setUploadingLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append('images', file);
+      const res = await api.post('/upload', fd);
+      const url = res.data?.urls?.[0];
+      if (url) {
+        setFormData((prev) => ({ ...prev, logo_url: url }));
+        toast.success('Logo uploaded', 'Click Save to keep it.');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'The logo could not be uploaded.';
+      setError(msg);
+      toast.error('Logo not uploaded', msg);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  // Choosing the country fills in its currency and time zone (both can still be changed).
+  const handleCountry = (code: string) => {
+    const c = COUNTRIES.find((x) => x.code === code);
+    setFormData((prev) => ({
+      ...prev,
+      country: code,
+      currency: c ? c.currency : prev.currency,
+      timezone: c ? c.timezone : prev.timezone,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -126,14 +175,19 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
       console.log(formData);
       await api.put(`/restaurant/${formData.id}`, {
         ...formData,
+        logoUrl: formData.logo_url || null, // the server's name for the logo
         updated_at: new Date().toISOString(),
       });
 
+      await loadRestaurantSettings(); // the whole app uses the new currency / tax
       setSuccess(true);
+      toast.success('Restaurant info saved', 'Currency, tax and details are now used everywhere.');
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       console.error('Error saving restaurant information:', err);
-      setError('Failed to update restaurant information.');
+      const msg = err?.response?.data?.error || 'Failed to update restaurant information.';
+      setError(msg);
+      toast.error('Not saved', msg);
     } finally {
       setSaving(false);
     }
@@ -147,13 +201,21 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
 
       <div className="ledger-header">
         <div className="ledger-header-left">
-          <p className="ledger-eyebrow">RESTAURANT LEDGER</p>
+          <p className="ledger-eyebrow">Settings · Restaurant Info</p>
           <h1 className="ledger-title">{formData.name || 'Untitled Restaurant'}</h1>
           <p className="ledger-subline">
-            REG #{String(formData.id).padStart(4, '0')}
+            #{String(formData.id).padStart(4, '0')}
             {formData.city ? ` · ${formData.city}` : ''}
-            {formData.country ? `, ${formData.country}` : ''}
+            {findCountry(formData.country) ? ` · ${findCountry(formData.country)!.name}` : ''}
           </p>
+        </div>
+        {/* The money settings at a glance */}
+        <div className="ledger-chips">
+          <span className="ledger-chip">{formData.currency || 'USD'}</span>
+          <span className="ledger-chip">
+            {formData.tax_name || 'VAT'} {Number(formData.tax_rate ?? 0)}%{formData.prices_include_tax ? ' incl.' : ' added'}
+          </span>
+          <span className="ledger-chip">{formData.timezone || 'UTC'}</span>
         </div>
         <div className="ledger-header-right">
           
@@ -244,31 +306,43 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
                     className="ledger-input"
                   />
                 </Field>
-                <Field label="Logo URL" span={2}>
-                  <input
-                    type="text"
-                    name="logo_url"
-                    placeholder="https://example.com/logo.png"
-                    value={formData.logo_url || ''}
-                    onChange={handleChange}
-                    className="ledger-input"
-                  />
+                <Field label="Logo" span={2}>
+                  <div className="ledger-logo-row">
+                    <div className="ledger-logo-box">
+                      {formData.logo_url ? (
+                        <img src={formData.logo_url} alt="Logo" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                      ) : (
+                        <ImageIcon className="w-6 h-6" />
+                      )}
+                    </div>
+                    <div className="ledger-logo-actions">
+                      <label className="ledger-btn-upload">
+                        {uploadingLogo ? <Loader2 className="w-4 h-4" style={{ animation: 'ledger-spin 0.8s linear infinite' }} /> : <ImageIcon className="w-4 h-4" />}
+                        {uploadingLogo ? 'Uploading…' : formData.logo_url ? 'Change logo' : 'Upload logo'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            uploadLogo(e.target.files?.[0]);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      {formData.logo_url && (
+                        <button type="button" className="ledger-btn-cancel" onClick={() => setFormData((prev) => ({ ...prev, logo_url: '' }))}>
+                          Remove
+                        </button>
+                      )}
+                      <span className="ledger-hint">JPG, PNG, WEBP or GIF · square works best · kept when you click Save</span>
+                    </div>
+                  </div>
                 </Field>
-                <div className="ledger-toggle-row">
-                  <label className="ledger-toggle">
-                    <input
-                      type="checkbox"
-                      id="is_active"
-                      name="is_active"
-                      checked={formData.is_active ?? true}
-                      onChange={handleChange}
-                    />
-                    <span className="ledger-toggle-track">
-                      <span className="ledger-toggle-thumb" />
-                    </span>
-                    <span className="ledger-toggle-label">Restaurant is active and taking orders</span>
-                  </label>
-                </div>
+                <p className="ledger-audit" style={{ gridColumn: '1 / -1' }}>
+                  Restaurant #{formData.id}
+                  {formData.created_at ? ` · created ${new Date(formData.created_at).toLocaleDateString('en-GB')}` : ''}
+                  {formData.updated_at ? ` · last saved ${new Date(formData.updated_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
+                </p>
               </div>
             )}
 
@@ -324,15 +398,30 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
                     className="ledger-input"
                   />
                 </Field>
-                <Field label="Country Code">
-                  <input
-                    type="text"
+                <Field label="Country">
+                  <select
                     name="country"
-                    maxLength={100}
-                    value={formData.country || 'US'}
-                    onChange={handleChange}
+                    value={findCountry(formData.country)?.code ?? ''}
+                    onChange={(e) => handleCountry(e.target.value)}
                     className="ledger-input"
-                  />
+                  >
+                    <option value="">Choose the country…</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Timezone">
+                  <select name="timezone" value={formData.timezone || 'UTC'} onChange={handleChange} className="ledger-input">
+                    {!TIME_ZONES.includes(formData.timezone || 'UTC') && <option value={formData.timezone || 'UTC'}>{formData.timezone || 'UTC'}</option>}
+                    {TIME_ZONES.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </div>
             )}
@@ -340,27 +429,51 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
             {activeTab === 'financial' && (
               <div className="ledger-fields">
                 <Field label="Currency">
+                  <select name="currency" value={formData.currency || 'USD'} onChange={handleChange} className="ledger-input">
+                    {!CURRENCIES.some((c) => c.code === (formData.currency || 'USD')) && (
+                      <option value={formData.currency || 'USD'}>{formData.currency}</option>
+                    )}
+                    {CURRENCIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} · {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Tax name (on the receipt)">
                   <input
                     type="text"
-                    name="currency"
-                    maxLength={3}
-                    placeholder="USD"
-                    value={formData.currency || ''}
+                    name="tax_name"
+                    maxLength={30}
+                    placeholder="VAT"
+                    value={formData.tax_name ?? ''}
                     onChange={handleChange}
                     className="ledger-input"
-                    style={{ textTransform: 'uppercase' }}
                   />
                 </Field>
-                <Field label="Timezone">
+                <Field label="Tax rate (%)">
                   <input
-                    type="text"
-                    name="timezone"
-                    maxLength={50}
-                    placeholder="UTC"
-                    value={formData.timezone || 'UTC'}
+                    type="number"
+                    name="tax_rate"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    placeholder="e.g. 11"
+                    value={formData.tax_rate ?? ''}
                     onChange={handleChange}
                     className="ledger-input"
                   />
+                </Field>
+                <Field label="Menu prices">
+                  <select
+                    name="prices_include_tax"
+                    value={formData.prices_include_tax ? 'included' : 'added'}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, prices_include_tax: e.target.value === 'included' }))}
+                    className="ledger-input"
+                  >
+                    <option value="added">Tax added on top (price + tax = total)</option>
+                    <option value="included">Prices include tax (price = total)</option>
+                  </select>
                 </Field>
                 <Field label="Tax / VAT Number">
                   <input
@@ -410,34 +523,10 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
               </div>
             )}
 
-            {activeTab === 'system' && (
-              <div className="ledger-fields">
-                <Field label="Record ID">
-                  <input type="text" disabled value={formData.id} className="ledger-input ledger-input-disabled" />
-                </Field>
-                <Field label="Created At">
-                  <input
-                    type="text"
-                    disabled
-                    value={formData.created_at ? new Date(formData.created_at).toLocaleString() : 'N/A'}
-                    className="ledger-input ledger-input-disabled"
-                  />
-                </Field>
-                <Field label="Updated At">
-                  <input
-                    type="text"
-                    disabled
-                    value={formData.updated_at ? new Date(formData.updated_at).toLocaleString() : 'N/A'}
-                    className="ledger-input ledger-input-disabled"
-                  />
-                </Field>
-              </div>
-            )}
-
             <div className="ledger-tear" style={{ marginTop: 22 }} />
 
             <div className="ledger-footer">
-              <button type="button" className="ledger-btn-cancel">
+              <button type="button" className="ledger-btn-cancel" onClick={() => setReloadKey((k) => k + 1)}>
                 Discard changes
               </button>
               <button type="submit" disabled={saving} className="ledger-btn-save">
@@ -449,12 +538,12 @@ export default function EditRestaurantScreen({ restaurantId = 1 }: { restaurantI
                 ) : saving ? (
                   <>
                     <Loader2 className="w-4 h-4" style={{ animation: 'ledger-spin 0.8s linear infinite' }} />
-                    Stamping…
+                    Saving…
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    Save Record
+                    Save
                   </>
                 )}
               </button>
@@ -491,13 +580,14 @@ function Field({
 function LedgerStyles() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
+      /* Same look as the rest of the app (2026-10-25): dark green #131c18, gold #c9a24b,
+         white cards on a light grey page, compact. */
       .ledger-root {
-        min-height: 100vh;
-        background: #f4f1eb;
-        padding: 32px;
-        font-family: 'Inter', -apple-system, sans-serif;
+        min-height: 100%;
+        background: #f8fafc;
+        padding: 16px;
+        font-family: inherit;
+        color: #1e293b;
       }
 
       @keyframes ledger-spin {
@@ -505,464 +595,271 @@ function LedgerStyles() {
         to { transform: rotate(360deg); }
       }
 
-      /* ----- HEADER ----- */
+      /* ----- HEADER (one line) ----- */
       .ledger-header {
-        max-width: 980px;
-        margin: 0 auto 28px;
+        max-width: 1040px;
+        margin: 0 auto 14px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 20px;
+        gap: 16px;
         flex-wrap: wrap;
-        background: linear-gradient(135deg, #1e2a3a, #0f1722);
-        padding: 24px 32px;
-        border-radius: 16px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        background: #131c18;
+        padding: 12px 18px;
+        border-radius: 12px;
+        border-bottom: 2px solid #c9a24b;
+        box-shadow: 0 4px 14px rgba(19,28,24,0.18);
       }
-      .ledger-header-left {
-        flex: 1;
-      }
+      .ledger-header-left { flex: 1; min-width: 200px; }
       .ledger-eyebrow {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: #94a3b8;
-        margin: 0 0 4px;
+        color: #c9a24b;
+        margin: 0 0 2px;
       }
       .ledger-title {
-        font-size: 36px;
+        font-size: 20px;
         font-weight: 800;
-        letter-spacing: -0.02em;
         color: #ffffff;
         margin: 0;
-        line-height: 1.1;
+        line-height: 1.15;
       }
       .ledger-subline {
-        font-size: 13px;
-        color: #b9c7da;
-        margin: 6px 0 0;
-        font-weight: 400;
+        font-size: 12px;
+        color: #a7b3ad;
+        margin: 2px 0 0;
       }
-
-      .ledger-header-right {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        flex-shrink: 0;
-      }
-      .ledger-stamp {
+      .ledger-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+      .ledger-chip {
         font-size: 11px;
         font-weight: 700;
-        letter-spacing: 0.06em;
-        padding: 6px 16px;
-        border-radius: 100px;
-        border: 2px solid;
-        background: rgba(255,255,255,0.05);
-        backdrop-filter: blur(2px);
-        text-transform: uppercase;
+        padding: 4px 10px;
+        border-radius: 999px;
+        color: #c9a24b;
+        background: rgba(201,162,75,0.12);
+        border: 1px solid rgba(201,162,75,0.45);
+        white-space: nowrap;
       }
-      .ledger-stamp.active {
-        color: #7bcfa6;
-        border-color: #7bcfa6;
-      }
-      .ledger-stamp.inactive {
-        color: #f28b82;
-        border-color: #f28b82;
-      }
-
+      .ledger-header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
       .ledger-medallion {
-        width: 56px;
-        height: 56px;
+        width: 44px;
+        height: 44px;
         border-radius: 50%;
         object-fit: cover;
-        border: 2px solid rgba(255,255,255,0.25);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        background: #2d3748;
+        border: 2px solid #c9a24b;
+        background: #1f2d26;
       }
       .ledger-medallion-empty {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #2d3748;
-        color: #94a3b8;
-        border: 2px solid #4a5568;
+        color: #c9a24b;
       }
 
       /* ----- ALERT ----- */
       .ledger-alert {
-        max-width: 980px;
-        margin: 0 auto 20px;
+        max-width: 1040px;
+        margin: 0 auto 12px;
         display: flex;
         align-items: center;
         gap: 10px;
-        background: #fde8e5;
-        border: 1px solid #f5c6c0;
-        color: #a13b2e;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #b91c1c;
         font-size: 13px;
         font-weight: 600;
-        padding: 14px 20px;
-        border-radius: 12px;
-        box-shadow: 0 2px 6px rgba(161,59,46,0.08);
+        padding: 10px 14px;
+        border-radius: 10px;
       }
 
       /* ----- LOADING ----- */
-      .ledger-loading {
-        display: flex;
-        justify-content: center;
-        padding: 80px 0;
-        color: #1e2a3a;
-      }
+      .ledger-loading { display: flex; justify-content: center; padding: 60px 0; color: #131c18; }
 
       /* ----- BODY (tabs + card) ----- */
-      .ledger-body {
-        max-width: 980px;
-        margin: 0 auto;
-        display: flex;
-        gap: 0;
-        align-items: stretch;
-      }
+      .ledger-body { max-width: 1040px; margin: 0 auto; display: flex; gap: 12px; align-items: flex-start; }
 
-      /* ----- INDEX TABS (vertical) ----- */
+      /* ----- TABS (left) ----- */
       .ledger-index {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        flex: 0 0 200px;
-        padding-top: 12px;
+        gap: 2px;
+        flex: 0 0 190px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 6px;
+        box-shadow: 0 1px 3px rgba(15,23,42,0.05);
       }
       .ledger-index-tab {
         position: relative;
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 14px 18px;
+        gap: 9px;
+        padding: 9px 12px;
         border: none;
         background: transparent;
-        color: #5f6a7a;
+        color: #475569;
         font-size: 13px;
         font-weight: 600;
         text-align: left;
         cursor: pointer;
-        border-radius: 10px 0 0 10px;
-        transition: all 0.15s ease;
-        font-family: 'Inter', sans-serif;
+        border-radius: 8px;
+        transition: background 0.15s ease, color 0.15s ease;
+        font-family: inherit;
       }
       .ledger-index-tab .ledger-index-flag {
         position: absolute;
         left: 0;
-        top: 20%;
-        bottom: 20%;
-        width: 4px;
-        border-radius: 4px;
-        background: var(--tab-accent);
+        top: 22%;
+        bottom: 22%;
+        width: 3px;
+        border-radius: 3px;
+        background: #c9a24b;
         opacity: 0;
-        transition: opacity 0.15s ease;
       }
-      .ledger-index-tab:hover {
-        background: rgba(255,255,255,0.4);
-        color: #1e2a3a;
-      }
-      .ledger-index-tab.active {
-        background: #ffffff;
-        color: #1e2a3a;
-        box-shadow: -4px 4px 16px rgba(0,0,0,0.06);
-        transform: translateX(4px);
-        border-radius: 10px 0 0 10px;
-      }
-      .ledger-index-tab.active .ledger-index-flag {
-        opacity: 1;
-      }
-      .ledger-index-tab.active svg {
-        color: var(--tab-accent);
-      }
+      .ledger-index-tab svg { color: #94a3b8; }
+      .ledger-index-tab:hover { background: rgba(201,162,75,0.10); color: #131c18; }
+      .ledger-index-tab.active { background: #131c18; color: #ffffff; }
+      .ledger-index-tab.active .ledger-index-flag { opacity: 1; }
+      .ledger-index-tab.active svg { color: #c9a24b; }
 
-      /* ----- RECORD CARD ----- */
+      /* ----- CARD ----- */
       .ledger-card {
         flex: 1;
         background: #ffffff;
-        border-radius: 16px;
-        padding: 28px 32px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.06);
-        min-height: 420px;
-        position: relative;
-        border: 1px solid #eae7e0;
-        border-left: none;
+        border-radius: 12px;
+        padding: 18px 22px;
+        border: 1px solid #e2e8f0;
+        border-top: 3px solid #c9a24b;
+        box-shadow: 0 1px 3px rgba(15,23,42,0.06);
+        min-height: 360px;
       }
-      .ledger-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: var(--tab-accent);
-        border-radius: 16px 16px 0 0;
-      }
-      .ledger-card-heading {
-        font-size: 20px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        color: #1e2a3a;
-        margin: 0 0 4px;
-      }
-      .ledger-tear {
-        height: 1px;
-        margin: 16px 0 20px;
-        background: repeating-linear-gradient(90deg, #d1cdc4 0 6px, transparent 6px 12px);
-      }
+      .ledger-card-heading { font-size: 16px; font-weight: 800; color: #131c18; margin: 0; }
+      .ledger-tear { height: 1px; margin: 12px 0 16px; background: #e2e8f0; }
 
       /* ----- FIELDS ----- */
-      .ledger-fields {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 22px 28px;
-      }
-      .ledger-field {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
+      .ledger-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+      .ledger-field { display: flex; flex-direction: column; gap: 5px; }
       .ledger-field-label {
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.04em;
         text-transform: uppercase;
-        color: #6b7a8a;
+        color: #64748b;
       }
-      .ledger-required {
-        color: #d45c4c;
-      }
-
+      .ledger-required { color: #dc2626; }
       .ledger-input {
-        background: #faf9f6;
-        border: 1px solid #e2ddd4;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
         border-radius: 8px;
-        padding: 10px 14px;
+        padding: 8px 12px;
         font-size: 14px;
-        font-family: 'Inter', sans-serif;
-        color: #1e2a3a;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        font-family: inherit;
+        color: #1e293b;
         width: 100%;
+        height: 38px;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
       }
-      .ledger-input:focus {
-        outline: none;
-        border-color: #1e2a3a;
-        box-shadow: 0 0 0 3px rgba(30,42,58,0.08);
-      }
-      .ledger-input::placeholder {
-        color: #b3ad9e;
-      }
-      .ledger-input-disabled {
-        background: #f1efe9;
-        color: #7d8796;
-        border-style: dashed;
-        cursor: not-allowed;
-      }
-      .ledger-textarea {
-        resize: vertical;
-        min-height: 80px;
-        border-radius: 8px;
-        padding: 12px 14px;
-      }
+      select.ledger-input { cursor: pointer; }
+      .ledger-input:focus { outline: none; border-color: #c9a24b; box-shadow: 0 0 0 3px rgba(201,162,75,0.18); }
+      .ledger-input::placeholder { color: #94a3b8; }
+      .ledger-input-disabled { background: #f1f5f9; color: #64748b; border-style: dashed; cursor: not-allowed; }
+      .ledger-textarea { resize: vertical; min-height: 80px; height: auto; padding: 10px 12px; }
 
       /* ----- TOGGLE ----- */
-      .ledger-toggle-row {
-        grid-column: 1 / -1;
-        padding-top: 4px;
-      }
-      .ledger-toggle {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        cursor: pointer;
-        user-select: none;
-      }
-      .ledger-toggle input {
-        position: absolute;
-        opacity: 0;
-        width: 0;
-        height: 0;
-      }
-      .ledger-toggle-track {
-        width: 42px;
-        height: 24px;
-        border-radius: 12px;
-        background: #d1cdc4;
-        position: relative;
-        transition: background 0.2s ease;
-        flex-shrink: 0;
-      }
-      .ledger-toggle-thumb {
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        background: #fff;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        transition: transform 0.2s ease;
-      }
-      .ledger-toggle input:checked + .ledger-toggle-track {
-        background: #2d7a5a;
-      }
-      .ledger-toggle input:checked + .ledger-toggle-track .ledger-toggle-thumb {
-        transform: translateX(18px);
-      }
-      .ledger-toggle-label {
-        font-size: 13px;
-        font-weight: 500;
-        color: #2d3748;
-      }
+      .ledger-toggle-row { grid-column: 1 / -1; padding-top: 4px; }
+      .ledger-toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+      .ledger-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+      .ledger-toggle-track { width: 40px; height: 22px; border-radius: 11px; background: #cbd5e1; position: relative; transition: background 0.2s ease; flex-shrink: 0; }
+      .ledger-toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.2s ease; }
+      .ledger-toggle input:checked + .ledger-toggle-track { background: #c9a24b; }
+      .ledger-toggle input:checked + .ledger-toggle-track .ledger-toggle-thumb { transform: translateX(18px); }
+      .ledger-toggle-label { font-size: 13px; font-weight: 500; color: #334155; }
 
       /* ----- RECEIPT PREVIEW ----- */
-      .ledger-receipt-preview {
-        margin-top: 8px;
-      }
-      .ledger-preview-label {
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        color: #6b7a8a;
-        margin-bottom: 8px;
-      }
+      .ledger-receipt-preview { margin-top: 4px; }
+      .ledger-preview-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: #64748b; margin-bottom: 6px; }
       .ledger-receipt-paper {
-        background: #fcfaf5;
-        border: 1px dashed #ccc6b8;
-        border-radius: 12px;
-        padding: 20px;
-        font-family: 'Inter', monospace;
-        font-size: 13px;
-        color: #1e2a3a;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        max-width: 320px;
+        margin: 0 auto;
+        background: #fffdf7;
+        border: 1px dashed #d6c79b;
+        border-radius: 10px;
+        padding: 16px;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        color: #1e293b;
       }
-      .ledger-receipt-line {
-        margin: 0;
-        text-align: center;
+      .ledger-receipt-line { margin: 0; text-align: center; white-space: pre-line; }
+      .ledger-receipt-line.muted { color: #94a3b8; font-style: italic; }
+      .ledger-receipt-dashes { height: 1px; margin: 10px 0; background: repeating-linear-gradient(90deg, #d6c79b 0 4px, transparent 4px 9px); }
+
+      /* ----- LOGO ----- */
+      .ledger-logo-row { display: flex; align-items: center; gap: 14px; }
+      .ledger-logo-box {
+        width: 72px; height: 72px; flex-shrink: 0; border-radius: 12px; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: #f8fafc; border: 1px dashed #c9a24b; color: #c9a24b;
       }
-      .ledger-receipt-line.muted {
-        color: #a69f8e;
-        font-style: italic;
+      .ledger-logo-box img { width: 100%; height: 100%; object-fit: cover; }
+      .ledger-logo-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .ledger-btn-upload {
+        display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px;
+        border-radius: 8px; background: #131c18; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
       }
-      .ledger-receipt-dashes {
-        height: 1px;
-        margin: 12px 0;
-        background: repeating-linear-gradient(90deg, #ccc6b8 0 4px, transparent 4px 10px);
-      }
+      .ledger-btn-upload svg { color: #c9a24b; }
+      .ledger-btn-upload:hover { background: #1f2d26; }
+      .ledger-hint { font-size: 11px; color: #94a3b8; width: 100%; }
+      .ledger-audit { margin: 4px 0 0; font-size: 11px; color: #94a3b8; }
 
       /* ----- FOOTER ----- */
-      .ledger-footer {
-        display: flex;
-        justify-content: flex-end;
-        gap: 12px;
-        margin-top: 8px;
-      }
+      .ledger-footer { display: flex; justify-content: flex-end; gap: 10px; }
       .ledger-btn-cancel {
-        padding: 12px 24px;
-        border-radius: 10px;
-        border: 1px solid #e2ddd4;
-        background: transparent;
-        color: #5f6a7a;
+        height: 38px;
+        padding: 0 18px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #475569;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.15s ease;
-        font-family: 'Inter', sans-serif;
+        font-family: inherit;
       }
-      .ledger-btn-cancel:hover {
-        background: #f4f1eb;
-        border-color: #cbc6b9;
-      }
+      .ledger-btn-cancel:hover { background: #f1f5f9; }
       .ledger-btn-save {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 8px;
-        padding: 12px 28px;
-        border-radius: 10px;
+        height: 38px;
+        padding: 0 22px;
+        border-radius: 8px;
         border: none;
-        background: #1e2a3a;
+        background: #131c18;
         color: #ffffff;
         font-size: 13px;
         font-weight: 700;
-        letter-spacing: 0.02em;
         cursor: pointer;
-        transition: all 0.15s ease;
-        min-width: 160px;
-        font-family: 'Inter', sans-serif;
-        box-shadow: 0 2px 8px rgba(30,42,58,0.15);
+        min-width: 130px;
+        font-family: inherit;
       }
-      .ledger-btn-save:hover:not(:disabled) {
-        background: #2c3e52;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(30,42,58,0.2);
-      }
-      .ledger-btn-save:disabled {
-        opacity: 0.65;
-        cursor: not-allowed;
-        transform: none;
-      }
-      .ledger-btn-save:active:not(:disabled) {
-        transform: translateY(0);
-      }
+      .ledger-btn-save svg { color: #c9a24b; }
+      .ledger-btn-save:hover:not(:disabled) { background: #1f2d26; }
+      .ledger-btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
 
-      /* ----- RESPONSIVE ----- */
+      /* ----- NARROW SCREENS ----- */
       @media (max-width: 720px) {
-        .ledger-root {
-          padding: 16px;
-        }
-        .ledger-header {
-          flex-direction: column;
-          align-items: stretch;
-          padding: 20px;
-        }
-        .ledger-header-right {
-          justify-content: flex-start;
-        }
-        .ledger-body {
-          flex-direction: column;
-        }
-        .ledger-index {
-          flex-direction: row;
-          overflow-x: auto;
-          flex: none;
-          width: 100%;
-          padding-top: 0;
-          gap: 6px;
-          margin-bottom: 12px;
-        }
-        .ledger-index-tab {
-          border-radius: 10px;
-          padding: 10px 16px;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .ledger-index-tab.active {
-          transform: none;
-          border-radius: 10px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .ledger-index-tab .ledger-index-flag {
-          display: none;
-        }
-        .ledger-card {
-          border-radius: 16px;
-          border: 1px solid #eae7e0;
-          padding: 20px;
-        }
-        .ledger-fields {
-          grid-template-columns: 1fr;
-        }
-        .ledger-footer {
-          flex-wrap: wrap;
-          justify-content: stretch;
-        }
-        .ledger-btn-cancel,
-        .ledger-btn-save {
-          flex: 1;
-          min-width: 0;
-        }
+        .ledger-root { padding: 10px; }
+        .ledger-body { flex-direction: column; }
+        .ledger-index { flex-direction: row; overflow-x: auto; flex: none; width: 100%; }
+        .ledger-index-tab { white-space: nowrap; flex-shrink: 0; }
+        .ledger-index-tab .ledger-index-flag { display: none; }
+        .ledger-fields { grid-template-columns: 1fr; }
+        .ledger-footer { flex-wrap: wrap; }
+        .ledger-btn-cancel, .ledger-btn-save { flex: 1; min-width: 0; }
       }
     `}</style>
   );

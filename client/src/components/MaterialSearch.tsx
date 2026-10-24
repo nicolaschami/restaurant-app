@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FC, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { money } from '../lib/restaurantSettings';
 
 // ==========================================================================
 // MaterialSearch — a search box with a rich dropdown of raw materials.
@@ -32,7 +33,7 @@ export const materialInfo = (p: MaterialLike) => ({
 
 // 1.500 → "1.5", 100.000 → "100"
 const shortNum = (n: number) => String(Math.round(n * 1000) / 1000);
-const money = (n: number) => `$${n.toFixed(2)}`;
+// money(): restaurant currency (Settings → Restaurant Info).
 
 // Wrap the parts of `text` that match one of the search words in <mark>.
 const highlight = (text: string, words: string[]) => {

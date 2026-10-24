@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { loadRestaurantSettings } from './lib/restaurantSettings';
 import SidebarLayout from './components/SidebarLayout';
 import DashboardView, { type ActiveOrder } from './pages/Dashboard';
 import PosView from './pages/PosScreen';
@@ -11,8 +12,8 @@ import Customers from './pages/customers';
 import Suppliers from './pages/Suppliers';
 import KitchenStations from './pages/kitchenstation';
 import KDSContainer from './pages/Kdscontainer';
-import Printo from './pages/Printo';
 import RestaurantSettings from './pages/RestaurantSettings';
+import PrintersSettings from './pages/PrintersSettings';
 import PurchaseReceiptForm from './pages/Purchasetransactionscreen';
 import PurchaseList from './pages/PurchaseTransactionsList';
 import Login from './pages/Login';
@@ -63,6 +64,15 @@ export function App() {
     setActiveTab('dashboard');
   };
 
+  // Currency and tax of the restaurant: loaded once after login, before the screens
+  // (they all show money in that currency). On an error the defaults are used.
+  const [settingsReady, setSettingsReady] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    setSettingsReady(false);
+    loadRestaurantSettings().finally(() => setSettingsReady(true));
+  }, [token]);
+
   // Not logged in yet → show only the Login page (no sidebar, no screens).
   if (!token) {
     return (
@@ -73,6 +83,10 @@ export function App() {
         }}
       />
     );
+  }
+
+  if (!settingsReady) {
+    return <div className="flex h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Loading…</div>;
   }
 
   // The POS opens full screen (no sidebar): cashiers need all the room, and its
@@ -183,14 +197,14 @@ export function App() {
         return <Customers />;
       case 'suppliers':
         return <Suppliers />;
-      case 'print':
-        return <Printo />;
       case 'kitchenscreen':
         return <KDSContainer />;
       case 'kitchenstations':
         return <KitchenStations />;
       case 'RestaurantSettings':
         return <RestaurantSettings />;
+      case 'printers':
+        return <PrintersSettings />;
       default:
         return (
           <DashboardView

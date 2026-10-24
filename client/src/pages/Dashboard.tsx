@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, type FC } from 'react';
+import { money } from '../lib/restaurantSettings';
+import { toast } from '../components/Toaster';
 import { api } from '../api';
 import { ChefHat, Archive, Sun, Moon, Plus, Loader2 } from 'lucide-react';
 
@@ -51,7 +53,7 @@ const formatMoney = (value: number, currency = 'USD') => {
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
   } catch {
-    return `$${value.toFixed(2)}`;
+    return money(value); // restaurant currency
   }
 };
 
@@ -256,11 +258,11 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
   const handleOpenDrawer = async () => {
     try {
       setIsOpeningDrawer(true);
-      const selectedPrinter = localStorage.getItem('pos_printer_name') || 'POS-80';
-      await api.post('/open-drawer', { printerName: selectedPrinter });
+      // through the print helper (Settings → Printers)
+      await api.post('/printing/drawer');
+      toast.success('Drawer opened');
     } catch (err: any) {
-      console.error('Failed to open drawer:', err);
-      alert(err.response?.data?.error || 'Could not open cash drawer.');
+      toast.error('Drawer not opened', err.response?.data?.error || 'Check the print helper.');
     } finally {
       setIsOpeningDrawer(false);
     }

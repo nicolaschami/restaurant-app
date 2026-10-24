@@ -10,6 +10,7 @@
 
 import { ArrowDownLeft, ArrowUpRight, UtensilsCrossed } from 'lucide-react';
 import DateRangePicker from './DateRangePicker';
+import { money } from '../lib/restaurantSettings';
 
 export interface ItemTotals {
   id: number;
@@ -60,8 +61,8 @@ export const toISO = (d: Date) =>
 
 // Quantities: up to 3 decimals, no useless zeros (22, 4.5, 0.125).
 export const qty = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 3 });
-export const unitPrice = (v: number) =>
-  `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+// Unit prices can have 3 decimals ($0.495 per kg); restaurant currency.
+export const unitPrice = (v: number) => money(v, 3);
 // Dates as dd/mm/yyyy (e.g. 17/10/2026), built from the text so the time zone can't shift the day.
 export const niceDate = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split('-');

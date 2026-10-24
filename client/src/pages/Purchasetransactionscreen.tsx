@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent, type FC } from 'react';
+import { money } from '../lib/restaurantSettings';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { MaterialSearch, materialInfo, num } from '../components/MaterialSearch';
@@ -82,7 +83,8 @@ const MOCK_UNITS = ['kg', 'g', 'ltr', 'ml', 'pcs', 'box', 'case'];
 const TAX_RATE = 0.1;
 const makeLineId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const formatMoney = (value: number) => `$${value.toFixed(2)}`;
+// Money in the restaurant's currency (Settings → Restaurant Info).
+const formatMoney = (value: number) => money(value);
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 const parseISODate = (iso: string): Date => {

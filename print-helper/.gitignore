@@ -1,0 +1,4 @@
+# the helper's secret key and local files stay on the PC
+config.json
+node-path.txt
+helper.log

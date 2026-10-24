@@ -22,7 +22,7 @@ import { money } from '../components/SupplierPurchasesModal';
 import { methodLabel } from '../components/TicketDetailModal';
 
 export interface Totals {
-  summary: { tickets: number; totalPaid: number; itemsTotal: number; taxAndFees: number; cashTotal: number };
+  summary: { tickets: number; totalPaid: number; itemsTotal: number; taxAndFees: number; cashTotal: number; tax?: number; deliveryFees?: number };
   byMethod: Array<{ method: string; count: number; amount: number }>;
   byType: Array<{ type: string; count: number; amount: number }>;
   byCategory: Array<{ category: string; qty: number; amount: number }>;
@@ -85,7 +85,8 @@ export function printZ(z: ZFull) {
     <h2>Sales</h2>
     <table>${rows([
       ['Items (before tax)', money(t.summary.itemsTotal)],
-      ['Tax & fees', money(t.summary.taxAndFees)],
+      ['Tax', money(t.summary.tax ?? t.summary.taxAndFees)],
+      ...((t.summary.deliveryFees ?? 0) > 0 ? ([['Delivery fees', money(t.summary.deliveryFees!)]] as Array<[string, string]>) : []),
     ])}<tr class="b"><td>Net sales</td><td class="n">${money(t.summary.totalPaid)}</td></tr>${rows([
       ['Tickets', String(t.summary.tickets)],
       ['Average ticket', money(t.summary.tickets ? t.summary.totalPaid / t.summary.tickets : 0)],
@@ -283,7 +284,7 @@ export default function ZReportPage() {
             </button>
           </div>
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            <Tile label="Net sales" value={money(s.totalPaid)} sub={`items ${money(s.itemsTotal)} + tax & fees ${money(s.taxAndFees)}`} tone="text-emerald-700" />
+            <Tile label="Net sales" value={money(s.totalPaid)} sub={`items ${money(s.itemsTotal)} · tax ${money(s.tax ?? s.taxAndFees)}${s.deliveryFees ? ` · delivery ${money(s.deliveryFees)}` : ''}`} tone="text-emerald-700" />
             <Tile label="Tickets" value={String(s.tickets)} sub={current.open.count ? `${current.open.count} still open (${money(current.open.amount)})` : 'no open order'} tone="text-slate-800" />
             <Tile label="Average ticket" value={money(s.tickets ? s.totalPaid / s.tickets : 0)} tone="text-slate-800" />
             <Tile label="Expected in the drawer" value={money(current.openingCash.amount + s.cashTotal)} sub={`opening ${money(current.openingCash.amount)} + cash sales ${money(s.cashTotal)}`} tone="text-[#8a6d2c]" />

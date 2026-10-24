@@ -3,7 +3,7 @@
 // POST /api/orders/:id/pay — take the payment of a POS order and close it.
 //
 // Rules (agreed 2026-10-20):
-//   - USD only.
+//   - The restaurant's currency (Settings → Restaurant Info; USD until 2026-10-25).
 //   - One method per order: CASH, or one card (VISA, MASTERCARD, DEBIT). No mixed payments yet.
 //   - Cash: the customer may give the exact amount or more; the server computes the change.
 //     Giving less than the total is refused.
@@ -20,6 +20,8 @@ import { db } from '../db/index.js';
 import { orders, orderPayments, restaurantTables } from '../db/schema.js';
 import { getRestaurantId } from '../lib/tenant.js';
 import { roomManager } from '../lib/roomManager.js';
+import { formatMoney, restaurantCurrency } from '../lib/money.js';
+import { syncTables } from '../lib/tables.js';
 
 const METHODS = ['CASH', 'VISA', 'MASTERCARD', 'DEBIT'] as const;
 type PaymentMethod = (typeof METHODS)[number];
@@ -134,6 +136,10 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Choose a payment method: Cash, Visa, Mastercard or Debit.' });
     }
 
+    // Messages show the restaurant's currency.
+    const currency = await restaurantCurrency(restaurantId);
+    const m = (cents: number) => formatMoney(cents / 100, currency);
+
     try {
       const result = await db.transaction(async (tx) => {
         // Lock the order row: two terminals paying the same order at the same moment
@@ -161,7 +167,7 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
           if (receivedCents < dueCents) {
             throw new PaymentError(
               400,
-              `The customer gave $${fromCents(receivedCents)}, but the total is $${fromCents(dueCents)}. Still to pay: $${fromCents(dueCents - receivedCents)}.`
+              `The customer gave ${m(receivedCents)}, but the total is ${m(dueCents)}. Still to pay: ${m(dueCents - receivedCents)}.`
             );
           }
         }
@@ -176,7 +182,7 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
             amountDue: fromCents(dueCents),
             amountReceived: fromCents(receivedCents),
             changeGiven: fromCents(changeCents),
-            currency: 'USD',
+            currency,
             cashierId: request.user?.id ?? null,
           })
           .returning();
@@ -188,13 +194,8 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
           .where(eq(orders.id, orderId))
           .returning();
 
-        // … and free its table (dine-in).
-        if (order.tableId) {
-          await tx
-            .update(restaurantTables)
-            .set({ status: 'free' })
-            .where(and(eq(restaurantTables.id, order.tableId), eq(restaurantTables.restaurantId, restaurantId)));
-        }
+        // … and free its table (dine-in): rule "occupied while it has an open order".
+        await syncTables(tx, restaurantId, [order.tableId]);
 
         // … and take the ingredients of the sold dishes out of stock.
         await takeSaleOutOfStock(tx, restaurantId, order);
@@ -211,7 +212,7 @@ export default async function paymentRoutes(fastify: FastifyInstance) {
         message:
           result.payment.method === 'CASH'
             ? Number(result.payment.changeGiven) > 0
-              ? `Paid by cash. Give back $${result.payment.changeGiven}.`
+              ? `Paid by cash. Give back ${formatMoney(result.payment.changeGiven ?? 0, currency)}.`
               : 'Paid by cash. Exact amount, no change.'
             : `Paid by ${result.payment.method.charAt(0) + result.payment.method.slice(1).toLowerCase()}.`,
       });

@@ -31,7 +31,10 @@ export async function restaurantTimeZone(restaurantId: number): Promise<string> 
 }
 
 export interface SalesSnapshot {
-  summary: { tickets: number; totalPaid: number; itemsTotal: number; taxAndFees: number; cashTotal: number };
+  summary: {
+    tickets: number; totalPaid: number; itemsTotal: number; taxAndFees: number; cashTotal: number;
+    tax: number; deliveryFees: number; // apart (orders saved since 2026-10-25; older: all in tax)
+  };
   byMethod: Array<{ method: string; count: number; amount: number }>;
   byType: Array<{ type: string; count: number; amount: number }>;
   byCategory: Array<{ category: string; qty: number; amount: number }>;
@@ -61,7 +64,9 @@ export async function salesSnapshot(
       p.method,
       p.amount_due                                                     AS total,
       (p.created_at AT TIME ZONE ${tz})                               AS paid_local,
-      COALESCE((SELECT SUM(i.subtotal) FROM order_items i WHERE i.order_id = o.id), 0) AS items_total
+      COALESCE((SELECT SUM(i.subtotal) FROM order_items i WHERE i.order_id = o.id), 0) AS items_total,
+      o.tax_amount,
+      COALESCE(o.delivery_fee, 0)                                      AS delivery_fee
     FROM order_payments p
     JOIN orders o ON o.id = p.order_id AND o.restaurant_id = ${restaurantId}
     WHERE p.restaurant_id = ${restaurantId}
@@ -75,7 +80,9 @@ export async function salesSnapshot(
       COALESCE(SUM(total), 0)::float                                  AS "totalPaid",
       COALESCE(SUM(items_total), 0)::float                            AS "itemsTotal",
       COALESCE(SUM(total - items_total), 0)::float                    AS "taxAndFees",
-      COALESCE(SUM(total) FILTER (WHERE method = 'CASH'), 0)::float   AS "cashTotal"
+      COALESCE(SUM(total) FILTER (WHERE method = 'CASH'), 0)::float   AS "cashTotal",
+      COALESCE(SUM(COALESCE(tax_amount, total - items_total - delivery_fee)), 0)::float AS tax,
+      COALESCE(SUM(delivery_fee), 0)::float                           AS "deliveryFees"
     FROM t
   `)) as any[];
 

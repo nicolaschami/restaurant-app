@@ -7,6 +7,7 @@
 // asked again on this device until the next Z.
 // Data: GET /api/z-reports/opening-status, POST /api/z-reports/opening-cash
 
+import { money } from '../lib/restaurantSettings';
 import { useEffect, useState } from 'react';
 import { Wallet } from 'lucide-react';
 import { api } from '../api';
@@ -83,7 +84,7 @@ export default function OpeningCashPrompt() {
         </div>
         {status.source === 'last-z' && (
           <div className="mb-2 text-xs text-slate-500">
-            Left in the drawer at the last closing: <b>${Number(status.amount).toFixed(2)}</b>. Confirm it, or type the new amount.
+            Left in the drawer at the last closing: <b>{money(Number(status.amount))}</b>. Confirm it, or type the new amount.
           </div>
         )}
         <input

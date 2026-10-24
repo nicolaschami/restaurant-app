@@ -3,6 +3,10 @@ import { useRef } from 'react';
 import { api } from '../api';
 import PaymentModal, { type PaymentMethod, type PaymentResult } from '../components/PaymentModal';
 import OpeningCashPrompt from '../components/OpeningCashPrompt';
+import { basketTotals, money, taxLabel } from '../lib/restaurantSettings';
+import { autoPrintEnabled } from '../lib/printReceipt';
+import { toast } from '../components/Toaster';
+import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 import { generateReceiptPDF } from '../services/pdfService';
 import {
   Coffee,
@@ -35,8 +39,7 @@ import {
   LayoutGrid,
   Armchair,
   User,
-  Pause
-} from 'lucide-react';
+  Pause, Eye } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface PosScreenProps {
@@ -89,6 +92,7 @@ export interface ApiMenuItem {
   hasVariants: boolean;
   variantPrices: VariantPrice[];
   modifierGroupIds?: number[];
+  countryTax?: string | null; // own tax rate in %; null = restaurant rate
 }
 
 export interface ApiModifierOption {
@@ -308,10 +312,38 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   const [compTargetId, setCompTargetId] = useState<string | null>(null);
   const [compQty, setCompQty] = useState<number>(1);
   const [showPrintPreview, setShowPrintPreview] = useState<boolean>(false);
+  // Receipt preview from the server (exactly as printed): which order, copy or paid.
+  const [receiptPreview, setReceiptPreview] = useState<{ orderId: number; copy: boolean } | null>(null);
+  const [lastPaidOrderId, setLastPaidOrderId] = useState<number | null>(null);
   const [deliveryFee, setDeliveryFee] = useState<string>('0.00');
 
   /* ---------- ORDER TYPE DETAIL: table (Dine-In) / customer (Delivery) ---------- */
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+
+  // Server rows → the POS table shape (used at start-up and by refreshTables).
+  const toPosTables = (rows: any[]): RestaurantTable[] =>
+    rows.map((t: any) => ({
+      id: t.id,
+      label: String(t.label ?? t.number ?? t.name ?? t.id),
+      capacity: t.capacity,
+      status: t.status === 'occupied' ? 'occupied' : 'free',
+      occupiedOrderNo: t.occupiedOrderNo ?? t.orderNo,
+      zone: t.zone,
+      notes: t.notes,
+    }));
+
+  // Reload the real table status from the server (the server frees a table when its
+  // order is paid or deleted, and takes it when an order is opened on it). Called after
+  // a save, after a payment, and every time the table picker opens.
+  const refreshTables = async () => {
+    try {
+      const res = await api.get('/tables', { params: { restaurantId: 1 } });
+      const rows = Array.isArray(res.data) ? res.data : res.data?.tables || [];
+      if (rows.length) setTables(toPosTables(rows));
+    } catch {
+      /* keep the current list */
+    }
+  };
   const [dineInTable, setDineInTable] = useState<RestaurantTable | null>(null);
   const [showTablePicker, setShowTablePicker] = useState<boolean>(false);
 
@@ -779,14 +811,13 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
 
   /* ---------- HARDWARE ACTIONS ---------- */
 
+  // Opens the cash drawer through the print helper (Settings → Printers).
   const handleOpenDrawer = async () => {
     try {
-      const selectedPrinter = localStorage.getItem('pos_printer_name') || 'POS-80';
-      console.log('printer name : ', selectedPrinter);
-      await api.post('/open-drawer', { printerName: selectedPrinter });
+      await api.post('/printing/drawer');
+      toast.success('Drawer opened');
     } catch (err: any) {
-      console.error('Drawer trigger failed:', err);
-      alert(err.response?.data?.error || 'Could not trigger drawer.');
+      toast.error('Drawer not opened', err.response?.data?.error || 'Check the print helper.');
     }
   };
 
@@ -811,34 +842,30 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
     }
   };
 
+  // "Preview": the current ticket exactly as it will print (saved first: the server
+  // builds the receipt from the saved order).
+  const handlePreviewReceipt = async () => {
+    if (basket.length === 0) return;
+    try {
+      const saved = await persistOrder();
+      setReceiptPreview({ orderId: saved.id, copy: true });
+    } catch (err: any) {
+      toast.error('No preview', err.response?.data?.error || err.message || 'The order could not be saved.');
+    }
+  };
+
+  // "Print Copy": the customer's copy BEFORE payment, printed by the print helper
+  // (directly on the receipt printer). The order is saved first: the receipt is
+  // built by the server from the saved order.
   const handlePrintCopy = async () => {
     if (basket.length === 0) return;
     setIsPrinting(true);
     try {
-      const payload = {
-        restaurantName: 'Fen & Larder',
-        ticketNo,
-        orderType,
-        tableLabel: orderType === 'Dine-In' ? dineInTable?.label : undefined,
-        customerName: orderType === 'Delivery' ? deliveryCustomer?.name : undefined,
-        items: basket.map((b) => ({
-          name: b.item.name,
-          quantity: b.quantity,
-          lineTotal: lineUnitPrice(b) * b.quantity,
-          variantSize: b.variantSize,
-          modifiers: (b.modifiers || []).map((m) => m.optionName),
-        })),
-        subtotal,
-        tax,
-        deliveryFee: orderType === 'Delivery' ? deliveryFeeNum : undefined,
-        total,
-      };
-
-      const response = await api.post('/silent-print', payload);
-      setSilentPrintText(response.data.ticketText);
-    } catch (err) {
-      console.error('Silent print failed:', err);
-      setError('Failed to generate the print ticket.');
+      const saved = await persistOrder();
+      await api.post('/printing/receipt', { orderId: saved.id, copy: true });
+      toast.success('Copy printed');
+    } catch (err: any) {
+      toast.error('Copy not printed', err.response?.data?.error || err.message || 'Check the print helper.');
     } finally {
       setIsPrinting(false);
     }
@@ -846,14 +873,46 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
 
   const deliveryFeeNum = orderType === 'Delivery' ? parseFloat(deliveryFee) || 0 : 0;
 
-  const subtotal = basket.reduce((acc, b) => acc + lineUnitPrice(b) * b.quantity, 0);
-  const tax = subtotal * 0.1;
-  const total = subtotal + tax + deliveryFeeNum;
+  // Totals with the restaurant's tax settings (Settings → Restaurant Info), computed the
+  // same way as the server, so the POS shows exactly what the customer will pay.
+  const ownRate = (menuItemId: number) => {
+    const raw = rawMenuItems.find((r) => r.id === menuItemId)?.countryTax;
+    return raw === null || raw === undefined || raw === '' ? null : Number(raw);
+  };
+  const { subtotal, tax, total } = basketTotals(
+    basket.map((b) => ({ amount: lineUnitPrice(b) * b.quantity, ownRate: ownRate(b.item.id) })),
+    deliveryFeeNum
+  );
   const itemCount = basket.reduce((a, b) => a + b.quantity, 0);
 
   /* ---------- SAVE ORDER ---------- */
 
   const savingRef = useRef(false);
+
+  // Top-right "Dashboard" button: an empty ticket goes straight back; a ticket with
+  // items is saved first as an OPEN order (like Hold — its table stays taken), then
+  // back to the dashboard. Dine-In without a table / Delivery without a customer:
+  // the picker opens first (an open order needs it).
+  const handleBackToDashboard = async () => {
+    if (basket.length === 0) {
+      onClose?.();
+      return;
+    }
+    if (savingRef.current || !readyToSave()) return;
+    savingRef.current = true;
+    setIsSaving(true);
+    setError(null);
+    try {
+      const saved = await persistOrder();
+      toast.success(`Order #${ticketNo} saved`, 'It stays open on the dashboard.');
+      finishTicket(saved.wasNew); // clears the screen and goes back to the dashboard
+    } catch (err: any) {
+      toast.error('Order not saved', err.response?.data?.error || err.response?.data?.message || 'Please try again.');
+    } finally {
+      setIsSaving(false);
+      savingRef.current = false;
+    }
+  };
 
   const handleSaveOrder = async (isPayment: boolean) => {
     // Hard, synchronous guard — impossible to double-fire even on a fast double-click,
@@ -937,14 +996,25 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       const res = await api.post(`/orders/${saved.id}/pay`, { method, amountReceived });
       const payment = res.data?.payment || {};
 
-      let drawerFailed = false;
-      if (method === 'CASH') {
-        try {
-          await api.post('/open-drawer', { printerName: localStorage.getItem('pos_printer_name') || 'POS-80' });
-        } catch {
-          drawerFailed = true; // the payment is saved anyway; the cashier can use the Drawer button
-        }
+      // Receipt through the print helper (directly on the receipt printer); for cash it
+      // also opens the drawer. Not awaited: the cashier never waits for the printer —
+      // a problem shows as a red notification.
+      setLastPaidOrderId(saved.id);
+      refreshTables(); // the paid order's table is free again
+      if (autoPrintEnabled()) {
+        const ticket = res.data?.order?.ticketNo ?? ticketNo;
+        api
+          .post('/printing/receipt', { orderId: saved.id })
+          .then(() => toast.success('Receipt sent to the printer', `Ticket #${ticket}`))
+          .catch((err) => toast.error('Receipt not printed', err.response?.data?.error || 'Check the print helper.'));
+      } else if (method === 'CASH') {
+        api
+          .post('/printing/drawer')
+          .catch((err) => toast.error('Drawer not opened', err.response?.data?.error || 'Check the print helper.'));
       }
+
+      // The drawer opens with the receipt (above); a problem shows as a notification.
+      const drawerFailed = false;
 
       return {
         method,
@@ -1018,19 +1088,18 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       // order instead of creating a second one.
       setCurrentOrderId(savedOrderId);
 
-      const tableRes = await api
-        .get('/tables', { params: { restaurantId: 1 } })
-        .catch(() => ({ data: [] }));
-      const freshTables = Array.isArray(tableRes.data) ? tableRes.data : tableRes.data?.tables || [];
-      if (freshTables.length > 0) {
-        setTables(freshTables);
-      } else if (orderType === 'Dine-In' && dineInTable) {
-        setTables((prev) => prev.map((t) => (t.id === dineInTable.id ? { ...t, status: 'occupied' } : t)));
-      }
+      await refreshTables();
 
       return { id: savedOrderId, wasNew };
     }
   };
+
+  // The table picker always shows the real situation (also tables freed / taken
+  // from another device).
+  useEffect(() => {
+    if (showTablePicker) refreshTables();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTablePicker]);
 
   /* ---------- ORDER TYPE SWITCHING ---------- */
 
@@ -1212,6 +1281,24 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           background: var(--bg-deep);
           border-bottom: 1px solid var(--hairline);
         }
+        .hdr-dash-btn {
+          height: 44px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 16px;
+          border-radius: 12px;
+          border: 1px solid var(--brass-dim);
+          background: var(--panel);
+          color: var(--brass-soft);
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .hdr-dash-btn:hover:not(:disabled) { background: var(--card-hover); }
+        .hdr-dash-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .hdr-icon-btn {
           width: 44px;
           height: 44px;
@@ -1574,6 +1661,24 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         .btn-pay:hover:not(:disabled) { filter: brightness(1.06); }
         .btn-pay:active:not(:disabled) { transform: scale(0.99); }
         .btn-pay:disabled, .btn-hold:disabled { opacity: 0.45; cursor: not-allowed; }
+        /* Delete sits between Hold and Pay (2nd row): same height, red outline */
+        .btn-delete {
+          width: 104px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border-radius: 14px;
+          border: 1px solid var(--danger-line);
+          background: transparent;
+          color: var(--danger-text);
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .btn-delete:hover:not(:disabled) { background: var(--card-hover); }
+        .btn-delete:disabled { opacity: 0.45; cursor: not-allowed; }
 
         /* ---------- DISHES ---------- */
         .menu-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; padding: 20px 24px; }
@@ -2441,11 +2546,6 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
 
       {/* HEADER */}
       <header className="pos-header">
-        {onClose && (
-          <button className="hdr-icon-btn" onClick={onClose} aria-label="Back to dashboard" title="Back to dashboard">
-            <LayoutGrid className="w-5 h-5" />
-          </button>
-        )}
         <div className="brand">
           <div className="brand-mark serif">RES</div>
           <div className="brand-text">
@@ -2487,6 +2587,17 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
+          {onClose && (
+            <button
+              className="hdr-dash-btn"
+              onClick={handleBackToDashboard}
+              disabled={isSaving}
+              title={basket.length ? 'Save this order and go back to the dashboard' : 'Back to the dashboard'}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>{isSaving ? 'Saving…' : basket.length ? 'Save & Dashboard' : 'Dashboard'}</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -2561,7 +2672,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                               <span key={`${m.groupId}-${m.optionId}`}>
                                 {i > 0 ? ' · ' : ''}
                                 {m.optionName}
-                                {m.price > 0 && <em> +${m.price.toFixed(2)}</em>}
+                                {m.price > 0 && <em> +{money(m.price)}</em>}
                               </span>
                             ))}
                             {b.comp && <span className="tl-comp-reason">{mods.length > 0 ? ' · ' : ''}Free: {b.comp.reason}</span>}
@@ -2585,11 +2696,11 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                       <div className="tl-price mono">
                         {b.comp ? (
                           <>
-                            <span className="comp-strike">${fullPriceTotal.toFixed(2)}</span>
+                            <span className="comp-strike">{money(fullPriceTotal)}</span>
                             <span className="comp-free">Free</span>
                           </>
                         ) : (
-                          `$${lineTotal.toFixed(2)}`
+                          money(lineTotal)
                         )}
                       </div>
                     </div>
@@ -2597,7 +2708,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                     {isOpen && (
                       <div className="tl-actions">
                         {/* Unit price only for the tapped line, to keep the list compact */}
-                        <span className="tl-unit mono">${unitPrice.toFixed(2)} each</span>
+                        <span className="tl-unit mono">{money(unitPrice)} each</span>
                         {hasLinkedGroups && (
                           <button className="line-chip" onClick={() => openModifierPicker(b)}>
                             <SlidersHorizontal className="w-4 h-4" />
@@ -2636,7 +2747,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           <div className="ticket-summary">
             <div className="sum-row">
               <span>Subtotal</span>
-              <span className="mono">${subtotal.toFixed(2)}</span>
+              <span className="mono">{money(subtotal)}</span>
             </div>
             {orderType === 'Delivery' && (
               <div className="sum-row">
@@ -2655,12 +2766,12 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
               </div>
             )}
             <div className="sum-row">
-              <span>Tax (10%)</span>
-              <span className="mono">${tax.toFixed(2)}</span>
+              <span>{taxLabel()}</span>
+              <span className="mono">{money(tax)}</span>
             </div>
             <div className="sum-total">
               <span className="sum-total-label">Total</span>
-              <span className="sum-total-value">${total.toFixed(2)}</span>
+              <span className="sum-total-value">{money(total)}</span>
             </div>
           </div>
 
@@ -2668,6 +2779,10 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             <button className="btn-icon-action" onClick={handlePrintCopy} disabled={isPrinting}>
               <Printer className="w-4 h-4" />
               <span>{isPrinting ? 'Printing…' : 'Print'}</span>
+            </button>
+            <button className="btn-icon-action" onClick={handlePreviewReceipt} disabled={basket.length === 0 || isSaving} title="See the receipt as it will be printed">
+              <Eye className="w-4 h-4" />
+              <span>Preview</span>
             </button>
             <button className="btn-icon-action" onClick={handleOpenDrawer} title="Open cash drawer">
               <Archive className="w-4 h-4" />
@@ -2677,15 +2792,6 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
               <RotateCcw className="w-4 h-4" />
               <span>Clear</span>
             </button>
-            <button
-              className="btn-icon-action danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              title="Delete order"
-              disabled={!currentOrderId || isSaving || isDeleting}
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Delete</span>
-            </button>
           </div>
 
           {/* Hold / Pay — always visible at the bottom */}
@@ -2694,9 +2800,18 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
               <Pause className="w-4 h-4" />
               <span>{isSaving ? 'Saving…' : 'Hold'}</span>
             </button>
+            <button
+              className="btn-delete"
+              onClick={() => setShowDeleteConfirm(true)}
+              title="Delete order"
+              disabled={!currentOrderId || isSaving || isDeleting}
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete</span>
+            </button>
             <button className="btn-pay" disabled={basket.length === 0 || isSaving} onClick={() => handleSaveOrder(true)}>
               <span>{isSaving ? 'Processing…' : 'Pay'}</span>
-              <span className="mono">${total.toFixed(2)}</span>
+              <span className="mono">{money(total)}</span>
             </button>
           </div>
         </aside>
@@ -2755,7 +2870,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                         <div className="item-footer">
                           <span className="item-price">
                             {item.hasVariants && <span className="from">From</span>}
-                            ${item.price.toFixed(2)}
+                            {money(item.price)}
                           </span>
                           <span className="item-add" aria-hidden="true">
                             <Plus className="w-4 h-4" />
@@ -2807,11 +2922,21 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           total={total}
           onCancel={() => setShowPayment(false)}
           onConfirm={handleConfirmPayment}
+          onPreview={lastPaidOrderId ? () => setReceiptPreview({ orderId: lastPaidOrderId, copy: false }) : undefined}
           onDone={() => {
             setShowPayment(false);
             // Stay in the POS with a fresh order (always the next ticket number).
             finishTicket(true, true);
           }}
+          onDashboard={
+            onClose
+              ? () => {
+                  setShowPayment(false);
+                  // Paid and printed: clear the ticket and go back to the dashboard.
+                  finishTicket(true, false);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -2846,7 +2971,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                     onClick={() => addToBasket(displayItem, v)}
                   >
                     <span className="size">{v.size}</span>
-                    <span className="price mono">${price.toFixed(2)}</span>
+                    <span className="price mono">{money(price)}</span>
                   </div>
                 );
               })}
@@ -2902,7 +3027,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                               <span className="modifier-option-name">{opt.name}</span>
                             </div>
                             <span className="modifier-option-price">
-                              {price > 0 ? `+$${price.toFixed(2)}` : 'Free'}
+                              {price > 0 ? `+${money(price)}` : 'Free'}
                             </span>
                           </div>
                         );
@@ -2993,6 +3118,11 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         </div>
       )}
 
+      {/* RECEIPT PREVIEW (exactly as printed, from the server) */}
+      {receiptPreview && (
+        <ReceiptPreviewModal orderId={receiptPreview.orderId} copy={receiptPreview.copy} onClose={() => setReceiptPreview(null)} />
+      )}
+
       {/* PRINT PREVIEW */}
       {showPrintPreview && (
         <div className="modal-overlay" onClick={() => setShowPrintPreview(false)}>
@@ -3021,12 +3151,12 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                   <div key={b.cartItemId}>
                     <div className="receipt-line">
                       <span>{b.quantity}&times; {b.item.name}{b.variantSize ? ` (${b.variantSize})` : ''}</span>
-                      <span>{b.comp ? 'COMP' : `$${(lineUnitPrice(b) * b.quantity).toFixed(2)}`}</span>
+                      <span>{b.comp ? 'COMP' : money((lineUnitPrice(b) * b.quantity))}</span>
                     </div>
                     {(b.modifiers || []).map((m) => (
                       <div key={`${m.groupId}-${m.optionId}`} className="receipt-line indent">
                         <span>+ {m.optionName}</span>
-                        <span>{m.price > 0 ? `$${m.price.toFixed(2)}` : ''}</span>
+                        <span>{m.price > 0 ? money(m.price) : ''}</span>
                       </div>
                     ))}
                     {b.comp && (
@@ -3040,12 +3170,12 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
               )}
 
               <div className="receipt-divider" />
-              <div className="receipt-line"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
+              <div className="receipt-line"><span>Subtotal</span><span>{money(subtotal)}</span></div>
               {orderType === 'Delivery' && deliveryFeeNum > 0 && (
-                <div className="receipt-line"><span>Delivery Fee</span><span>${deliveryFeeNum.toFixed(2)}</span></div>
+                <div className="receipt-line"><span>Delivery Fee</span><span>{money(deliveryFeeNum)}</span></div>
               )}
-              <div className="receipt-line"><span>Tax (10%)</span><span>${tax.toFixed(2)}</span></div>
-              <div className="receipt-total-row"><span>Total</span><span>${total.toFixed(2)}</span></div>
+              <div className="receipt-line"><span>{taxLabel()}</span><span>{money(tax)}</span></div>
+              <div className="receipt-total-row"><span>Total</span><span>{money(total)}</span></div>
               <div className="receipt-footer-note">This is a courtesy copy — payment not yet taken</div>
             </div>
 

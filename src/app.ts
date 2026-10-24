@@ -42,6 +42,7 @@ import paymentRoutes from './routes/payments.js';
 import reportRoutes from './routes/reports.js';
 import zReportRoutes from './routes/zReports.js';
 import salesItemRoutes from './routes/salesItems.js';
+import printingRoutes from './routes/printing.js';
 import {
   getRestaurantId,
   assertOrderInRestaurant,
@@ -271,6 +272,15 @@ async function countableStockItem(
   return owned ? { id } : { error: 'The stock item is not a raw material of this restaurant.' };
 }
 
+// A menu item's own tax rate in % ("0" for water…). Empty / invalid → null = the
+// restaurant rate (Settings → Restaurant Info). Kept between 0 and 100.
+function itemTaxRate(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(100, Math.max(0, n)).toFixed(2);
+}
+
 // Create Menu Item
 fastify.post(
   '/api/menu-items',
@@ -333,6 +343,7 @@ fastify.post(
           rawMaterials: body.rawMaterials || [],
           isInventoryTracked,
           stockMaterialId: stockItem.id,
+          countryTax: itemTaxRate(body.countryTax),
         })
         .returning();
 
@@ -470,6 +481,7 @@ fastify.patch(
     if (body.hasVariants !== undefined) updateData.hasVariants = Boolean(body.hasVariants);
     if (body.variantPrices !== undefined) updateData.variantPrices = body.variantPrices;
     if (body.rawMaterials !== undefined) updateData.rawMaterials = body.rawMaterials;
+    if (body.countryTax !== undefined) updateData.countryTax = itemTaxRate(body.countryTax);
     if (body.isInventoryTracked !== undefined || body.stockMaterialId !== undefined) {
       const isInventoryTracked = Boolean(body.isInventoryTracked ?? existing.isInventoryTracked);
       const stockItem = await countableStockItem(
@@ -872,6 +884,7 @@ fastify.register(paymentRoutes);
 fastify.register(reportRoutes);
 fastify.register(zReportRoutes);
 fastify.register(salesItemRoutes);
+fastify.register(printingRoutes);
 
 
 

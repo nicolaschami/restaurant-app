@@ -23,6 +23,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { api } from '../api';
+import { money } from '../lib/restaurantSettings';
 import ItemMovementModal from '../components/ItemMovementModal';
 
 type StockStatus = 'OK' | 'LOW' | 'OUT';
@@ -51,12 +52,10 @@ const STATUS_INFO: Record<StockStatus, { label: string; badge: string; order: nu
   OK: { label: 'OK', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', order: 2 },
 };
 
-const money = (v: number) =>
-  `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Money in the restaurant's currency (Settings → Restaurant Info).
 
 // Unit prices can have 3 decimals (e.g. $0.495 per kg): keep them, don't round to $0.50.
-const unitPrice = (v: number) =>
-  `${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+const unitPrice = (v: number) => money(v, 3);
 
 // Quantities: up to 3 decimals, but no useless zeros (22, 4.5, 0.125).
 const qty = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 3 });

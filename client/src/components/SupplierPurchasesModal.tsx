@@ -40,8 +40,9 @@ interface PurchasedItem {
   amountReturned: number;
 }
 
-export const money = (v: number) =>
-  `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Money in the restaurant's currency (Settings → Restaurant Info).
+import { money } from '../lib/restaurantSettings';
+export { money };
 
 // A return takes money back: show it negative.
 const signed = (d: PurchaseDoc, v: number) => (d.kind === 'RP' ? -v : v);

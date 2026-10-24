@@ -6,6 +6,8 @@ import { db } from '../db';
 import { orders, orderItems, menuItems, restaurantTables } from '../db/schema';
 import { eq, max, inArray, sql, and, ne } from 'drizzle-orm';
 import { getRestaurantId, assertOrderInRestaurant } from '../lib/tenant.js';
+import { computeOrderTotals } from '../lib/orderTotals.js';
+import { syncTables } from '../lib/tables.js';
 
 interface OrderItemInput {
   menuItemId: number;
@@ -146,8 +148,14 @@ fastify.post('/api/orders', async (request, reply) => {
         };
       });
 
-      const finalTotalAmount =
-        total != null ? Number(total).toFixed(2) : computedGrandTotal.toFixed(2);
+      // Totals from the restaurant's tax settings (not from the screen's numbers).
+      const totals = await computeOrderTotals(
+        tx,
+        restaurantId,
+        preparedItems.map((p) => ({ menuItemId: p.menuItemId, amount: Number(p.subtotal) })),
+        orderType && String(orderType).toLowerCase().includes('deliver') ? Number(body.deliveryFee ?? 0) : 0
+      );
+      const finalTotalAmount = totals.total.toFixed(2);
 
       // 3. Sequential ticket number generation
       const maxTicketResult = await tx
@@ -166,6 +174,9 @@ fastify.post('/api/orders', async (request, reply) => {
           ticketNo: nextTicketNo,
           tableId: tableId ? Number(tableId) : null,
           totalAmount: finalTotalAmount,
+          subtotalAmount: totals.subtotal.toFixed(2),
+          taxAmount: totals.tax.toFixed(2),
+          deliveryFee: totals.deliveryFee.toFixed(2),
           notes:notes,
           status: orderStatus ?? 'open',
           // FIX: this was missing entirely. GET /api/kds/active filters on
@@ -181,13 +192,8 @@ fastify.post('/api/orders', async (request, reply) => {
         .returning();
 
       // 5. Update Table Status to 'occupied' (if tableId is provided)
-      if (tableId) {
-        await tx
-          .update(restaurantTables)
-          .set({ status: tableStatus ?? 'occupied' })
-          // Only a table of this restaurant can be marked occupied.
-          .where(and(eq(restaurantTables.id, Number(tableId)), eq(restaurantTables.restaurantId, restaurantId)));
-      }
+      // Table status = the rule "occupied while it has an open order" (lib/tables.ts).
+      await syncTables(tx, restaurantId, [tableId ? Number(tableId) : null]);
 
       // 6. Insert Order Items (includes variantSize)
       const itemsToInsert = preparedItems.map((item) => ({
@@ -571,7 +577,8 @@ fastify.put('/api/orders/:id', async (request, reply) => {
   }
 
   // Only the user's own restaurant's orders can be updated (another restaurant's → 404).
-  await assertOrderInRestaurant(orderId, getRestaurantId(request));
+  const restaurantId = getRestaurantId(request);
+  await assertOrderInRestaurant(orderId, restaurantId);
 
   try {
     const result = await db.transaction(async (tx) => {
@@ -779,11 +786,26 @@ fastify.put('/api/orders/:id', async (request, reply) => {
       // 4. Update order header
       const newKdsStatus = newlyFiredCount > 0 ? 'PARTIAL_FIRE' : currentOrder.kdsStatus;
 
+      // Totals of the new basket, from the restaurant's tax settings.
+      const typeAfter = String(body.orderType ?? currentOrder.orderType ?? '').toLowerCase();
+      const totals = await computeOrderTotals(
+        tx,
+        restaurantId,
+        (body.items || []).map((it: any) => ({
+          menuItemId: Number(it.menuItemId),
+          amount: it.lineTotal != null ? Number(it.lineTotal) : Number(it.quantity || 0) * Number(it.unitPrice || 0),
+        })),
+        typeAfter.includes('deliver') ? Number(body.deliveryFee ?? 0) : 0
+      );
+
       const [updatedOrder] = await tx
         .update(orders)
         .set({
           orderType: body.orderType ?? currentOrder.orderType,
-          totalAmount: String(body.total),
+          totalAmount: totals.total.toFixed(2),
+          subtotalAmount: totals.subtotal.toFixed(2),
+          taxAmount: totals.tax.toFixed(2),
+          deliveryFee: totals.deliveryFee.toFixed(2),
           notes:body.notes,
           deliveryAddress: body.customerAddress ?? currentOrder.deliveryAddress,
           customerName: body.customerName ?? currentOrder.customerName,
@@ -797,13 +819,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
         .where(eq(orders.id, orderId))
         .returning();
 
-      // 5. Update Table Status
-      if (updatedOrder.tableId) {
-        await tx
-          .update(restaurantTables)
-          .set({ status: body.tableStatus ?? 'occupied' })
-          .where(eq(restaurantTables.id, updatedOrder.tableId));
-      }
+      // 5. Table status: the table it was on AND the one it is on now (moving an order
+      // to another table frees the old one) — rule "occupied while it has an open order".
+      await syncTables(tx, restaurantId, [currentOrder.tableId, updatedOrder.tableId]);
 
       // 6. Insert new split-line add-on items (if any)
       let insertedNewItems: any[] = [];
@@ -977,7 +995,8 @@ fastify.put('/api/orders/:id', async (request, reply) => {
     }
 
     // Only the user's own restaurant's orders can be deleted.
-    await assertOrderInRestaurant(itemId, getRestaurantId(request));
+    const restaurantId = getRestaurantId(request);
+    await assertOrderInRestaurant(itemId, restaurantId);
 
     try {
       const [deletedItem] = await db
@@ -988,6 +1007,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
       if (!deletedItem) {
         return reply.status(404).send({ error: 'Order not found.' });
       }
+
+      // Its table is free again (unless another open order is on it).
+      await syncTables(db, restaurantId, [deletedItem.tableId]);
 
       return reply.send({
         message: 'order  deleted successfully.',

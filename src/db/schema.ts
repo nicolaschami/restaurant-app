@@ -279,7 +279,7 @@ export const users = pgTable('users', {
     position: integer('position').notNull().default(0), // 👈 Add position field
     createdAt: timestamp('created_at').defaultNow(),
     // Add these columns inside menuItems table in db/schema.ts
-countryTax: numeric('country_tax', { precision: 5, scale: 2 }).default('0.00'), // e.g., 15.00 for 15%
+countryTax: numeric('country_tax', { precision: 5, scale: 2 }), // own tax rate in % (e.g. 0 for water); NULL = restaurant rate
 ingredients: text('ingredients'), // Raw materials / ingredients list
 isInventoryTracked: boolean('is_inventory_tracked').default(false), // "Countable" box: each sale takes 1 of stockMaterialId out of stock
 stockMaterialId: integer('stock_material_id'), // raw material a Countable item is sold from (e.g. Pepsi can)
@@ -303,6 +303,10 @@ export const orders = pgTable('orders', {
     tableId: integer('table_id'),
     status: varchar('status', { length: 20 }).default('open'),
     totalAmount: numeric('total_amount', { precision: 10, scale: 2 }).default('0.00'),
+    // Split of the total (2026-10-25), computed by the server from the restaurant's tax settings:
+    subtotalAmount: numeric('subtotal_amount', { precision: 10, scale: 2 }), // items (menu prices)
+    taxAmount: numeric('tax_amount', { precision: 10, scale: 2 }),           // tax of the items
+    deliveryFee: numeric('delivery_fee', { precision: 10, scale: 2 }),       // delivery fee (no tax)
     createdAt: timestamp('created_at').defaultNow(),
     serverId: integer('server_id').references(() => users.id, { onDelete: 'set null' }),
     cashierId: integer('cashier_id').references(() => users.id, { onDelete: 'set null' }),
@@ -387,6 +391,14 @@ export const restaurants = pgTable('restaurants', {
   receipt_header: text('receipt_header'),
   receipt_footer: text('receipt_footer'),
   tax_number: varchar('tax_number', { length: 50 }),
+  // Tax settings (2026-10-25): rate in %, its name on the receipt, and whether the
+  // menu prices already include it (false = added on top).
+  tax_rate: numeric('tax_rate', { precision: 5, scale: 2 }).notNull().default('0'),
+  tax_name: varchar('tax_name', { length: 30 }).notNull().default('VAT'),
+  prices_include_tax: boolean('prices_include_tax').notNull().default(false),
+  // Printers used through the print helper (Settings → Printers, 2026-10-25)
+  receipt_printer: varchar('receipt_printer', { length: 120 }),
+  drawer_printer: varchar('drawer_printer', { length: 120 }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

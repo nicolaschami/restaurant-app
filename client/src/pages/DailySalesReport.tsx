@@ -22,6 +22,8 @@ interface Summary {
   itemsTotal: number;
   taxAndFees: number;
   cashTotal: number;
+  tax?: number; // apart since 2026-10-25
+  deliveryFees?: number;
 }
 interface Group {
   count: number;
@@ -114,7 +116,8 @@ export default function DailySalesReport() {
       [],
       ['Net sales (total paid)', s.totalPaid.toFixed(2)],
       ['Items (before tax)', s.itemsTotal.toFixed(2)],
-      ['Tax & fees', s.taxAndFees.toFixed(2)],
+      ['Tax', (s.tax ?? s.taxAndFees).toFixed(2)],
+      ['Delivery fees', (s.deliveryFees ?? 0).toFixed(2)],
       ['Tickets', s.tickets],
       ['Average ticket', avg.toFixed(2)],
       ['Cash in the drawer', s.cashTotal.toFixed(2)],
@@ -158,7 +161,8 @@ export default function DailySalesReport() {
       <div class="sub">Daily Sales · ${esc(periodText)}<br/>printed ${new Date().toLocaleString()}</div>
       <table>${rows([
         ['Items (before tax)', money(s.itemsTotal)],
-        ['Tax & fees', money(s.taxAndFees)],
+        ['Tax', money(s.tax ?? s.taxAndFees)],
+        ...((s.deliveryFees ?? 0) > 0 ? ([['Delivery fees', money(s.deliveryFees!)]] as Array<[string, string]>) : []),
       ])}<tr class="b"><td>Net sales</td><td class="n">${money(s.totalPaid)}</td></tr>${rows([
         ['Tickets', String(s.tickets)],
         ['Average ticket', money(avg)],
@@ -284,7 +288,7 @@ export default function DailySalesReport() {
         <>
           {/* 4 numbers */}
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            <Tile label="Net sales" value={money(s.totalPaid)} sub={`items ${money(s.itemsTotal)} + tax & fees ${money(s.taxAndFees)}`} tone="text-emerald-700" />
+            <Tile label="Net sales" value={money(s.totalPaid)} sub={`items ${money(s.itemsTotal)} · tax ${money(s.tax ?? s.taxAndFees)}${s.deliveryFees ? ` · delivery ${money(s.deliveryFees)}` : ''}`} tone="text-emerald-700" />
             <Tile label="Tickets" value={String(s.tickets)} sub={data.open.count ? `${data.open.count} still open (${money(data.open.amount)})` : 'no open order'} tone="text-slate-800" />
             <Tile label="Average ticket" value={money(avg)} tone="text-slate-800" />
             <Tile label="Cash in the drawer" value={money(s.cashTotal)} sub="cash payments (change already given back)" tone="text-[#8a6d2c]" />
@@ -358,8 +362,8 @@ export default function DailySalesReport() {
       )}
 
       <p className="text-[11px] text-slate-500">
-        A sale = a paid order, on the day it was paid. "Tax &amp; fees" = total paid − items (the 10% tax and delivery fees
-        are not saved apart yet). This report changes nothing: the real closing (Z) comes next.
+        A sale = a paid order, on the day it was paid. Tax and delivery fees are saved apart for orders made since 25/10/2026 (older
+        orders: everything above the items counts as tax). This report changes nothing: the real closing (Z) comes next.
       </p>
 
       {openTicket !== null && <TicketDetailModal orderId={openTicket} onClose={() => setOpenTicket(null)} />}

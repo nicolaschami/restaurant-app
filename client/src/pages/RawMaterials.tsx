@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { money } from '../lib/restaurantSettings';
 import { api } from '../api';
 import { Search, Pencil, Trash2, X } from 'lucide-react';
 // --- Types ---
@@ -252,7 +253,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
                   <td className="px-4 py-3 text-gray-600 price-font">{item.code || '-'}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
                   <td className="px-4 py-3 text-gray-600">{item.unit}</td>
-                  <td className="px-4 py-3 text-[#1c1917] price-font font-semibold">${item.costPrice}</td>
+                  <td className="px-4 py-3 text-[#1c1917] price-font font-semibold">{money(Number(item.costPrice) || 0, 3)}</td>
                   <td className="px-4 py-3 price-font font-semibold">
                     <span className={isLow ? 'text-red-600' : 'text-gray-900'}>{item.currentStock}</span>
                     {isLow && (

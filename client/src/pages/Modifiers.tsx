@@ -1,4 +1,5 @@
 import React, { useState, useEffect, type FormEvent } from 'react';
+import { currencySymbol } from '../lib/restaurantSettings';
 import {
   Plus,
   Search,
@@ -610,7 +611,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
                       className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]"
                     />
                     <div className="w-28 relative">
-                      <span className="absolute left-3 top-2 text-slate-400 text-sm price-font">$</span>
+                      <span className="absolute left-3 top-2 text-slate-400 text-sm price-font">{currencySymbol()}</span>
                       <input
                         type="number"
                         step="0.01"

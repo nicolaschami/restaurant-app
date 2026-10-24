@@ -136,8 +136,8 @@ export default function SidebarLayout({
   const settingSubItems = [
     { id: 'tables', label: 'Tables', icon: Table2 },
     { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents },
-    { id: 'print', label: 'Print Test page', icon: Printer },
     { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
+    { id: 'printers', label: 'Printers', icon: Printer },
   ];
 
   // Full Reports Hierarchy (the plan). Only the reports listed in READY_REPORTS

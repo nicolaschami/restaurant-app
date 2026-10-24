@@ -1,4 +1,5 @@
 import React, { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
+import { currencySymbol, money, settings as restaurantTax } from '../lib/restaurantSettings';
 import Select from 'react-select';
 import {
   Plus, Search, X, AlertCircle, ImageIcon, Tag, CheckCircle2, XCircle,
@@ -276,7 +277,8 @@ export default function Products({ onLogout }: ProductsProps) {
   const [description, setDescription] = useState('');
   const [isAvailable, setIsAvailable] = useState(true);
   const [selectedModifierIds, setSelectedModifierIds] = useState<number[]>([]);
-  const [countryTax, setCountryTax] = useState<string>('0.00');
+  // The item's own tax rate in % ('' = the restaurant rate, e.g. '0' for water).
+  const [countryTax, setCountryTax] = useState<string>('');
   const [isInventoryTracked, setIsInventoryTracked] = useState<boolean>(false);
   // Countable items (e.g. a Pepsi can) are sold from ONE raw material: 1 per sale.
   const [stockMaterialId, setStockMaterialId] = useState<number | null>(null);
@@ -446,6 +448,7 @@ export default function Products({ onLogout }: ProductsProps) {
       setImagePreviews(item.images || []);
       const itemHasVariants = Boolean(item.hasVariants);
       setHasVariants(itemHasVariants);
+      setCountryTax((item as any).countryTax === null || (item as any).countryTax === undefined ? '' : String(Number((item as any).countryTax)));
       setIsInventoryTracked(Boolean(item.isInventoryTracked));
       setStockMaterialId(item.stockMaterialId ?? null);
       // Manual cost = the saved cost is not the sum of the ingredients (typed by hand,
@@ -488,6 +491,7 @@ export default function Products({ onLogout }: ProductsProps) {
       setPriceDineIn('0.00'); setPriceTakeaway('0.00'); setPriceDelivery('0.00'); setPriceWaiter('0.00'); setCostPrice('0.00');
       setDescription(''); setIsAvailable(true); setImagePreviews([]); setSelectedModifierIds([]); setRawMaterials([]);
       setHasVariants(false);
+      setCountryTax('');
       setIsInventoryTracked(false);
       setStockMaterialId(null);
       setIsManualCost(false);
@@ -551,6 +555,7 @@ export default function Products({ onLogout }: ProductsProps) {
         rawMaterials: rawMaterials.map((rm) => ({ materialId: rm.materialId, name: rm.name, cost: parseCost(rm.unitCost), quantity: parseCost(rm.quantity), totalCost: parseCost(rm.totalCost) })),
         hasVariants: Boolean(hasVariants),
         isInventoryTracked: Boolean(isInventoryTracked),
+        countryTax: countryTax.trim() === '' ? null : Number(countryTax), // null = restaurant rate
         stockMaterialId: isInventoryTracked ? stockMaterialId : null,
         variantPrices: hasVariants ? variants.map((v) => ({ size: (v.size ?? '').trim(), dineIn: parseCost(v.dineIn), takeaway: parseCost(v.takeaway), delivery: parseCost(v.delivery), waiter: parseCost(v.waiter) })) : [],
       };
@@ -728,8 +733,8 @@ export default function Products({ onLogout }: ProductsProps) {
                           <td className="px-4 py-4">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600"><Tag size={12} />{catName}</span>
                           </td>
-                          <td className="px-4 py-4 price-font font-semibold text-[#1c1917]">${parseCost(item.priceDineIn).toFixed(2)}</td>
-                          <td className="px-4 py-4 price-font font-semibold text-[#1c1917]">${parseCost(item.priceTakeaway).toFixed(2)}</td>
+                          <td className="px-4 py-4 price-font font-semibold text-[#1c1917]">{money(parseCost(item.priceDineIn))}</td>
+                          <td className="px-4 py-4 price-font font-semibold text-[#1c1917]">{money(parseCost(item.priceTakeaway))}</td>
                           <td className="px-4 py-4">
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-[#8a3f16] bg-[#fdece1] border border-[#f0c9a6] px-2 py-0.5 rounded-md">
                               <Layers size={12} className="text-[#b5541f]" />
@@ -791,11 +796,11 @@ export default function Products({ onLogout }: ProductsProps) {
                         <div className="mt-3 space-y-1 text-xs price-font">
                           <div className="flex justify-between">
                             <span className="text-slate-500 font-sans">Dine-In:</span>
-                            <span className="font-semibold text-[#1c1917]">${(item.hasVariants && item.variantPrices?.[0] ? Number(item.variantPrices[0].dineIn) : Number(item.priceDineIn ?? 0)).toFixed(2)}</span>
+                            <span className="font-semibold text-[#1c1917]">{money(item.hasVariants && item.variantPrices?.[0] ? Number(item.variantPrices[0].dineIn) : Number(item.priceDineIn ?? 0))}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500 font-sans">Takeaway:</span>
-                            <span className="font-semibold text-[#1c1917]">${(item.hasVariants && Array.isArray(item.variantPrices) && item.variantPrices.length > 0 ? Number((item.variantPrices[0] as any)?.priceTakeaway ?? (item.variantPrices[0] as any)?.takeaway ?? 0) : Number(item.priceTakeaway ?? 0)).toFixed(2)}</span>
+                            <span className="font-semibold text-[#1c1917]">{money(item.hasVariants && Array.isArray(item.variantPrices) && item.variantPrices.length > 0 ? Number((item.variantPrices[0] as any)?.priceTakeaway ?? (item.variantPrices[0] as any)?.takeaway ?? 0) : Number(item.priceTakeaway ?? 0))}</span>
                           </div>
                         </div>
                       </div>
@@ -907,8 +912,8 @@ export default function Products({ onLogout }: ProductsProps) {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Country Tax (%)</label>
-                      <input type="number" step="0.01" value={countryTax} onChange={(e) => setCountryTax(e.target.value)} placeholder="e.g. 15.00" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs price-font outline-none focus:border-[#c2621f]" />
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Tax rate (%) <span className="font-normal text-slate-400">· empty = restaurant rate</span></label>
+                      <input type="number" step="0.01" min="0" max="100" value={countryTax} onChange={(e) => setCountryTax(e.target.value)} placeholder={`Restaurant rate (${restaurantTax.taxRate}%)`} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs price-font outline-none focus:border-[#c2621f]" />
                     </div>
                     <div className="flex flex-col justify-end">
                       <label htmlFor="is_inventory_tracked" className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 py-2">
@@ -1022,7 +1027,7 @@ export default function Products({ onLogout }: ProductsProps) {
                             </div>
                             <div className="col-span-2 flex items-center justify-center">
                               <div className="relative w-full max-w-[80px]">
-                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 price-font pointer-events-none">$</span>
+                                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 price-font pointer-events-none">{currencySymbol()}</span>
                                 <input type="number" step="0.01" min="0" value={mat.unitCost ?? ''} onChange={(e) => { const newUnitCost = parseFloat(e.target.value) || 0; const qty = parseFloat(String((mat as any).quantity ?? 0)) || 0; mat.unitCost = e.target.value; mat.totalCost = (newUnitCost * qty).toFixed(2); setRawMaterials([...rawMaterials]); }} placeholder="0.00" className="w-full pl-4 pr-1 py-0.5 text-xs price-font font-medium text-slate-700 bg-white border border-slate-200 rounded focus:border-[#c2621f] focus:ring-1 focus:ring-[#c2621f] outline-none text-right" />
                               </div>
                             </div>
@@ -1030,7 +1035,7 @@ export default function Products({ onLogout }: ProductsProps) {
                               <input type="number" step="0.01" min="0" value={mat.quantity} onChange={(e) => { const qty = parseCost(e.target.value); const unitCost = parseCost(mat.unitCost); const updated = [...rawMaterials]; updated[mIdx].quantity = e.target.value; updated[mIdx].totalCost = unitCost * qty; setRawMaterials(updated); if (!isManualCost) setCostPrice(updated.reduce((sum, item) => sum + (parseCost(item.totalCost) || 0), 0).toFixed(2)); }} placeholder="Qty" className="w-full border border-slate-200 rounded px-1 py-1 text-xs price-font text-center outline-none focus:border-[#c2621f]" />
                             </div>
                             <div className="col-span-2 text-center">
-                              <span className="text-xs price-font font-bold text-[#1c1917]">${parseCost(mat.totalCost).toFixed(2)}</span>
+                              <span className="text-xs price-font font-bold text-[#1c1917]">{money(parseCost(mat.totalCost))}</span>
                             </div>
                             <div className="col-span-1 text-center">
                               <button type="button" onClick={() => { const updated = rawMaterials.filter((_, i) => i !== mIdx); setRawMaterials(updated); if (!isManualCost) setCostPrice(updated.reduce((sum, item) => sum + (parseCost(item.totalCost) || 0), 0).toFixed(2)); }} className="text-slate-300 hover:text-rose-500 p-1 rounded transition"><X size={14} /></button>
@@ -1042,7 +1047,7 @@ export default function Products({ onLogout }: ProductsProps) {
                     <div className="flex items-center justify-between pt-2 border-t border-slate-200/80">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-slate-600">Total Material Cost:</span>
-                        <span className="text-xs price-font font-bold text-[#1c1917]">${calculatedRawCost.toFixed(2)}</span>
+                        <span className="text-xs price-font font-bold text-[#1c1917]">{money(calculatedRawCost)}</span>
                       </div>
                       <label htmlFor="manual_cost_toggle" className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-500">
                         <input type="checkbox" id="manual_cost_toggle" checked={isManualCost} onChange={(e) => { const checked = e.target.checked; setIsManualCost(checked); if (!checked) setCostPrice(calculatedRawCost.toFixed(2)); }} className="w-3.5 h-3.5 text-[#c2621f] rounded border-slate-300 cursor-pointer" />

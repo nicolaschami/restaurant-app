@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { currencySymbol, money as formatMoney } from '../lib/restaurantSettings';
 
 // ==========================================================================
 // PaymentModal — "Take payment" window of the POS (USD only).
@@ -35,6 +36,8 @@ interface PaymentModalProps {
   // Throws an Error with a readable message when it fails.
   onConfirm: (method: PaymentMethod, amountReceived: number) => Promise<PaymentResult>;
   onDone: () => void; // "New order" after a successful payment
+  onPreview?: () => void; // "Preview receipt" after a successful payment
+  onDashboard?: () => void; // "Dashboard" after a successful payment (leave the POS)
 }
 
 const METHODS: { id: PaymentMethod; label: string; hint: string }[] = [
@@ -48,9 +51,10 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'];
 
 // Money in whole cents, so 0.1 + 0.2 never shows 0.30000000004.
 const toCents = (n: number) => Math.round(n * 100);
-const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+// Money in the restaurant's currency (Settings → Restaurant Info); amounts here are in cents.
+const money = (cents: number) => formatMoney(cents / 100);
 
-export default function PaymentModal({ orderLabel, total, onCancel, onConfirm, onDone }: PaymentModalProps) {
+export default function PaymentModal({ orderLabel, total, onCancel, onConfirm, onDone, onPreview, onDashboard }: PaymentModalProps) {
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [entered, setEntered] = useState(''); // what the cashier typed, e.g. "50" or "30.5"
   const [busy, setBusy] = useState(false);
@@ -76,7 +80,7 @@ export default function PaymentModal({ orderLabel, total, onCancel, onConfirm, o
     return values
       .filter((v) => v >= total && !seen.has(toCents(v)) && seen.add(toCents(v)))
       .slice(0, 4)
-      .map((v, i) => ({ label: i === 0 ? 'Exact' : `$${v}`, value: v }));
+      .map((v, i) => ({ label: i === 0 ? 'Exact' : formatMoney(v), value: v }));
   })();
 
   const press = (key: string) => {
@@ -130,15 +134,29 @@ export default function PaymentModal({ orderLabel, total, onCancel, onConfirm, o
             <p className="pay-done-method">
               {result.method === 'CASH' ? 'Paid by cash' : `Paid by ${METHODS.find((m) => m.id === result.method)?.label}`}
               {' · '}
-              <span className="mono">${result.amountDue}</span>
+              <span className="mono">{formatMoney(Number(result.amountDue))}</span>
             </p>
             {result.method === 'CASH' && (
               <div className={`pay-change ${Number(result.changeGiven) > 0 ? 'give' : 'exact'}`}>
                 <span>{Number(result.changeGiven) > 0 ? 'GIVE BACK' : 'EXACT AMOUNT'}</span>
-                <b className="mono">{Number(result.changeGiven) > 0 ? `$${result.changeGiven}` : 'No change'}</b>
+                <b className="mono">{Number(result.changeGiven) > 0 ? formatMoney(Number(result.changeGiven)) : 'No change'}</b>
               </div>
             )}
             {result.drawerFailed && <p className="pay-warn">The cash drawer did not open — open it from the Drawer button.</p>}
+            {(onPreview || onDashboard) && (
+              <div className="pay-done-actions">
+                {onPreview && (
+                  <button type="button" className="pay-secondary" onClick={onPreview}>
+                    Preview receipt
+                  </button>
+                )}
+                {onDashboard && (
+                  <button type="button" className="pay-secondary" onClick={onDashboard}>
+                    Dashboard
+                  </button>
+                )}
+              </div>
+            )}
             <button type="button" className="pay-primary" onClick={onDone} autoFocus>
               New order
             </button>
@@ -179,7 +197,7 @@ export default function PaymentModal({ orderLabel, total, onCancel, onConfirm, o
                 <div className="pay-cash-left">
                   <div className="pay-received">
                     <span>RECEIVED</span>
-                    <b className="mono">{entered === '' ? '$0.00' : `$${entered}`}</b>
+                    <b className="mono">{entered === '' ? formatMoney(0) : `${currencySymbol()}${entered}`}</b>
                   </div>
                   <div className="pay-quick">
                     {quick.map((q) => (
@@ -302,6 +320,8 @@ const PaymentStyles = () => (
       background: var(--pay-bg); color: var(--on-pay); font-size: 16px; font-weight: 800; cursor: pointer; }
     .pay-primary:disabled { background: var(--card); color: var(--muted-2); cursor: not-allowed; }
     .pay-secondary:disabled { opacity: .5; cursor: not-allowed; }
+    .pay-done-actions { display: flex; gap: 10px; justify-content: center; width: 100%; max-width: 360px; }
+    .pay-done-actions .pay-secondary { flex: 1; }
     .pay-done { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 8px; text-align: center; }
     .pay-done-icon { width: 64px; height: 64px; border-radius: 999px; display: grid; place-items: center;
       background: #4C7A5E; color: #fff; font-size: 30px; font-weight: 800; }

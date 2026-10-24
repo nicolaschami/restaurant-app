@@ -4,6 +4,15 @@ import path from 'path';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
 
+// Only pictures can be uploaded (V1 security item, 2026-10-25): JPG, PNG, WEBP, GIF.
+// SVG is refused on purpose (it can contain scripts). Size limit: see app.ts (10 MB).
+const PICTURE_TYPES: Record<string, string[]> = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+  'image/gif': ['.gif'],
+};
+
 export default async function uploadRoutes(fastify: FastifyInstance) {
   fastify.post('/api/upload', async (request, reply) => {
     // Acquire uploaded files stream
@@ -18,11 +27,23 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
 
     for await (const part of parts) {
       if (part.file) {
-        const uniqueFilename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(part.filename)}`;
+        // Picture type AND matching extension, otherwise the whole upload is refused.
+        const ext = path.extname(part.filename || '').toLowerCase();
+        const allowed = PICTURE_TYPES[String(part.mimetype || '').toLowerCase()];
+        if (!allowed || !allowed.includes(ext)) {
+          part.file.resume(); // throw the file away
+          return reply.status(400).send({ message: 'Only pictures can be uploaded: JPG, PNG, WEBP or GIF.' });
+        }
+        const uniqueFilename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
         const saveTo = path.join(uploadDir, uniqueFilename);
 
         // Save file to disk
         await pipeline(part.file, fs.createWriteStream(saveTo));
+        // Bigger than the limit: the file was cut → remove it and refuse.
+        if ((part.file as any).truncated) {
+          fs.rmSync(saveTo, { force: true });
+          return reply.status(400).send({ message: 'The picture is too big (10 MB maximum).' });
+        }
 
         // Construct accessible image URL
         const fileUrl = `${request.protocol}://${request.host}/uploads/${uniqueFilename}`;

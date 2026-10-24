@@ -27,6 +27,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { getRestaurantId } from '../lib/tenant.js';
 import { openOrders, restaurantTimeZone, salesSnapshot } from '../lib/salesSnapshot.js';
+import { formatMoney, restaurantCurrency } from '../lib/money.js';
 
 class ZError extends Error {
   constructor(public statusCode: number, message: string) {
@@ -169,8 +170,9 @@ export default async function zReportRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Enter the cash taken out of the drawer (0 if none).' });
     }
     if (takenCents > countedCents) {
+      const cur = await restaurantCurrency(restaurantId);
       return reply.status(400).send({
-        error: `You cannot take out $${fromCents(takenCents)}: only $${fromCents(countedCents)} was counted in the drawer.`,
+        error: `You cannot take out ${formatMoney(takenCents / 100, cur)}: only ${formatMoney(countedCents / 100, cur)} was counted in the drawer.`,
       });
     }
     const leftCents = countedCents - takenCents;
