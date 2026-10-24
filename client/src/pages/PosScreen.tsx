@@ -19,7 +19,6 @@ function warnKitchen(results: { station: string; kind: string; ok: boolean; erro
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 import SwitchUserModal from '../components/SwitchUserModal';
 import { ROLE_LABEL, me, setMe } from '../lib/session';
-import { generateReceiptPDF } from '../services/pdfService';
 import {
   Coffee,
   Wine,
