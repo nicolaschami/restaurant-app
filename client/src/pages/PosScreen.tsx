@@ -353,7 +353,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   // a save, after a payment, and every time the table picker opens.
   const refreshTables = async () => {
     try {
-      const res = await api.get('/tables', { params: { restaurantId: 1 } });
+      const res = await api.get('/tables');
       const rows = Array.isArray(res.data) ? res.data : res.data?.tables || [];
       if (rows.length) setTables(toPosTables(rows));
     } catch {
@@ -382,18 +382,18 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         setError(null);
 
         const [catRes, itemRes, modRes, tableRes, customerRes] = await Promise.all([
-          api.get('/categories', { params: { restaurantId: 1 } }),
+          api.get('/categories'),
           api
             .get('/menu-items', { params: { restaurant_id: 1, limit: 2000 } })
             .catch(() => ({ data: [] })),
           api
-            .get('/modifier-groups', { params: { restaurantId: 1 } })
+            .get('/modifier-groups')
             .catch(() => ({ data: [] })),
           api
-            .get('/tables', { params: { restaurantId: 1 } })
+            .get('/tables')
             .catch(() => ({ data: generateMockTables() })),
           api
-            .get('/customers', { params: { restaurantId: 1 } })
+            .get('/customers')
             .catch(() => ({ data: [] })),
         ]);
 
@@ -1054,7 +1054,6 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   const persistOrder = async (): Promise<{ id: number; wasNew: boolean }> => {
     {
       const orderPayload = {
-        restaurantId: 1,
         ticketNo,
         orderStatus: 'open',
         tableStatus: 'occupied',

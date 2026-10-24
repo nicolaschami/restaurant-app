@@ -45,8 +45,10 @@ export default async function uploadRoutes(fastify: FastifyInstance) {
           return reply.status(400).send({ message: 'The picture is too big (10 MB maximum).' });
         }
 
-        // Construct accessible image URL
-        const fileUrl = `${request.protocol}://${request.host}/uploads/${uniqueFilename}`;
+        // The picture's address WITHOUT the machine's name (cloud-ready, 2026-10-26):
+        // "/uploads/x.png" works on the dev PC, the VPS, behind IIS or a domain.
+        // (Before, it stored http://127.0.0.1:3000/uploads/… — broken on any other machine.)
+        const fileUrl = `/uploads/${uniqueFilename}`;
         urls.push(fileUrl);
       }
     }

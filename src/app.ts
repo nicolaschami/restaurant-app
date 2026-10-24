@@ -2,6 +2,7 @@ import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import { WebSocket } from 'ws';
 import path from 'path';
+import fs from 'fs';
 import 'dotenv/config';
 import fastifyJwt from '@fastify/jwt';
 import cors from '@fastify/cors';
@@ -126,9 +127,23 @@ fastify.register(cors, {
   credentials: true,
 });
 
+// --- Login tokens (JWT) — cloud-ready (2026-10-26) ---
+// The secret that signs every login comes from .env (JWT_SECRET). On the server
+// (NODE_ENV=production) RES refuses to start without one: with the old default
+// written in the code, anyone could make a fake login.
+// A token is valid JWT_EXPIRES (default 7 days) and is RENEWED quietly once a day
+// while it is used (see the guard below) — so a POS or kitchen screen in service is
+// never logged out, and a PC that is not used for a week has to log in again.
+const JWT_SECRET = process.env.JWT_SECRET || '';
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('JWT_SECRET is missing in .env — RES will not start without it.');
+  process.exit(1);
+}
 fastify.register(fastifyJwt, {
-  secret: process.env.JWT_SECRET || 'super-secret-key-change-me-in-prod',
+  secret: JWT_SECRET || 'super-secret-key-change-me-in-prod', // dev PC only (refused in production)
+  sign: { expiresIn: process.env.JWT_EXPIRES || '7d' },
 });
+const RENEW_AFTER_SECONDS = 24 * 60 * 60; // renew a token older than one day
 
 // Authentication Decorator
 fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
@@ -177,6 +192,17 @@ fastify.addHook('onRequest', async (request, reply) => {
   }
   request.user.role = me.role;
   request.user.isPlatformAdmin = me.isPlatformAdmin;
+
+  // Quiet renewal: a token older than a day gets a fresh one in the answer header
+  // "x-new-token"; the app stores it (client/src/api.ts).
+  const iat = Number((request.user as any).iat) || 0;
+  if (iat && Date.now() / 1000 - iat > RENEW_AFTER_SECONDS) {
+    const u = request.user as any;
+    reply.header(
+      'x-new-token',
+      fastify.jwt.sign({ id: u.id, email: u.email, role: me.role, restaurantId: u.restaurantId, restaurantName: u.restaurantName } as any)
+    );
+  }
 
   const needed = requiredRole(request.method, path);
   const allowed = needed === 'platform' ? me.isPlatformAdmin : hasRole(me.role, needed);
@@ -915,15 +941,39 @@ fastify.register(printingRoutes);
 fastify.register(userRoutes);
 fastify.register(terminalRoutes);
 
-
+// --- The screens (cloud-ready, 2026-10-26) ---
+// On the server, RES also delivers the app's screens (the built client/dist), so the
+// browser opens ONE address and the screens call /api on that same address.
+// On a developer PC there is usually no client/dist: the screens come from Vite
+// (npm run dev in client/), which forwards /api, /uploads and /ws to this server.
+const CLIENT_DIST = path.join(process.cwd(), 'client', 'dist');
+if (fs.existsSync(path.join(CLIENT_DIST, 'index.html'))) {
+  fastify.register(fastifyStatic, {
+    root: CLIENT_DIST,
+    prefix: '/',
+    decorateReply: false, // sendFile already comes from the /uploads registration
+    wildcard: false,
+  });
+  // Any other page address (e.g. /pos after a refresh) → the app, which shows the
+  // right screen. Unknown /api, /uploads, /ws and /agent addresses stay a real 404.
+  fastify.setNotFoundHandler((request, reply) => {
+    const p = request.url.split('?')[0];
+    const isApp = request.method === 'GET' && !/^\/(api|uploads|ws|agent)(\/|$)/.test(p);
+    if (isApp) return reply.sendFile('index.html', CLIENT_DIST);
+    return reply.status(404).send({ error: 'Not found' });
+  });
+  console.log(`Screens served from ${CLIENT_DIST}`);
+}
 
 // --- Start Server ---
 const start = async () => {
   try {
-    // PORT can be set in .env (default 3000), e.g. to run a second copy for tests.
+    // PORT and HOST can be set in .env (default 3000 on every network card).
+    // On the VPS: HOST=127.0.0.1, so only IIS (on the same machine) can reach RES.
     const port = Number(process.env.PORT) || 3000;
-    await fastify.listen({ port, host: '0.0.0.0' });
-    console.log(`Server running on http://127.0.0.1:${port}`);
+    const host = process.env.HOST || '0.0.0.0';
+    await fastify.listen({ port, host });
+    console.log(`Server running on http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

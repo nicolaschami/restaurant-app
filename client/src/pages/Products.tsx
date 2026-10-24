@@ -335,11 +335,11 @@ export default function Products({ onLogout }: ProductsProps) {
       setLoading(true);
       setError(null);
       const [itemsRes, catRes, stationRes, modRes, rawMatRes] = await Promise.all([
-        api.get('/menu-items?restaurant_id=1&limit=2000').catch(() => ({ data: [] })),
-        api.get('/categories?restaurant_id=1').catch(() => ({ data: [] })),
+        api.get('/menu-items?limit=2000').catch(() => ({ data: [] })),
+        api.get('/categories').catch(() => ({ data: [] })),
         api.get('/kitchenStation').catch(() => ({ data: [] })),
-        api.get('/modifier-groups?restaurant_id=1').catch(() => ({ data: [] })),
-        api.get('/raw-materials?restaurant_id=1').catch(() => ({ data: [] })),
+        api.get('/modifier-groups').catch(() => ({ data: [] })),
+        api.get('/raw-materials').catch(() => ({ data: [] })),
       ]);
 
       const rawItems = itemsRes?.data;
@@ -540,7 +540,6 @@ export default function Products({ onLogout }: ProductsProps) {
       const existingPermanentImages = imagePreviews.filter((url) => !url.startsWith('blob:'));
       const finalImages = [...existingPermanentImages, ...newlyUploadedUrls];
       const payload = {
-        restaurantId: 1,
         categoryId: categoryId ? Number(categoryId) : null,
         stationId: stationId ? Number(stationId) : null,
         name: menuName.trim(), menuName: menuName.trim(),

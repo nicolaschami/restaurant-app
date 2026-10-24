@@ -150,7 +150,6 @@ const confirmDelete = async () => {
     setErrorMessage(null);
 
     const payload = {
-      restaurantId: 1,
       supplierCode: formData.supplierCode || `SUP-${Math.floor(100 + Math.random() * 900)}`,
       supplierName: formData.supplierName,
       contactPerson: formData.contactPerson || '',

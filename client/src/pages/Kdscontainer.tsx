@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '../api';
+import { api, wsUrl } from '../api';
 import KitchenDisplayScreen, { type KDSTicket } from './KitchenDisplayScreen';
 
 // TODO: pull this from auth/session context once available, same as the
 // hardcoded restaurantId used elsewhere in the app (Dashboard, POS).
-const RESTAURANT_ID = 1;
 
 export default function KDSContainer() {
   const [tickets, setTickets] = useState<KDSTicket[]>([]);
@@ -13,7 +12,7 @@ export default function KDSContainer() {
 
   const fetchActiveTickets = useCallback(async () => {
     try {
-      const res = await api.get('/kds/active', { params: { restaurantId: RESTAURANT_ID } });
+      const res = await api.get('/kds/active');
       setTickets(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error('Failed to fetch KDS tickets:', err);
@@ -28,7 +27,7 @@ export default function KDSContainer() {
   // that silently drifts out of sync if stations are renamed or added.
   const fetchStations = useCallback(async () => {
     try {
-      const res = await api.get('/kitchenStation', { params: { restaurantId: RESTAURANT_ID } });
+      const res = await api.get('/kitchenStation');
       const raw = Array.isArray(res.data)
         ? res.data
         : res.data?.stations || res.data?.kitchenStations || [];
@@ -72,11 +71,9 @@ export default function KDSContainer() {
     let unmounted = false;
 
     const connect = () => {
-      const httpBase: string = (api.defaults?.baseURL as string) || window.location.origin;
-      const wsBase = httpBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
       // The server checks this login token and picks the restaurant room from it.
       const token = encodeURIComponent(localStorage.getItem('token') || '');
-      socket = new WebSocket(`${wsBase}/ws?token=${token}`);
+      socket = new WebSocket(wsUrl(`/ws?token=${token}`)); // same machine as the API
 
       socket.onmessage = (event) => {
         try {

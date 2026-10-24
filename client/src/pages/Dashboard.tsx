@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type FC } from 'react';
 import { money } from '../lib/restaurantSettings';
 import { toast } from '../components/Toaster';
-import { api } from '../api';
+import { api, wsUrl } from '../api';
 import { ChefHat, Archive, Sun, Moon, Plus, Loader2 } from 'lucide-react';
 
 // ==========================================
@@ -276,13 +276,11 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
     let unmounted = false;
 
     const connect = () => {
-      const httpBase: string = (api.defaults?.baseURL as string) || window.location.origin;
-      const wsBase = httpBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '');
       // The server checks this login token before opening the live connection,
       // and picks the restaurant room from it.
       const token = encodeURIComponent(localStorage.getItem('token') || '');
       setWsStatus('connecting');
-      socket = new WebSocket(`${wsBase}/ws?token=${token}`);
+      socket = new WebSocket(wsUrl(`/ws?token=${token}`)); // same machine as the API
 
       socket.onopen = () => {
         attempt = 0;

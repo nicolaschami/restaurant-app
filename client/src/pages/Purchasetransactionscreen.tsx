@@ -968,7 +968,6 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
         ?? 1;
 
       const payload = {
-        restaurantId: 1,
         type: kind, // PUR or RP (the server ignores it on edit: the type never changes)
 
         supplierName: supplier.trim() || selectedSupplierDetails?.supplierName || "Prime Meats & Produce Co.",

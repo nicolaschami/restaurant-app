@@ -20,14 +20,13 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Development only (cloud-ready, 2026-10-26): the screens call /api, /uploads and
+    // /ws on their OWN address — like on the server, where RES delivers both the
+    // screens and the API. Here Vite forwards those to the RES server on port 3000.
     proxy: {
-      // Forwards any request starting with /api to your Express backend
-      '/api': {
-        //target: 'http://localhost:5000', // 👈 Make sure this matches your Express backend port
-        target: 'http://127.0.0.1:5000', // 👈 Change localhost to 127.0.0.1
-        changeOrigin: true,
-        secure: false,
-      },
+      '/api': { target: 'http://127.0.0.1:3000', changeOrigin: true },
+      '/uploads': { target: 'http://127.0.0.1:3000', changeOrigin: true },
+      '/ws': { target: 'ws://127.0.0.1:3000', ws: true, changeOrigin: true },
     },
   },
 })
