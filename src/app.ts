@@ -41,6 +41,7 @@ import dashboardRoutes from './routes/dashboard.js';
 import paymentRoutes from './routes/payments.js';
 import reportRoutes from './routes/reports.js';
 import zReportRoutes from './routes/zReports.js';
+import salesItemRoutes from './routes/salesItems.js';
 import {
   getRestaurantId,
   assertOrderInRestaurant,
@@ -870,6 +871,7 @@ fastify.register(dashboardRoutes);
 fastify.register(paymentRoutes);
 fastify.register(reportRoutes);
 fastify.register(zReportRoutes);
+fastify.register(salesItemRoutes);
 
 
 

@@ -273,26 +273,6 @@ export default function DailySalesReport() {
 
       {/* Day / period */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setRange([today, today])}
-          className={`h-9 rounded-md border px-2.5 text-xs font-medium ${
-            from === today && to === today ? 'border-[#c9a24b] bg-[#c9a24b]/15 text-[#8a6d2c]' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const y = new Date();
-            y.setDate(y.getDate() - 1);
-            setRange([toISO(y), toISO(y)]);
-          }}
-          className="h-9 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-        >
-          Yesterday
-        </button>
         <PeriodPicker from={from} to={to} onChange={setRange} />
       </div>
 

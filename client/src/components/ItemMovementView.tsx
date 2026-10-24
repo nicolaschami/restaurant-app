@@ -9,6 +9,7 @@
 // use the item). Loading, printing and exporting stay with the screen that uses it.
 
 import { ArrowDownLeft, ArrowUpRight, UtensilsCrossed } from 'lucide-react';
+import DateRangePicker from './DateRangePicker';
 
 export interface ItemTotals {
   id: number;
@@ -92,7 +93,8 @@ export const PERIOD_PRESETS: Array<{ label: string; range: () => [string, string
   },
 ];
 
-// From / To dates + the quick period buttons, on one line.
+// The period of a report: one button + a two-month calendar with quick periods
+// (see components/DateRangePicker.tsx). Every report uses this.
 export function PeriodPicker({
   from,
   to,
@@ -102,35 +104,7 @@ export function PeriodPicker({
   to: string;
   onChange: (range: [string, string]) => void;
 }) {
-  const inputCls = 'h-9 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-[#c9a24b]';
-  return (
-    <>
-      <label className="flex items-center gap-1 text-sm text-slate-600">
-        From
-        <input type="date" value={from} max={to} onChange={(e) => e.target.value && onChange([e.target.value, to])} className={inputCls} />
-      </label>
-      <label className="flex items-center gap-1 text-sm text-slate-600">
-        To
-        <input type="date" value={to} min={from} onChange={(e) => e.target.value && onChange([from, e.target.value])} className={inputCls} />
-      </label>
-      {PERIOD_PRESETS.map((p) => {
-        const [pf, pt] = p.range();
-        const active = pf === from && pt === to;
-        return (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => onChange([pf, pt])}
-            className={`h-9 rounded-md border px-2.5 text-xs font-medium ${
-              active ? 'border-[#c9a24b] bg-[#c9a24b]/15 text-[#8a6d2c]' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {p.label}
-          </button>
-        );
-      })}
-    </>
-  );
+  return <DateRangePicker from={from} to={to} onChange={onChange} />;
 }
 
 const Tile = ({ label, value, tone }: { label: string; value: string; tone: string }) => (

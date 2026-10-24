@@ -149,6 +149,7 @@ export default function SidebarLayout({
       icon: DollarSign,
       items: [
         { id: 'report-z-report', label: 'Z Report / Closing', icon: Receipt },
+        { id: 'report-closed-days', label: 'Closed Days', icon: Calendar },
         { id: 'report-x-report', label: 'X Report / Shift Audit', icon: Receipt },
         { id: 'report-payment-methods', label: 'Payment Methods', icon: CreditCard },
         { id: 'report-tax', label: 'Tax Report', icon: Calculator },
@@ -166,7 +167,7 @@ export default function SidebarLayout({
       items: [
         { id: 'report-daily-sales', label: 'Daily Sales', icon: BarChart3 },
         { id: 'report-category-sales', label: 'Sales by Category', icon: Layers },
-        { id: 'report-item-sales', label: 'Sales by Item', icon: Utensils },
+        { id: 'report-item-sales', label: 'Sales by Item & Category', icon: Utensils },
         { id: 'report-employee-sales', label: 'Sales by Employee', icon: UserSquare2 },
         { id: 'report-dine-in-delivery', label: 'Dine-In vs Delivery', icon: ShoppingBag },
         { id: 'report-order-types', label: 'Sales by Order Type', icon: ShoppingBag },
@@ -267,7 +268,7 @@ export default function SidebarLayout({
   ];
 
   // Reports that really exist today. Groups left without any ready report are hidden.
-  const READY_REPORTS = new Set(['report-current-stock', 'report-stock-movement', 'report-purchases-supplier', 'report-daily-sales', 'report-z-report']);
+  const READY_REPORTS = new Set(['report-current-stock', 'report-stock-movement', 'report-purchases-supplier', 'report-daily-sales', 'report-z-report', 'report-closed-days', 'report-item-sales']);
   const reportCategories = allReportCategories
     .map((group) => ({ ...group, items: group.items.filter((item) => READY_REPORTS.has(item.id)) }))
     .filter((group) => group.items.length > 0);

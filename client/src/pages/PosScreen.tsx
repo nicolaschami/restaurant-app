@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRef } from 'react';
 import { api } from '../api';
 import PaymentModal, { type PaymentMethod, type PaymentResult } from '../components/PaymentModal';
+import OpeningCashPrompt from '../components/OpeningCashPrompt';
 import { generateReceiptPDF } from '../services/pdfService';
 import {
   Coffee,
@@ -2797,6 +2798,9 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       </div>
 
       {/* PAYMENT WINDOW */}
+      {/* Start of a new day: confirm the opening cash in the drawer (never blocks selling) */}
+      <OpeningCashPrompt />
+
       {showPayment && (
         <PaymentModal
           orderLabel={`Order #${ticketNo} · ${orderType}${orderType === 'Dine-In' && dineInTable ? ` · Table ${dineInTable.label}` : ''}`}

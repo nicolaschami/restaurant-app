@@ -21,6 +21,8 @@ import StockMovementReport from './pages/StockMovementReport';
 import PurchasesReport from './pages/PurchasesReport';
 import DailySalesReport from './pages/DailySalesReport';
 import ZReportPage from './pages/ZReportPage';
+import ClosedDaysReport from './pages/ClosedDaysReport';
+import SalesByItemReport from './pages/SalesByItemReport';
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
@@ -92,6 +94,8 @@ export function App() {
     if (activeTab === 'report-purchases-supplier') return <PurchasesReport />;
     if (activeTab === 'report-daily-sales') return <DailySalesReport />;
     if (activeTab === 'report-z-report') return <ZReportPage />;
+    if (activeTab === 'report-closed-days') return <ClosedDaysReport />;
+    if (activeTab === 'report-item-sales') return <SalesByItemReport />;
 
     if (activeTab.startsWith('report-')) {
       const reportTitle = activeTab
