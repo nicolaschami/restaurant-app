@@ -652,6 +652,28 @@ function KDSStyles() {
       .kds-lane-item-name .qty { color: #0F9D62; font-weight: 800; }
       .kds-lane-mods { font-size: 10px; color: #B45309; margin-top: 3px; font-weight: 600; }
 
+      /* Phone (2026-10-26): one ticket / one station per row, compact header,
+         the whole page scrolls (no inner scroll boxes), big touch targets kept. */
+      @media (max-width: 640px) {
+        .kds-root { min-height: 0; overflow: visible; }
+        .kds-header { padding: 10px 12px; gap: 8px; }
+        .kds-header-left { gap: 8px; width: 100%; }
+        .kds-view-toggle, .kds-station-filter { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+        .kds-prep-bar { scrollbar-width: none; }
+        .kds-view-toggle button, .kds-station-filter button { flex-shrink: 0; padding: 8px 12px; }
+        .kds-header-right { width: 100%; justify-content: space-between; }
+        .kds-prep-bar { padding: 8px 12px; }
+        .kds-main { padding: 10px; overflow: visible; }
+        .kds-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+        .kds-items { max-height: none; overflow: visible; }
+        .kds-item { padding: 12px; }
+        .kds-item-name { font-size: 15px; }
+        .kds-bump-btn { padding: 15px; font-size: 13px; }
+        .kds-lanes { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+        .kds-lane { max-height: none; }
+        .kds-lane-body { overflow: visible; }
+      }
+
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #CBD5C9; border-radius: 6px; }
