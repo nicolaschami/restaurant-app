@@ -86,6 +86,8 @@ export default function SidebarLayout({
   children,
 }: SidebarLayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  // Phone (2026-10-26): the menu is a drawer opened with ☰ (closed after choosing a screen).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isPartnersOpen, setIsPartnersOpen] = useState(false);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
@@ -303,19 +305,25 @@ export default function SidebarLayout({
     if (typeof setActiveTab === 'function') {
       setActiveTab(tabId);
     }
+    setMobileNavOpen(false); // phone: close the drawer after choosing a screen
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#131c18] overflow-hidden select-none">
+    <div className="flex h-[100dvh] w-screen bg-[#131c18] overflow-hidden select-none">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
         .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
       `}</style>
 
-      {/* Sidebar */}
+      {/* Phone: dark backdrop behind the open drawer (tap = close) */}
+      {mobileNavOpen && <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileNavOpen(false)} />}
+
+      {/* Sidebar — on a phone (below md) a drawer that slides in from the left */}
       <aside
         className={`bg-[#131c18] text-slate-300 flex flex-col border-r border-[#2a3a32] shrink-0 h-full transition-all duration-300 ${
           isCollapsed ? 'w-16' : 'w-60'
+        } max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-64 ${
+          mobileNavOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
         }`}
       >
         {/* Header */}
@@ -678,7 +686,23 @@ export default function SidebarLayout({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 h-full w-full overflow-y-auto bg-slate-50">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col h-full">
+        {/* Phone only: a slim top bar with ☰ to open the menu */}
+        <div className="flex h-12 shrink-0 items-center gap-3 border-b border-[#2a3a32] bg-[#131c18] px-3 text-white md:hidden">
+          <button
+            onClick={() => {
+              setIsCollapsed(false); // the drawer always shows the labels
+              setMobileNavOpen(true);
+            }}
+            className="rounded-md p-1.5 text-[#c9a24b] hover:bg-white/10"
+            aria-label="Open the menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="truncate text-sm font-bold">{restaurantName}</span>
+        </div>
+        <main className="flex-1 min-h-0 w-full overflow-y-auto bg-slate-50">{children}</main>
+      </div>
     </div>
   );
 }

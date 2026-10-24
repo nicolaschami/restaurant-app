@@ -952,13 +952,16 @@ if (fs.existsSync(path.join(CLIENT_DIST, 'index.html'))) {
     root: CLIENT_DIST,
     prefix: '/',
     decorateReply: false, // sendFile already comes from the /uploads registration
-    wildcard: false,
+    // wildcard (the default): each file is looked up WHEN it is asked for, so a new
+    // build (npm run build) is served at once — no restart, no stale file list.
   });
   // Any other page address (e.g. /pos after a refresh) → the app, which shows the
-  // right screen. Unknown /api, /uploads, /ws and /agent addresses stay a real 404.
+  // right screen. Unknown /api, /uploads, /ws and /agent addresses stay a real 404,
+  // and so does a missing FILE (e.g. /assets/old.js): never the page in its place.
   fastify.setNotFoundHandler((request, reply) => {
     const p = request.url.split('?')[0];
-    const isApp = request.method === 'GET' && !/^\/(api|uploads|ws|agent)(\/|$)/.test(p);
+    const isFile = /\.[A-Za-z0-9]+$/.test(p);
+    const isApp = request.method === 'GET' && !isFile && !/^\/(api|uploads|ws|agent)(\/|$)/.test(p);
     if (isApp) return reply.sendFile('index.html', CLIENT_DIST);
     return reply.status(404).send({ error: 'Not found' });
   });

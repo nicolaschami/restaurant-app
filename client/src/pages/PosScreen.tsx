@@ -50,7 +50,7 @@ import {
   LayoutGrid,
   Armchair,
   User,
-  Pause, Eye } from 'lucide-react';
+  Pause, Eye, ChevronUp, ChevronLeft } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface PosScreenProps {
@@ -303,6 +303,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   // Payment window (opened by the Pay button).
   const [showPayment, setShowPayment] = useState(false);
+  // Phone layout (2026-10-26): the order slides up over the dishes (bottom bar → order).
+  const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [rawMenuItems, setRawMenuItems] = useState<ApiMenuItem[]>([]);
@@ -901,6 +903,11 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   );
   const itemCount = basket.reduce((a, b) => a + b.quantity, 0);
 
+  // Phone layout: an empty order (new ticket, after paying) goes back to the dishes.
+  useEffect(() => {
+    if (basket.length === 0) setMobileOrderOpen(false);
+  }, [basket.length]);
+
   /* ---------- SAVE ORDER ---------- */
 
   const savingRef = useRef(false);
@@ -1202,7 +1209,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   };
 
   return (
-    <div className="pos-root" data-theme={theme}>
+    <div className={`pos-root ${mobileOrderOpen ? 'm-order-open' : ''}`} data-theme={theme}>
       <style>{`
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -2559,6 +2566,104 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           background: var(--rust);
           filter: brightness(1.1);
         }
+
+        /* =================== SMALLER SCREENS (2026-10-26) ===================
+           PC: unchanged. Tablet: the same 3 columns, narrower.
+           Phone (waiter at the table): categories = a swipeable row on top, dishes fill
+           the screen, a bottom bar shows the order; tapping it slides the order up. */
+        .m-only, .m-orderbar { display: none; }
+
+        @media (max-width: 1100px) {
+          .pos-body { grid-template-columns: 330px minmax(0, 1fr) 170px; }
+          .hdr-clock { display: none; }
+          .search-wrap { width: 240px; }
+          .items-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        }
+
+        @media (max-width: 760px) {
+          .pos-root { height: 100dvh; }
+
+          /* header: two compact lines */
+          .pos-header { height: auto; flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+          .brand-text { display: none; }
+          .order-switch { order: 3; width: 100%; }
+          .order-switch button { flex: 1; }
+          .context-chip { max-width: 150px; padding: 6px 10px; font-size: 13px; }
+          .header-right { gap: 6px; }
+          .hdr-dash-btn span { display: none; }
+
+          /* body: categories row on top, dishes below */
+          .pos-body { display: flex; flex-direction: column; }
+          .cat-rail {
+            order: -1;
+            flex-shrink: 0;
+            flex-direction: row;
+            overflow-x: auto;
+            overflow-y: hidden;
+            gap: 6px;
+            padding: 8px 10px;
+            border-left: 0;
+            border-bottom: 1px solid var(--hairline);
+            scrollbar-width: none;
+          }
+          .cat-label { display: none; }
+          .cat-btn { flex: 0 0 auto; min-height: 40px; background: var(--card); }
+          .cat-btn .label { flex: none; max-width: 150px; }
+
+          .menu-col { flex: 1; padding: 10px; gap: 10px; }
+          .menu-heading { flex-wrap: wrap; gap: 8px; }
+          .menu-heading h2 { font-size: 20px; }
+          .menu-heading p { display: none; }
+          .search-wrap { width: 100%; height: 42px; margin-left: 0; }
+          .items-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+          .item-card { height: 148px; }
+          .item-img-wrap { height: 74px; }
+
+          /* the order: a full-screen sheet that slides up */
+          .ticket-col {
+            position: fixed !important;
+            inset: 0;
+            z-index: 40;
+            border-right: 0;
+            transform: translateY(100%);
+            transition: transform 0.25s ease;
+          }
+          .m-order-open .ticket-col { transform: none; }
+          .ticket-head { padding: 10px 12px; }
+          .btn-pay { gap: 8px; padding: 0 14px; }
+
+          .m-only { display: inline-flex; }
+          .m-back {
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            border-radius: 10px;
+            border: 1px solid var(--hairline);
+            background: var(--card);
+            color: var(--text-heading);
+            cursor: pointer;
+          }
+
+          /* the bottom bar */
+          .m-orderbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+            height: 58px;
+            padding: 0 16px;
+            border: 0;
+            background: var(--pay-bg);
+            color: var(--on-pay);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+          }
+          .m-orderbar strong { margin-left: auto; font-size: 17px; }
+          .m-orderbar-open { display: inline-flex; align-items: center; gap: 2px; padding-left: 12px; border-left: 1px solid currentColor; }
+        }
       `}</style>
 
       {/* HEADER */}
@@ -2650,6 +2755,10 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           )}
 
           <div className="ticket-head">
+            {/* phone only: back to the dishes */}
+            <button className="m-only m-back" onClick={() => setMobileOrderOpen(false)} aria-label="Back to the dishes">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
             <div style={{ minWidth: 0 }}>
               <h2 className="serif">Order #{ticketNo}</h2>
               <p className="ticket-sub">
@@ -2932,6 +3041,18 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           })}
         </nav>
       </div>
+
+      {/* phone only: the order bar at the bottom — tap to open the order and pay */}
+      <button className="m-orderbar" onClick={() => setMobileOrderOpen(true)}>
+        <ShoppingBag className="w-5 h-5" />
+        <span>
+          {itemCount} {itemCount === 1 ? 'item' : 'items'}
+        </span>
+        <strong className="mono">{money(total)}</strong>
+        <span className="m-orderbar-open">
+          Order <ChevronUp className="w-4 h-4" />
+        </span>
+      </button>
 
       {/* PAYMENT WINDOW */}
       {/* Start of a new day: confirm the opening cash in the drawer (never blocks selling) */}

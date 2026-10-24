@@ -196,6 +196,23 @@ const DashboardStyles = () => (
     .d-fill { height: 6px; border-radius: 999px; }
     .d-row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
     .d-stock { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); }
+
+    /* Phone (2026-10-26): tighter, 2 key numbers and 2 open orders per row, one card per row below */
+    @media (max-width: 640px) {
+      .dash { padding: 10px 10px 16px; gap: 10px; }
+      .d-head-title { flex-basis: 100%; }
+      .d-head-title h1 { font-size: 19px; }
+      .d-actions { width: 100%; }
+      .d-actions .d-btn.primary { flex: 1; justify-content: center; }
+      .d-pass { min-height: 0; padding: 10px; }
+      .d-tickets { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .d-ticket { padding: 10px; }
+      .d-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .d-kpi { padding: 10px 12px; }
+      .d-kpi-value { font-size: 19px; }
+      .d-bottom { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .d-week { gap: 5px; }
+    }
   `}</style>
 );
 
