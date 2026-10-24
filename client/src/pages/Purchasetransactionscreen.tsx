@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as Re
 import { money } from '../lib/restaurantSettings';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
+import { toast } from '../components/Toaster';
 import { MaterialSearch, materialInfo, num } from '../components/MaterialSearch';
 
 // ==========================================
@@ -1008,6 +1009,7 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
           transactionId,
         );
 
+        toast.success('Purchase updated');
         onSaved?.(); // let the list reload its totals
         onCancel?.();
       } else {
@@ -1019,6 +1021,7 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
 
         reloadMaterials(); // the stock just changed
         setIsSaved(true);
+        toast.success('Purchase saved', saved.GRNNumber ?? saved.grnNumber ?? undefined);
       }
     } catch (error: any) {
       console.error('Backend Error Response:', error.response?.data);

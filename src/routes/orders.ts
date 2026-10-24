@@ -8,6 +8,25 @@ import { eq, max, inArray, sql, and, ne } from 'drizzle-orm';
 import { getRestaurantId, assertOrderInRestaurant } from '../lib/tenant.js';
 import { computeOrderTotals } from '../lib/orderTotals.js';
 import { syncTables } from '../lib/tables.js';
+import { kitchenHeader, kitchenSnapshot, printKitchenTickets, KitchenResult, KitchenSnapshot } from '../lib/kitchenTickets.js';
+
+// Kitchen tickets after a save (2026-10-26). A printing problem never undoes the save:
+// it is only reported back to the POS (toast).
+async function sendKitchen(
+  restaurantId: number,
+  orderId: number,
+  before: KitchenSnapshot,
+  after: KitchenSnapshot,
+  userId?: number | null,
+  header?: any
+): Promise<KitchenResult[]> {
+  try {
+    return await printKitchenTickets(restaurantId, orderId, before, after, userId, header);
+  } catch (err: any) {
+    console.error('Kitchen tickets failed:', err);
+    return [{ station: 'KITCHEN', printer: '', kind: 'NEW', ok: false, error: err?.message || 'Kitchen printing failed.' }];
+  }
+}
 
 interface OrderItemInput {
   menuItemId: number;
@@ -221,7 +240,10 @@ fastify.post('/api/orders', async (request, reply) => {
       );
     }
 
-    return reply.status(201).send({ order: result });
+    // Kitchen tickets: a new order — everything in it is new for the kitchen.
+    const kitchen = await sendKitchen(restaurantId, result.id, new Map(), await kitchenSnapshot(result.id), request.user?.id);
+
+    return reply.status(201).send({ order: result, kitchen });
 
   } catch (err: any) {
     console.error('❌ Order creation failed:', err);
@@ -581,6 +603,9 @@ fastify.put('/api/orders/:id', async (request, reply) => {
   await assertOrderInRestaurant(orderId, restaurantId);
 
   try {
+    // Kitchen tickets: the dishes BEFORE this change (compared after the save).
+    const kitchenBefore = await kitchenSnapshot(orderId);
+
     const result = await db.transaction(async (tx) => {
       // 1. Fetch current order header & existing items
       const existingOrder = await tx
@@ -873,7 +898,10 @@ fastify.put('/api/orders/:id', async (request, reply) => {
       );
     }
 
-    return reply.status(200).send({ order: result });
+    // Kitchen tickets: only what changed (ADD-ON / CANCEL).
+    const kitchen = await sendKitchen(restaurantId, orderId, kitchenBefore, await kitchenSnapshot(orderId), request.user?.id);
+
+    return reply.status(200).send({ order: result, kitchen });
   } catch (err: any) {
     console.error('❌ Order Update Failed:', err);
     return reply.status(500).send({ error: err.message || 'Internal Server Error' });
@@ -999,6 +1027,11 @@ fastify.put('/api/orders/:id', async (request, reply) => {
     await assertOrderInRestaurant(itemId, restaurantId);
 
     try {
+      // Kitchen tickets: a deleted order cancels all its dishes in the kitchen.
+      // Read the dishes and the header BEFORE the delete.
+      const kitchenBefore = await kitchenSnapshot(itemId);
+      const header = await kitchenHeader(restaurantId, itemId, request.user?.id);
+
       const [deletedItem] = await db
         .delete(orders)
         .where(eq(orders.id, itemId))
@@ -1011,9 +1044,12 @@ fastify.put('/api/orders/:id', async (request, reply) => {
       // Its table is free again (unless another open order is on it).
       await syncTables(db, restaurantId, [deletedItem.tableId]);
 
+      const kitchen = await sendKitchen(restaurantId, itemId, kitchenBefore, new Map(), request.user?.id, header);
+
       return reply.send({
         message: 'order  deleted successfully.',
         deletedItemId: itemId,
+        kitchen,
       });
     } catch (error: any) {
       // Foreign key constraint violation (PostgreSQL code 23503)

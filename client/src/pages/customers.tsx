@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import { toast } from '../components/Toaster';
 import { Search, Pencil, Trash2, X, LayoutGrid, List, AlertTriangle, CheckSquare, Square, User } from 'lucide-react';
 
 // --- Types ---
@@ -157,6 +158,7 @@ export default function CustomersPage({ onLogout }: CustomersProps) {
       } else {
         await api.post('/customers', payload);
       }
+      toast.success(editingItem ? 'Customer updated' : 'Customer added');
 
       setIsModalOpen(false);
       resetForm();
@@ -183,6 +185,7 @@ export default function CustomersPage({ onLogout }: CustomersProps) {
     try {
       setLoading(true);
       await api.delete(`/customers/${id}`);
+      toast.success('Customer deleted');
       setSelectedIds((prev) => prev.filter((itemId) => itemId !== id));
       fetchCustomers();
     } catch (err: any) {
@@ -207,6 +210,7 @@ export default function CustomersPage({ onLogout }: CustomersProps) {
     try {
       setLoading(true);
       await Promise.all(selectedIds.map((id) => api.delete(`/customers/${id}`)));
+      toast.success(`${selectedIds.length} customer(s) deleted`);
       setSelectedIds([]);
       fetchCustomers();
     } catch (err: any) {

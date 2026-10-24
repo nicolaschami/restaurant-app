@@ -6,6 +6,16 @@ import OpeningCashPrompt from '../components/OpeningCashPrompt';
 import { basketTotals, money, taxLabel } from '../lib/restaurantSettings';
 import { autoPrintEnabled } from '../lib/printReceipt';
 import { toast } from '../components/Toaster';
+
+// Kitchen tickets (2026-10-26): the server prints them when an order is saved and
+// tells us how it went. The order is saved anyway — a failed ticket only shows a
+// toast so the cashier can tell the kitchen by voice.
+function warnKitchen(results: { station: string; kind: string; ok: boolean; error?: string }[] | undefined) {
+  const failed = (results || []).filter((r) => !r.ok);
+  if (!failed.length) return;
+  const stations = [...new Set(failed.map((r) => r.station))].join(', ');
+  toast.error(`Kitchen ticket not printed (${stations})`, failed[0].error || 'Tell the kitchen.');
+}
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 import SwitchUserModal from '../components/SwitchUserModal';
 import { ROLE_LABEL, me, setMe } from '../lib/session';
@@ -832,7 +842,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
     setIsDeleting(true);
     setError(null);
     try {
-      await api.delete(`/orders/${currentOrderId}`);
+      const del = await api.delete(`/orders/${currentOrderId}`);
+      warnKitchen(del.data?.kitchen);
       setBasket([]);
       setDineInTable(null);
       setDeliveryCustomer(null);
@@ -1082,13 +1093,15 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
 
       const wasNew = !currentOrderId;
       let savedOrderId = currentOrderId;
+      let res;
       if (currentOrderId) {
-        await api.put(`/orders/${currentOrderId}`, orderPayload);
+        res = await api.put(`/orders/${currentOrderId}`, orderPayload);
       } else {
-        const res = await api.post('/orders', orderPayload);
+        res = await api.post('/orders', orderPayload);
         savedOrderId = res.data?.order?.id ?? null;
       }
       if (!savedOrderId) throw new Error('The order could not be saved.');
+      warnKitchen(res.data?.kitchen);
 
       // Remember the id: if the payment then fails, trying again updates this
       // order instead of creating a second one.

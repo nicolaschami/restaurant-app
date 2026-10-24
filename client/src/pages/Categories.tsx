@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api';
 import { ArrowUp, ArrowDown, Edit2, Trash2, Plus, AlertCircle, Search, X, Printer, RefreshCw } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
+import { toast } from '../components/Toaster';
 import Select from 'react-select';
 
 interface Category {
@@ -114,6 +115,7 @@ export default function Categories({ onLogout }: CategoriesProps) {
         await api.post('/categories', payload);
       }
       setIsModalOpen(false);
+      toast.success(editingCategory ? 'Category updated' : 'Category added');
       fetchCategories();
     } catch (err: any) {
       const serverMsg = err.response?.data?.message || err.response?.data?.error || 'Failed to save category.';
@@ -126,9 +128,10 @@ export default function Categories({ onLogout }: CategoriesProps) {
     try {
       await api.delete(`/categories/${categoryToDelete.id}`);
       setCategoryToDelete(null);
+      toast.success('Category deleted');
       fetchCategories();
     } catch (err) {
-      alert('Failed to delete category.');
+      toast.error('Category not deleted', (err as any)?.response?.data?.error || 'Please try again.');
     }
   };
 
@@ -179,7 +182,7 @@ export default function Categories({ onLogout }: CategoriesProps) {
         <div>
           <h2 className="ticket-font uppercase text-2xl sm:text-3xl leading-none text-[#1c1917]">Categories</h2>
           <p className="text-sm text-slate-500 mt-2">
-            Organize menu categories and assign target route printers from your local machine.
+            Organize menu categories and choose the kitchen printer of each one.
           </p>
         </div>
         <button
@@ -387,6 +390,11 @@ export default function Categories({ onLogout }: CategoriesProps) {
                       <span>Refresh</span>
                     </button>
                   </div>
+                  {/* kitchen tickets (2026-10-26): the dishes of this category print here */}
+                  <p className="text-[11px] text-slate-500">
+                    Kitchen tickets of this category print here. Empty = the default kitchen printer (Settings → Printers).
+                    The list shows the printers of your print helper.
+                  </p>
 
                   <Select
                     isClearable

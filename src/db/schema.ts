@@ -404,6 +404,8 @@ export const restaurants = pgTable('restaurants', {
   // Printers used through the print helper (Settings → Printers, 2026-10-25)
   receipt_printer: varchar('receipt_printer', { length: 120 }),
   drawer_printer: varchar('drawer_printer', { length: 120 }),
+  // default kitchen printer: kitchen tickets of categories WITHOUT a printer (2026-10-26)
+  kitchen_printer: varchar('kitchen_printer', { length: 120 }),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

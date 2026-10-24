@@ -34,7 +34,7 @@ const paidLines = (restaurantId: number, tz: string, from: string, to: string) =
   SELECT i.*
   FROM order_payments p
   JOIN orders o ON o.id = p.order_id AND o.restaurant_id = ${restaurantId}
-  JOIN order_items i ON i.order_id = o.id
+  JOIN order_items i ON i.order_id = o.id AND COALESCE(i.kds_status::text, '') <> 'CANCELLED'
   WHERE p.restaurant_id = ${restaurantId}
     AND (p.created_at AT TIME ZONE ${tz})::date BETWEEN ${from}::date AND ${to}::date
 `;

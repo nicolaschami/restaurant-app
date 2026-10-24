@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {api} from '../api';
+import { toast } from '../components/Toaster';
 import ConfirmModal from '../components/ConfirmModal';
 import {
   Truck,
@@ -87,6 +88,7 @@ const confirmDelete = async () => {
   if (!itemToDelete) return;
   try {
     await api.delete(`/suppliers/${itemToDelete.supplierId}`);
+    toast.success('Supplier deleted');
     setItemToDelete(null);
     fetchSuppliers();
   } catch (err: any) {
@@ -205,6 +207,7 @@ const confirmDelete = async () => {
 
         setSuppliers((prev) => [normalizedCreated, ...prev]);
       }
+      toast.success(editingSupplier ? 'Supplier updated' : 'Supplier added');
 
       setIsModalOpen(false);
     } catch (err: any) {

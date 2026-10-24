@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import { toast } from '../components/Toaster';
 import { 
   Plus, Edit, Trash2, Search, Flame, Salad, Utensils, AlertTriangle, X, RefreshCw 
 } from 'lucide-react';
@@ -95,6 +96,7 @@ export default function KitchenStationPage({ onLogout, restaurantId: propRestaur
         });
       }
 
+      toast.success(editingStation ? 'Kitchen station updated' : 'Kitchen station added');
       setIsModalOpen(false);
       fetchStations();
     } catch (err: any) {
@@ -108,6 +110,7 @@ export default function KitchenStationPage({ onLogout, restaurantId: propRestaur
     try {
       await api.delete(`/kitchenStation/${deleteId}`);
       setDeleteId(null);
+      toast.success('Kitchen station deleted');
       fetchStations();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to delete station.');

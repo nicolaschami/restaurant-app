@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound, Monitor, Plus, RefreshCw, Trash2, UserCheck, UserX, X } from 'lucide-react';
 import { forgetTerminal, terminalKey } from '../lib/terminal';
 import { api } from '../api';
+import { askConfirm } from '../components/ConfirmHost';
 import { toast } from '../components/Toaster';
 import { ROLE_LABEL, me, type Role } from '../lib/session';
 
@@ -54,7 +55,7 @@ export default function UsersSettings() {
       .catch(() => {});
 
   const removeTerminal = async (id: number, name: string) => {
-    if (!window.confirm(`Remove "${name}"? Its PIN pad stops working; that PC will ask for email + password again.`)) return;
+    if (!(await askConfirm({ title: 'Remove POS terminal', message: `Remove "${name}"? Its PIN pad stops working; that PC will ask for email + password again.`, confirmLabel: 'Remove' }))) return;
     try {
       await api.delete(`/terminals/${id}`);
       toast.success('Terminal removed', name);

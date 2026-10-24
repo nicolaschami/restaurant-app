@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import ConfirmModal from '../components/ConfirmModal';
+import { toast } from '../components/Toaster';
 
 export interface VariantPrice {
   name?: string;
@@ -561,6 +562,7 @@ export default function Products({ onLogout }: ProductsProps) {
       };
       if (editingItem) await api.patch(`/menu-items/${editingItem.id}`, payload);
       else await api.post('/menu-items', payload);
+      toast.success(editingItem ? 'Product updated' : 'Product added');
       setIsModalOpen(false);
       fetchInitialData();
     } catch (err: any) {
@@ -573,8 +575,9 @@ export default function Products({ onLogout }: ProductsProps) {
     try {
       await api.delete(`/menu-items/${itemToDelete.id}`);
       setItemToDelete(null);
+      toast.success('Product deleted');
       fetchInitialData();
-    } catch { alert('Failed to delete product.'); }
+    } catch (err: any) { toast.error('Product not deleted', err?.response?.data?.error || 'Please try again.'); }
   };
 
   const safeItems = Array.isArray(items) ? items : [];

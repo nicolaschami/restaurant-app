@@ -83,7 +83,7 @@ export default async function dashboardRoutes(fastify: FastifyInstance) {
           SUM(oi.quantity)::int                        AS quantity,
           COALESCE(SUM(oi.subtotal), 0)::float         AS sales
         FROM order_items oi
-        JOIN orders o ON o.id = oi.order_id
+        JOIN orders o ON o.id = oi.order_id AND COALESCE(oi.kds_status::text, '') <> 'CANCELLED'
         LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
         WHERE o.restaurant_id = ${restaurantId}
           AND UPPER(o.status) = 'CLOSED'

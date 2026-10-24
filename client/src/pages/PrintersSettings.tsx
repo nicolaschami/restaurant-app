@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Copy, Eye, KeyRound, Plus, Printer, RefreshCw, Scissors, Trash2, Vault, Wifi, WifiOff, X } from 'lucide-react';
 import { api } from '../api';
+import { askConfirm } from '../components/ConfirmHost';
 import { toast } from '../components/Toaster';
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 import { autoPrintEnabled, setAutoPrint } from '../lib/printReceipt';
@@ -40,6 +41,9 @@ export default function PrintersSettings() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [receiptPrinter, setReceiptPrinter] = useState('');
   const [drawerPrinter, setDrawerPrinter] = useState(''); // '' = same as the receipt printer
+  // kitchen tickets (2026-10-26): each category prints on its own printer (category
+  // screen); this one is for categories without a printer
+  const [kitchenPrinter, setKitchenPrinter] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // which button is working
   const [newName, setNewName] = useState('Cashier PC');
@@ -57,6 +61,7 @@ export default function PrintersSettings() {
       if (!quiet) {
         setReceiptPrinter(res.data.receiptPrinter || '');
         setDrawerPrinter(res.data.drawerPrinter || '');
+        setKitchenPrinter(res.data.kitchenPrinter || '');
       }
     } catch (err: any) {
       if (!quiet) toast.error('Printers not loaded', err?.response?.data?.error || 'Check the server.');
@@ -79,15 +84,19 @@ export default function PrintersSettings() {
     agents.forEach((a) => a.printers.forEach((p) => set.add(p)));
     if (receiptPrinter) set.add(receiptPrinter);
     if (drawerPrinter) set.add(drawerPrinter);
+    if (kitchenPrinter) set.add(kitchenPrinter);
     return [...set].sort();
-  }, [agents, receiptPrinter, drawerPrinter]);
+  }, [agents, receiptPrinter, drawerPrinter, kitchenPrinter]);
 
   const anyOnline = agents.some((a) => a.online);
+
+  // everything on screen, in one save
+  const allChoices = () => ({ receiptPrinter, drawerPrinter, kitchenPrinter });
 
   const save = async () => {
     setBusy('save');
     try {
-      await api.put('/printing', { receiptPrinter, drawerPrinter });
+      await api.put('/printing', allChoices());
       toast.success('Printers saved', receiptPrinter ? `Receipts print on ${receiptPrinter}.` : 'No receipt printer chosen.');
     } catch (err: any) {
       toast.error('Not saved', err?.response?.data?.error || 'Please try again.');
@@ -111,7 +120,7 @@ export default function PrintersSettings() {
   };
 
   const removeHelper = async (a: Agent) => {
-    if (!window.confirm(`Remove the helper "${a.name}"? It will stop printing until it gets a new key.`)) return;
+    if (!(await askConfirm({ title: 'Remove helper', message: `Remove the helper "${a.name}"? It will stop printing until it gets a new key.`, confirmLabel: 'Remove' }))) return;
     try {
       await api.delete(`/printing/agents/${a.id}`);
       toast.success('Helper removed');
@@ -136,7 +145,7 @@ export default function PrintersSettings() {
   const testDrawer = async () => {
     setBusy('drawer');
     try {
-      await api.put('/printing', { receiptPrinter, drawerPrinter }); // use what is on screen
+      await api.put('/printing', allChoices()); // use what is on screen
       await api.post('/printing/drawer');
       toast.success('Drawer signal sent', 'The drawer should open.');
     } catch (err: any) {
@@ -317,6 +326,27 @@ export default function PrintersSettings() {
               <Eye className="h-4 w-4" /> Preview
             </button>
           </div>
+        </div>
+
+        {/* 6. Kitchen tickets: each category's printer is chosen on the category screen */}
+        <div className={card}>
+          <h2 className="mb-1 text-sm font-extrabold text-[#131c18]">6 · Kitchen printer</h2>
+          <p className="mb-3 text-[11px] text-slate-500">
+            When an order is saved, each dish prints on its <b>category's printer</b> (Menu → Categories) — and a CANCEL ticket
+            when a dish is removed. Categories without a printer use the default below. Nothing chosen = no kitchen ticket.
+          </p>
+          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Default kitchen printer</label>
+          <select value={kitchenPrinter} onChange={(e) => setKitchenPrinter(e.target.value)} className={`${select} mb-3`}>
+            <option value="">No kitchen printer</option>
+            {printerNames.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <button onClick={save} disabled={busy === 'save'} className={btnDark}>
+            <CheckCircle2 className="h-4 w-4 text-[#c9a24b]" /> Save
+          </button>
         </div>
       </div>
 

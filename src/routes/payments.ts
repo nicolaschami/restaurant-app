@@ -60,7 +60,7 @@ export async function takeSaleOutOfStock(tx: any, restaurantId: number, order: {
       SELECT oi.quantity AS sold, m.*
       FROM order_items oi
       JOIN menu_items m ON m.id = oi.menu_item_id AND m.restaurant_id = ${restaurantId}
-      WHERE oi.order_id = ${order.id}
+      WHERE oi.order_id = ${order.id} AND COALESCE(oi.kds_status::text, '') <> 'CANCELLED'
     ),
     takes AS (
       -- 1. ingredients of the dishes (not the countable items that have a stock item)

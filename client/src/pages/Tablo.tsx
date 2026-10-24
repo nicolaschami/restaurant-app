@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import { toast } from '../components/Toaster';
 import {
   Search,
   Pencil,
@@ -226,6 +227,7 @@ const filteredItems = items.filter((item) => {
       } else {
         await api.post('/tables', payload);
       }
+      toast.success(editingItem ? 'Table updated' : 'Table added');
 
       setIsModalOpen(false);
       resetForm();
@@ -252,6 +254,7 @@ const filteredItems = items.filter((item) => {
     try {
       setLoading(true);
       await api.delete(`/tables/${id}`);
+      toast.success('Table deleted');
       setSelectedIds((prev) => prev.filter((itemId) => itemId !== id));
       fetchTables();
     } catch (err: any) {
@@ -276,6 +279,7 @@ const filteredItems = items.filter((item) => {
     try {
       setLoading(true);
       await Promise.all(selectedIds.map((id) => api.delete(`/tables/${id}`)));
+      toast.success(`${selectedIds.length} table(s) deleted`);
       setSelectedIds([]);
       fetchTables();
     } catch (err: any) {

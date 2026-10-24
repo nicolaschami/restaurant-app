@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import { askConfirm } from '../components/ConfirmHost';
 import { Search, Pencil, Trash2, X } from 'lucide-react';
 
 // --- Types ---
@@ -129,7 +130,7 @@ export default function TablesPage({ onLogout }: TablesProps) {
 
   // 4. Delete Item
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this table?')) return;
+    if (!(await askConfirm({ title: 'Delete table', message: 'Are you sure you want to delete this table?' }))) return;
     try {
       setLoading(true);
       await api.delete(`/tables/${id}`);

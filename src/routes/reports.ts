@@ -382,7 +382,7 @@ export default async function reportRoutes(fastify: FastifyInstance) {
                COALESCE(i.modifiers, '[]'::jsonb) AS modifiers
         FROM order_items i
         LEFT JOIN menu_items m ON m.id = i.menu_item_id
-        WHERE i.order_id = ${orderId}
+        WHERE i.order_id = ${orderId} AND COALESCE(i.kds_status::text, '') <> 'CANCELLED'
         ORDER BY i.id
       `);
       return reply.send({ order, lines });

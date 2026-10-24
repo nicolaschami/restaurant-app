@@ -7,7 +7,7 @@
 //
 // Screen  (Settings → Printers)
 //   GET    /api/printing                 helpers (online?), their printers, the choices
-//   PUT    /api/printing                 { receiptPrinter, drawerPrinter }
+//   PUT    /api/printing                 { receiptPrinter, drawerPrinter, kitchenPrinter }
 //   POST   /api/printing/agents          { name } → adds a helper, returns its KEY once
 //   DELETE /api/printing/agents/:id
 //   POST   /api/printing/test            { printer? }  test page
@@ -66,7 +66,7 @@ async function buildReceipt(restaurantId: number, orderId: number, copy: boolean
            i.quantity::float AS qty, i.subtotal::float AS amount, COALESCE(i.modifiers, '[]'::jsonb) AS modifiers
     FROM order_items i
     LEFT JOIN menu_items mi ON mi.id = i.menu_item_id
-    WHERE i.order_id = ${orderId}
+    WHERE i.order_id = ${orderId} AND COALESCE(i.kds_status::text, '') <> 'CANCELLED'
     ORDER BY i.id
   `)) as any[];
 
@@ -182,16 +182,25 @@ export default async function printingRoutes(fastify: FastifyInstance) {
     return {
       receiptPrinter: r?.receipt_printer ?? null,
       drawerPrinter: r?.drawer_printer ?? null,
+      kitchenPrinter: r?.kitchen_printer ?? null, // kitchen tickets of categories without a printer
       agents: rows.map((a) => ({ ...a, online: isOnline(a.id) })),
     };
   });
 
   fastify.put('/api/printing', async (request) => {
     const restaurantId = getRestaurantId(request);
-    const body = (request.body || {}) as { receiptPrinter?: unknown; drawerPrinter?: unknown };
+    const body = (request.body || {}) as {
+      receiptPrinter?: unknown;
+      drawerPrinter?: unknown;
+      kitchenPrinter?: unknown;
+    };
     await db
       .update(restaurants)
-      .set({ receipt_printer: cleanPrinterName(body.receiptPrinter), drawer_printer: cleanPrinterName(body.drawerPrinter) } as any)
+      .set({
+        receipt_printer: cleanPrinterName(body.receiptPrinter),
+        drawer_printer: cleanPrinterName(body.drawerPrinter),
+        kitchen_printer: cleanPrinterName(body.kitchenPrinter),
+      } as any)
       .where(eq(restaurants.id, restaurantId));
     return { ok: true };
   });

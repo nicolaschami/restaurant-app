@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Lock, Printer, RefreshCw, X } from 'lucide-react';
 import { api } from '../api';
+import { toast } from '../components/Toaster';
 import { niceDate, qty } from '../components/ItemMovementView';
 import { money } from '../components/SupplierPurchasesModal';
 import { methodLabel } from '../components/TicketDetailModal';
@@ -440,6 +441,7 @@ export function OpeningCashModal({ initial, onClose, onSaved }: { initial: numbe
     setSaving(true);
     try {
       await api.post('/z-reports/opening-cash', { amount: n });
+      toast.success('Opening cash saved');
       onSaved();
     } catch (err: any) {
       setError(err?.response?.data?.error || 'The opening cash could not be saved.');
@@ -503,6 +505,7 @@ function CloseDayModal({ current, onClose, onClosed }: { current: CurrentDay; on
     setError(null);
     try {
       const res = await api.post('/z-reports/close', { countedCash: countedNum, cashTaken: takenNum, notes: notes.trim() || undefined });
+      toast.success('Day closed', 'The Z report is saved.');
       onClosed(res.data.id);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'The day could not be closed. Please try again.');

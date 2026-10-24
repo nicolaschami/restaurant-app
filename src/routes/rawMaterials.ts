@@ -98,7 +98,9 @@ export default async function rawMaterialsRoutes(fastify: FastifyInstance) {
             costPrice: body.costPrice ? String(body.costPrice) : '0.0000',
             lastPurchasePrice: body.lastPurchasePrice ? String(body.lastPurchasePrice) : null,
             currencyCode: body.currencyCode || 'USD',
-            currentStock: body.currentStock ? String(body.currentStock) : '0.000',
+            // currentStock is NOT changed here (2026-10-26): stock moves only through
+            // purchases, returns and sales — editing the material must never overwrite it
+            // (the form's number may be older than a sale made meanwhile).
             minQty: body.minQty ? String(body.minQty) : '0.000',
             maxQty: body.maxQty ? String(body.maxQty) : '0.000',
             hasTva: Boolean(body.hasTva),

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { money } from '../lib/restaurantSettings';
 import { api } from '../api';
+import { toast } from '../components/Toaster';
+import { askConfirm } from '../components/ConfirmHost';
 import { Search, Pencil, Trash2, X } from 'lucide-react';
 // --- Types ---
 export interface RawMaterial {
@@ -141,6 +143,7 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
       } else {
         await api.post('/raw-materials', payload);
       }
+      toast.success(editingItem ? 'Raw material updated' : 'Raw material added');
 
       setIsModalOpen(false);
       resetForm();
@@ -155,10 +158,11 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
 
   // 4. Delete Item
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this raw material?')) return;
+    if (!(await askConfirm({ title: 'Delete raw material', message: 'Are you sure you want to delete this raw material?' }))) return;
     try {
       setLoading(true);
       await api.delete(`/raw-materials/${id}`);
+      toast.success('Raw material deleted');
       fetchRawMaterials();
     } catch (err: any) {
       console.error('Delete failed:', err);
@@ -416,16 +420,23 @@ export default function RawMaterialsPage({ onLogout = () => {} }: RawMaterialsPr
   </div>
 
         <div>
-    <label className="block text-xs font-semibold text-gray-700 mb-1">Current Stock</label>
+    {/* Stock (2026-10-26): a NEW material takes its opening stock here; afterwards the
+        stock moves only through purchases, returns and sales, so it is read-only. */}
+    <label className="block text-xs font-semibold text-gray-700 mb-1">{editingItem ? 'Current Stock' : 'Opening Stock'}</label>
     <input
       type="number"
       step="any"
       min="0"
       value={currentStock}
       onChange={(e) => setCurrentStock(e.target.value)}
-      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font bg-white focus:outline-none focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f] transition"
+      readOnly={!!editingItem}
+      title={editingItem ? 'Changes through Purchases and sales' : undefined}
+      className={`w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm price-font focus:outline-none transition ${
+        editingItem ? 'cursor-not-allowed bg-gray-100 text-gray-500' : 'bg-white focus:ring-2 focus:ring-[#c2621f]/20 focus:border-[#c2621f]'
+      }`}
       placeholder="0.00"
     />
+    {editingItem && <p className="mt-0.5 text-[10px] text-gray-400">Changes through Purchases and sales</p>}
   </div>
 
           <div>

@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import Toaster from './components/Toaster'
+import ConfirmHost from './components/ConfirmHost'
 import { Buffer } from 'buffer';
 
 window.Buffer = window.Buffer || Buffer;
@@ -11,5 +12,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
     {/* green / red notifications at the top right, for every screen */}
     <Toaster />
+    <ConfirmHost />
   </React.StrictMode>,
 )

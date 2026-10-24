@@ -18,6 +18,7 @@ import {
 
 import { api } from '../api';
 import ConfirmModal from '../components/ConfirmModal';
+import { toast } from '../components/Toaster';
 
 interface ModifierOption {
   id?: number;
@@ -197,6 +198,7 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
       }
 
       setIsModalOpen(false);
+      toast.success(editingGroup ? 'Modifier group updated' : 'Modifier group added');
       fetchModifierGroups();
     } catch (err: any) {
       setFormError(err.response?.data?.error || 'Failed to save modifier group.');
@@ -208,9 +210,10 @@ export default function Modifiers({ onLogout }: ModifiersProps) {
     try {
       await api.delete(`/modifier-groups/${groupToDelete.id}`);
       setGroupToDelete(null);
+      toast.success('Modifier group deleted');
       fetchModifierGroups();
     } catch (err) {
-      alert('Failed to delete modifier group.');
+      toast.error('Modifier group not deleted', (err as any)?.response?.data?.error || 'Please try again.');
     }
   };
 

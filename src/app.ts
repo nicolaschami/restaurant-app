@@ -35,6 +35,7 @@ import customerRoutes from './routes/customers.js';
 import orderRoutes from './routes/orders.js';
 import { kdsRoutes} from './routes/kds.js'
 import printerRoutes from './routes/silent-print.js';
+import printerListRoutes from './routes/printer.js'; // GET /api/printers (category screen)
 import  stockTransactionRoutes from './routes/stock-transactions.js';
 import restaurantRoutes from './routes/restaurants.js';
 import dashboardRoutes from './routes/dashboard.js';
@@ -890,6 +891,7 @@ fastify.patch('/api/orders/:id/cancel', async (request, reply) => {
 // --- Register External Modular Routes ---
 fastify.register(uploadRoutes);
 fastify.register(printerRoutes);
+fastify.register(printerListRoutes);
 fastify.register(categoryRoutes);
 fastify.register(tableRoutes);
 fastify.register(customerRoutes);

@@ -64,7 +64,7 @@ export async function salesSnapshot(
       p.method,
       p.amount_due                                                     AS total,
       (p.created_at AT TIME ZONE ${tz})                               AS paid_local,
-      COALESCE((SELECT SUM(i.subtotal) FROM order_items i WHERE i.order_id = o.id), 0) AS items_total,
+      COALESCE((SELECT SUM(i.subtotal) FROM order_items i WHERE i.order_id = o.id AND COALESCE(i.kds_status::text, '') <> 'CANCELLED'), 0) AS items_total,
       o.tax_amount,
       COALESCE(o.delivery_fee, 0)                                      AS delivery_fee
     FROM order_payments p
@@ -106,7 +106,7 @@ export async function salesSnapshot(
       SUM(i.quantity)::float                        AS qty,
       SUM(i.subtotal)::float                        AS amount
     FROM t
-    JOIN order_items i ON i.order_id = t.id
+    JOIN order_items i ON i.order_id = t.id AND COALESCE(i.kds_status::text, '') <> 'CANCELLED'
     LEFT JOIN menu_items m ON m.id = i.menu_item_id
     LEFT JOIN categories c ON c.id = m.category_id
     GROUP BY COALESCE(c.name, 'No category')
@@ -123,7 +123,7 @@ export async function salesSnapshot(
       t.order_type                                           AS type,
       COALESCE(rt.label, '')                                 AS "table",
       t.method,
-      (SELECT COALESCE(SUM(i.quantity), 0) FROM order_items i WHERE i.order_id = t.id)::float AS "nbItems",
+      (SELECT COALESCE(SUM(i.quantity), 0) FROM order_items i WHERE i.order_id = t.id AND COALESCE(i.kds_status::text, '') <> 'CANCELLED')::float AS "nbItems",
       t.items_total::float                                   AS "itemsTotal",
       t.total::float                                         AS total
     FROM t
