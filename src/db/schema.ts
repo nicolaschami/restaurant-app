@@ -219,9 +219,14 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   
-  // 👈 Make sure JavaScript property 'role' points to 'role_id' DB column
-  role: integer('role_id').default(1), 
-  
+  // Old numeric role (kept, unused since 2026-10-26).
+  roleId: integer('role_id'),
+  // Role (2026-10-26): 'owner' | 'manager' | 'cashier' — see src/lib/roles.ts
+  role: varchar('role', { length: 20 }).notNull().default('cashier'),
+  isPlatformAdmin: boolean('is_platform_admin').notNull().default(false), // creates restaurants
+  isActive: boolean('is_active').default(true), // false = cannot log in (history kept)
+  pinHash: varchar('pin_hash', { length: 72 }), // bcrypt hash of the 4-digit POS PIN
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
   export const categories = pgTable('categories', {

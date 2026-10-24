@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ROLE_LABEL, canOpen, me } from '../lib/session';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -108,19 +109,19 @@ export default function SidebarLayout({
     setOpenReportSubGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Each menu keeps only what the logged-in role may open (lib/session.ts).
   const productSubItems = [
     { id: 'categories', label: 'Categories', icon: Layers },
     { id: 'menu-items', label: 'Menu Items', icon: Utensils },
     { id: 'modifiers', label: 'Modifiers', icon: SlidersHorizontal },
     { id: 'raw-materials', label: 'Raw Materials', icon: Wheat },
-  ];
+  ].filter((i) => canOpen(i.id));
 
   const partnerSubItems = [
-    { id: 'users', label: 'Users', icon: UserCheck },
     { id: 'employees', label: 'Employees', icon: Briefcase },
     { id: 'suppliers', label: 'Suppliers', icon: Truck },
     { id: 'customers', label: 'Customers', icon: CircleUserRound },
-  ];
+  ].filter((i) => canOpen(i.id));
 
   // Transaction Sub-items
   // "Purchase" (new receipt) is opened from the Purchase List's "+ New purchase"
@@ -129,7 +130,7 @@ export default function SidebarLayout({
   const transactionSubItems: { id: string; label: string; icon: typeof ListFilter; alsoActiveFor?: string[] }[] = [
     { id: 'purchaselist', label: 'Purchase List', icon: ListFilter, alsoActiveFor: ['purchase'] },
     { id: 'returnpurchaselist', label: 'Return Purchase', icon: RotateCcw, alsoActiveFor: ['returnpurchase'] },
-  ];
+  ].filter((i) => canOpen(i.id));
   const isTransactionItemActive = (item: (typeof transactionSubItems)[number]) =>
     activeTab === item.id || !!item.alsoActiveFor?.includes(activeTab);
 
@@ -138,7 +139,9 @@ export default function SidebarLayout({
     { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents },
     { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
     { id: 'printers', label: 'Printers', icon: Printer },
-  ];
+    { id: 'users', label: 'Users', icon: UserCheck },
+    { id: 'platform', label: 'Platform', icon: Crown },
+  ].filter((i) => canOpen(i.id));
 
   // Full Reports Hierarchy (the plan). Only the reports listed in READY_REPORTS
   // are shown in the menu; add a report id there once its screen is built.
@@ -270,7 +273,7 @@ export default function SidebarLayout({
   // Reports that really exist today. Groups left without any ready report are hidden.
   const READY_REPORTS = new Set(['report-current-stock', 'report-stock-movement', 'report-purchases-supplier', 'report-daily-sales', 'report-z-report', 'report-closed-days', 'report-item-sales']);
   const reportCategories = allReportCategories
-    .map((group) => ({ ...group, items: group.items.filter((item) => READY_REPORTS.has(item.id)) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => READY_REPORTS.has(item.id) && canOpen(item.id)) }))
     .filter((group) => group.items.length > 0);
 
   // Auto-expand groups when activeTab matches
@@ -325,6 +328,11 @@ export default function SidebarLayout({
               <div className="min-w-0">
                 <h1 className="ticket-font uppercase text-xs text-white leading-none truncate">POS Center</h1>
                 <p className="text-[10px] text-slate-400 truncate mt-0.5">{restaurantName}</p>
+                {me && (
+                  <p className="text-[10px] truncate mt-0.5 text-[#c9a24b]">
+                    {me.name} · {ROLE_LABEL[me.role]}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -377,7 +385,7 @@ export default function SidebarLayout({
           </button>
 
           {/* Products Group */}
-          <div>
+          {productSubItems.length > 0 && (<div>
             <button
               onClick={() => {
                 if (isCollapsed) setIsCollapsed(false);
@@ -423,10 +431,10 @@ export default function SidebarLayout({
                 })}
               </div>
             )}
-          </div>
+          </div>)}
 
           {/* Partners Group */}
-          <div>
+          {partnerSubItems.length > 0 && (<div>
             <button
               onClick={() => {
                 if (isCollapsed) setIsCollapsed(false);
@@ -472,10 +480,10 @@ export default function SidebarLayout({
                 })}
               </div>
             )}
-          </div>
+          </div>)}
 
           {/* Transaction Group (Added here before Settings) */}
-          <div>
+          {transactionSubItems.length > 0 && (<div>
             <button
               onClick={() => {
                 if (isCollapsed) setIsCollapsed(false);
@@ -521,10 +529,10 @@ export default function SidebarLayout({
                 })}
               </div>
             )}
-          </div>
+          </div>)}
 
           {/* Settings Group */}
-          <div>
+          {settingSubItems.length > 0 && (<div>
             <button
               onClick={() => {
                 if (isCollapsed) setIsCollapsed(false);
@@ -570,10 +578,10 @@ export default function SidebarLayout({
                 })}
               </div>
             )}
-          </div>
+          </div>)}
 
           {/* Nested Reports Group */}
-          <div>
+          {reportCategories.length > 0 && (<div>
             <button
               onClick={() => {
                 if (isCollapsed) setIsCollapsed(false);
@@ -649,7 +657,7 @@ export default function SidebarLayout({
                 })}
               </div>
             )}
-          </div>
+          </div>)}
         </nav>
 
         {/* Footer / Logout */}

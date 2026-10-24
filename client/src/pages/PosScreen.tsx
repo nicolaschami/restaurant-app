@@ -7,6 +7,8 @@ import { basketTotals, money, taxLabel } from '../lib/restaurantSettings';
 import { autoPrintEnabled } from '../lib/printReceipt';
 import { toast } from '../components/Toaster';
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
+import SwitchUserModal from '../components/SwitchUserModal';
+import { ROLE_LABEL, me, setMe } from '../lib/session';
 import { generateReceiptPDF } from '../services/pdfService';
 import {
   Coffee,
@@ -49,6 +51,7 @@ interface PosScreenProps {
   activeOrder?: { orderId: number; ticketNo?: number } | null;
   onResetOrder?: () => void;
   onClose?: () => void; // 👈 Accept onClose
+  onSwitchUser?: (token: string, user: any) => void; // "Switch user" with a PIN
 }
 
 /* ---------- API SHAPES ---------- */
@@ -247,7 +250,10 @@ const parseModPrice = (val: any): number => {
 
 let ticketSeq = 214;
 
-export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder }: PosScreenProps) {
+export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder, onSwitchUser }: PosScreenProps) {
+  // Who works on the POS now, and the "Switch user" PIN pad.
+  const [cashierName, setCashierName] = useState(me?.name || '');
+  const [showSwitchUser, setShowSwitchUser] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingOrder, setIsLoadingOrder] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
@@ -2587,6 +2593,10 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
+          <button className="hdr-dash-btn" onClick={() => setShowSwitchUser(true)} title="Switch user with a PIN">
+            <User className="w-4 h-4" />
+            <span>{cashierName || 'Switch user'}</span>
+          </button>
           {onClose && (
             <button
               className="hdr-dash-btn"
@@ -3116,6 +3126,24 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             </div>
           </div>
         </div>
+      )}
+
+      {/* SWITCH USER (4-digit PIN) — the ticket on screen stays as it is */}
+      {showSwitchUser && (
+        <SwitchUserModal
+          currentName={cashierName || '—'}
+          onClose={() => setShowSwitchUser(false)}
+          onSwitched={(token, user) => {
+            setShowSwitchUser(false);
+            if (onSwitchUser) onSwitchUser(token, user);
+            else {
+              localStorage.setItem('token', token);
+              setMe(user);
+            }
+            setCashierName(user?.name || '');
+            toast.success(`Now: ${user?.name}`, ROLE_LABEL[(user?.role as keyof typeof ROLE_LABEL) ?? 'cashier']);
+          }}
+        />
       )}
 
       {/* RECEIPT PREVIEW (exactly as printed, from the server) */}

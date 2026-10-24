@@ -1,129 +1,128 @@
 // src/routes/auth.ts
+//
+// Login (users & roles, 2026-10-26):
+//   POST /api/auth/login      { email, password } → token + the user (name, role…)
+//   POST /api/auth/pin-login  { pin }  — "Switch user" on the POS: a 4-digit PIN of a
+//                              user of the SAME restaurant as the current login
+//   GET  /api/auth/me         who is logged in (name, role, platform admin)
+// A deactivated user cannot log in. Users are created on the Users screen
+// (routes/users.ts) — /api/auth/register is kept for older screens, owner only.
+// The token carries id, restaurant and role; the server re-reads the role and the
+// "active" status from the database on every request (lib/roles.ts).
+
 import { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users,restaurants } from '../db/schema.js';
+import { users, restaurants } from '../db/schema.js';
+import { ROLES, currentUser } from '../lib/roles.js';
 
-
-
+type UserRow = typeof users.$inferSelect;
 
 export default async function authRoutes(fastify: FastifyInstance) {
-
-  // REGISTER ROUTE (create a new staff user)
-  // Only a logged-in user can call this: the global login guard in app.ts checks the
-  // token before we get here, and fills request.user from it.
-  // TODO (roles step #6): allow only admins/managers to create users.
-fastify.post('/api/auth/register', async (request, reply) => {
-  const body = (request.body as any) || {};
-  const { name, password, roleId } = body;
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-
-  if (!name || !email || !password) {
-    return reply.status(400).send({ error: 'Name, email, and password are required.' });
-  }
-  if (String(password).length < 6) {
-    return reply.status(400).send({ error: 'Password must be at least 6 characters.' });
-  }
-
-  // The new user always joins the SAME restaurant as the person creating it.
-  // We take it from the login token, never from the request body — otherwise
-  // anyone could add users to another restaurant.
-  const { restaurantId } = request.user;
-  if (!restaurantId) {
-    return reply.status(403).send({ error: 'Your account is not assigned to a restaurant.' });
-  }
-
-  // One account per email (login looks users up by email).
-  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (existing) {
-    return reply.status(409).send({ error: 'A user with this email already exists.' });
+  // The token + the user's details sent back after a login.
+  async function loginAnswer(user: UserRow) {
+    const restaurant = user.restaurantId
+      ? await db.query.restaurants.findFirst({ where: eq(restaurants.id, user.restaurantId) })
+      : null;
+    const restaurantName = restaurant?.name || 'My Restaurant';
+    const token = fastify.jwt.sign({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      restaurantId: user.restaurantId,
+      restaurantName,
+    } as any);
+    return {
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isPlatformAdmin: Boolean(user.isPlatformAdmin),
+        restaurantId: user.restaurantId,
+        restaurantName,
+      },
+    };
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  // ---- email + password
+  fastify.post('/api/auth/login', async (request, reply) => {
+    const { password, ...rest } = (request.body as { email?: string; password?: string }) || {};
+    // Same format as stored, so "Admin@Restaurant.com " still matches.
+    const email = rest.email?.trim().toLowerCase();
+    if (!email || !password) {
+      return reply.status(400).send({ error: 'Email and password are required.' });
+    }
 
-  // Role: use the given roleId, or 1 by default.
-  const userRoleId = roleId ? Number(roleId) : 1;
-
-  const [newUser] = await db
-    .insert(users)
-    .values({
-      restaurantId,
-      name,
-      email,
-      passwordHash: hashedPassword,
-      role: userRoleId,
-    })
-    .returning();
-
-  const { passwordHash, ...userWithoutPassword } = newUser;
-
-  return reply.status(201).send({ user: userWithoutPassword });
-});
-
-  // LOGIN ROUTE
- fastify.post('/api/auth/login', async (request, reply) => {
-  const { password, ...rest } = (request.body as { email?: string; password?: string }) || {};
-  // Same format as register stores it, so "Admin@Restaurant.com " still matches.
-  const email = rest.email?.trim().toLowerCase();
-
-  // 1. Validate request body
-  if (!email || !password) {
-    return reply.status(400).send({ error: 'Email and password are required.' });
-  }
-
-  // 2. Fetch user from DB
-  const user = await db.query.users.findFirst({
-    where: eq(users.email, email),
+    const user = await db.query.users.findFirst({ where: eq(users.email, email) });
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return reply.status(401).send({ error: 'Invalid email or password.' });
+    }
+    if (user.isActive === false) {
+      return reply.status(403).send({ error: 'This account is deactivated. Ask the restaurant owner.' });
+    }
+    return reply.send(await loginAnswer(user));
   });
 
-  if (!user) {
-    return reply.status(401).send({ error: 'Invalid email or password.' });
-  }
+  // ---- 4-digit PIN ("Switch user" on the POS). The current login says which
+  // restaurant; the PIN picks the user among that restaurant's active users.
+  fastify.post('/api/auth/pin-login', async (request, reply) => {
+    const pin = String((request.body as any)?.pin ?? '');
+    if (!/^\d{4}$/.test(pin)) return reply.status(400).send({ error: 'Enter the 4-digit PIN.' });
+    const restaurantId = request.user?.restaurantId;
+    if (!restaurantId) return reply.status(403).send({ error: 'Not linked to a restaurant.' });
 
-  // 3. Verify password
-  const isValidPassword = await bcrypt.compare(password, user.passwordHash);
-  if (!isValidPassword) {
-    return reply.status(401).send({ error: 'Invalid email or password.' });
-  }
-
-  // 4. Fetch restaurant details
- // 4. Fetch restaurant details
-let restaurantName = 'Tasty Bistro';
-
-try {
-  if (user.restaurantId) {
-    const restaurant = await db.query.restaurants.findFirst({
-      where: eq(restaurants.id, user.restaurantId),
-    });
-    if (restaurant?.name) {
-      restaurantName = restaurant.name;
+    const staff = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.restaurantId, restaurantId), eq(users.isActive, true)));
+    for (const u of staff) {
+      if (u.pinHash && (await bcrypt.compare(pin, u.pinHash))) {
+        return reply.send(await loginAnswer(u));
+      }
     }
-  }
-} catch (dbErr) {
-  console.error('Error fetching restaurant:', dbErr);
-}
+    return reply.status(401).send({ error: 'Wrong PIN.' });
+  });
 
-// 5. Generate JWT token
-const token = fastify.jwt.sign({
-  id: user.id,
-  email: user.email,
-  role: user.role,
-  restaurantId: user.restaurantId,
-  restaurantName,
-} as any);
+  // ---- who is logged in
+  fastify.get('/api/auth/me', async (request, reply) => {
+    const me = await currentUser(request.user.id);
+    if (!me) return reply.status(401).send({ error: 'Unauthorized' });
+    const u = await db.query.users.findFirst({ where: eq(users.id, request.user.id) });
+    return {
+      id: request.user.id,
+      name: me.name,
+      email: u?.email,
+      role: me.role,
+      isPlatformAdmin: me.isPlatformAdmin,
+      restaurantId: me.restaurantId,
+      hasPin: Boolean(u?.pinHash),
+    };
+  });
 
-// 6. Return token + updated user info
-return reply.send({
-  token,
-  user: {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    restaurantId: user.restaurantId,
-    restaurantName, // 👈 Explicitly included here
-  },
-});
-});
+  // ---- create a user (older screens) — owner only (see lib/roles.ts)
+  fastify.post('/api/auth/register', async (request, reply) => {
+    const body = (request.body as any) || {};
+    const name = String(body.name || '').trim();
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = String(body.password || '');
+    const role = ROLES.includes(body.role) ? body.role : 'cashier';
+    if (!name || !email || !password) return reply.status(400).send({ error: 'Name, email, and password are required.' });
+    if (password.length < 6) return reply.status(400).send({ error: 'Password must be at least 6 characters.' });
+
+    // The new user always joins the SAME restaurant as the person creating it.
+    const { restaurantId } = request.user;
+    if (!restaurantId) return reply.status(403).send({ error: 'Your account is not assigned to a restaurant.' });
+    if (await db.query.users.findFirst({ where: eq(users.email, email) })) {
+      return reply.status(409).send({ error: 'A user with this email already exists.' });
+    }
+    const [newUser] = await db
+      .insert(users)
+      .values({ restaurantId, name, email, passwordHash: await bcrypt.hash(password, 10), role })
+      .returning();
+    const { passwordHash, pinHash, ...safe } = newUser;
+    return reply.status(201).send({ user: safe });
+  });
 }

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { loadRestaurantSettings } from './lib/restaurantSettings';
+import { canOpen, loadMe, setMe } from './lib/session';
+import UsersSettings from './pages/UsersSettings';
+import PlatformScreen from './pages/PlatformScreen';
 import SidebarLayout from './components/SidebarLayout';
 import DashboardView, { type ActiveOrder } from './pages/Dashboard';
 import PosView from './pages/PosScreen';
@@ -29,6 +32,7 @@ const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
   onResetOrder?: () => void;
   onClose?: () => void;
+  onSwitchUser?: (token: string, user: any) => void;
 }>;
 
 export function App() {
@@ -46,8 +50,19 @@ export function App() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('restaurantName');
+    setMe(null);
     setToken(null);
     setActiveTab('dashboard');
+  };
+
+  // "Switch user" on the POS (4-digit PIN): the new user's login replaces the current
+  // one. The token state is NOT changed on purpose: that would reload everything and
+  // lose the ticket being typed — the next requests simply use the new login.
+  const [, setUserVersion] = useState(0);
+  const handleSwitchUser = (jwt: string, user: any) => {
+    localStorage.setItem('token', jwt);
+    setMe(user);
+    setUserVersion((v) => v + 1); // the menus follow the new user's role
   };
 
   const handleSelectTicket = (ticket: ActiveOrder) => {
@@ -64,13 +79,13 @@ export function App() {
     setActiveTab('dashboard');
   };
 
-  // Currency and tax of the restaurant: loaded once after login, before the screens
-  // (they all show money in that currency). On an error the defaults are used.
+  // After login: the restaurant's currency and tax, and WHO is logged in (name, role
+  // — the menus show only what the role may open). Loaded before the screens.
   const [settingsReady, setSettingsReady] = useState(false);
   useEffect(() => {
     if (!token) return;
     setSettingsReady(false);
-    loadRestaurantSettings().finally(() => setSettingsReady(true));
+    Promise.all([loadRestaurantSettings(), loadMe()]).finally(() => setSettingsReady(true));
   }, [token]);
 
   // Not logged in yet → show only the Login page (no sidebar, no screens).
@@ -97,11 +112,24 @@ export function App() {
         activeOrder={activeOrder}
         onResetOrder={handleResetOrder}
         onClose={handleClosePos}
+        onSwitchUser={handleSwitchUser}
       />
     );
   }
 
   const renderContent = () => {
+    // A screen the logged-in role may not open (the server refuses it anyway).
+    if (!canOpen(activeTab)) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-2 bg-slate-50 p-6 text-center">
+          <div className="text-3xl">🔒</div>
+          <h2 className="text-lg font-bold text-slate-800">Not available for your role</h2>
+          <p className="max-w-sm text-sm text-slate-500">Ask the restaurant owner if you need access to this screen.</p>
+        </div>
+      );
+    }
+    if (activeTab === 'users') return <UsersSettings />;
+    if (activeTab === 'platform') return <PlatformScreen />;
     // Reports that are built. Any other "report-…" tab shows the "under development" page.
     if (activeTab === 'report-current-stock') return <CurrentStockReport />;
     if (activeTab === 'report-stock-movement') return <StockMovementReport />;

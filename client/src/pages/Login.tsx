@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
+import TerminalPinPad from '../components/TerminalPinPad';
+import { saveTerminal, terminalKey } from '../lib/terminal';
+import { setMe } from '../lib/session';
 import {
   AlertCircle,
   ArrowRight,
@@ -29,6 +32,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  // A registered POS terminal opens on the PIN pad (lib/terminal.ts).
+  const [usePinPad, setUsePinPad] = useState(() => Boolean(terminalKey()));
+  // "This PC is a POS terminal": registered right after a successful email login
+  // (owner or manager only — the server refuses it for a cashier).
+  const [registerTerminal, setRegisterTerminal] = useState(false);
 
   // Live clock for the "kitchen ticket" on the left panel.
   const [now, setNow] = useState(() => new Date());
@@ -58,6 +66,19 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
       localStorage.setItem('token', jwtToken);
       localStorage.setItem('restaurantName', restName);
+      setMe(res.data.user);
+
+      // Register this PC as a POS terminal: it keeps the secret key, and from now on
+      // the login page shows the PIN pad for this restaurant.
+      if (registerTerminal) {
+        try {
+          const t = await api.post('/terminals', { name: 'POS terminal' });
+          saveTerminal(t.data.key, t.data.restaurantName || restName);
+        } catch (err: any) {
+          setAuthError(err?.response?.data?.error || 'This PC could not be registered as a POS terminal.');
+          return;
+        }
+      }
       onLoginSuccess(jwtToken, restName);
     } catch (err: any) {
       // The server sends its reason in `error` (e.g. "Invalid email or password.").
@@ -79,6 +100,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const timeText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateText = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+
+  if (usePinPad && terminalKey()) {
+    return (
+      <TerminalPinPad
+        onLoggedIn={(jwt, user) => {
+          localStorage.setItem('token', jwt);
+          localStorage.setItem('restaurantName', user?.restaurantName || '');
+          setMe(user);
+          onLoginSuccess(jwt, user?.restaurantName || '');
+        }}
+        onUseEmail={() => setUsePinPad(false)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen w-full flex bg-[#fbf5e8]">
@@ -243,6 +278,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               />
               Remember my email on this device
             </label>
+
+            {/* POS terminal: cashiers will log in here with their PIN only */}
+            <label className="flex cursor-pointer items-start gap-2 select-none text-xs text-[#5c564c]">
+              <input
+                type="checkbox"
+                checked={registerTerminal}
+                onChange={(e) => setRegisterTerminal(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-[#E7E1D2] accent-[#c2621f]"
+              />
+              <span>
+                This PC is a <b>POS terminal</b> — cashiers will log in here with their 4-digit PIN only
+                <span className="block text-[10px] text-[#8a8377]">Owner or manager login. Done once per PC.</span>
+              </span>
+            </label>
+            {terminalKey() && (
+              <button type="button" onClick={() => setUsePinPad(true)} className="text-xs font-semibold text-[#c2621f] hover:underline">
+                ← Back to the PIN pad
+              </button>
+            )}
 
             {/* Submit — same orange gradient as the SAVE buttons in the app */}
             <button

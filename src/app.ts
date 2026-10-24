@@ -43,12 +43,15 @@ import reportRoutes from './routes/reports.js';
 import zReportRoutes from './routes/zReports.js';
 import salesItemRoutes from './routes/salesItems.js';
 import printingRoutes from './routes/printing.js';
+import userRoutes from './routes/users.js';
+import terminalRoutes from './routes/terminals.js';
 import {
   getRestaurantId,
   assertOrderInRestaurant,
   assertOrderItemInRestaurant,
   assertMenuItemInRestaurant,
 } from './lib/tenant.js';
+import { currentUser, hasRole, requiredRole } from './lib/roles.js';
 
 
 // Module Type Augmentations
@@ -57,14 +60,16 @@ declare module '@fastify/jwt' {
     payload: {
       id: number;
       email: string;
-      role: number | null;
+      role: string | number | null;
       restaurantId?: number | null;
     };
     user: {
       id: number;
       email: string;
-      role: number | null;
+      // 'owner' | 'manager' | 'cashier' — refreshed from the database on every request
+      role: string | number | null;
       restaurantId?: number | null;
+      isPlatformAdmin?: boolean;
     };
   }
 }
@@ -144,6 +149,9 @@ fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyR
 //   - /ws         → the WebSocket; it gets its own check in the security step #3.
 const PUBLIC_API_ROUTES = new Set<string>([
   '/api/auth/login', // you can't be logged in before logging in
+  // PIN pad of a registered POS terminal: the PC proves itself with its secret key
+  '/api/auth/terminal-check',
+  '/api/auth/terminal-login',
 ]);
 
 fastify.addHook('onRequest', async (request, reply) => {
@@ -158,6 +166,23 @@ fastify.addHook('onRequest', async (request, reply) => {
     await request.jwtVerify(); // checks the token and fills request.user
   } catch {
     return reply.status(401).send({ error: 'Unauthorized' });
+  }
+
+  // Users & roles (2026-10-26): the CURRENT role and status come from the database
+  // (cached a few seconds), so a deactivation or a role change applies at once.
+  const me = await currentUser(Number(request.user.id));
+  if (!me || !me.isActive) {
+    return reply.status(401).send({ error: 'This account is deactivated or no longer exists.' });
+  }
+  request.user.role = me.role;
+  request.user.isPlatformAdmin = me.isPlatformAdmin;
+
+  const needed = requiredRole(request.method, path);
+  const allowed = needed === 'platform' ? me.isPlatformAdmin : hasRole(me.role, needed);
+  if (!allowed) {
+    return reply.status(403).send({
+      error: needed === 'platform' ? 'Only the platform owner can do this.' : `Your role (${me.role}) cannot do this. Ask a ${needed}.`,
+    });
   }
 });
 
@@ -885,6 +910,8 @@ fastify.register(reportRoutes);
 fastify.register(zReportRoutes);
 fastify.register(salesItemRoutes);
 fastify.register(printingRoutes);
+fastify.register(userRoutes);
+fastify.register(terminalRoutes);
 
 
 
