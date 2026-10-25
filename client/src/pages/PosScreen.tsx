@@ -1671,6 +1671,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
           display: flex;
           align-items: center;
           justify-content: space-between;
+          gap: 8px; /* never "Pay$13.20" when the button is narrow */
           padding: 0 22px;
           border-radius: 14px;
           border: none;
@@ -3503,7 +3504,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                   >
                     <div className="flex justify-between items-start">
                       <span className={`text-2xl font-black ${isOccupied ? 'text-rose-400' : 'text-white'}`}>
-                        T-{t.label}
+                        {/* "T-5" for a number, the name itself otherwise (no "T-T3") */}
+                        {/^\d+$/.test(String(t.label)) ? `T-${t.label}` : t.label}
                       </span>
                       {t.capacity && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">

@@ -549,7 +549,9 @@ export default function Products({ onLogout }: ProductsProps) {
         priceTakeaway: parseCost(priceTakeaway), priceDelivery: parseCost(priceDelivery), priceWaiter: parseCost(priceWaiter),
         costPrice: isManualCost ? parseCost(costPrice) : calculatedRawCost,
         description: description.trim(),
-        images: finalImages.length > 0 ? finalImages : ['https://placehold.co/600x400/e2e8f0/64748b?text=No+Image'],
+        // No picture = an empty list (2026-10-26). Before, an outside "No Image" placeholder
+        // (placehold.co) was saved here; the screens now show their own fallback instead.
+        images: finalImages,
         isAvailable: Boolean(isAvailable),
         modifierGroupIds: selectedModifierIds.map((id) => Number(id)),
         rawMaterials: rawMaterials.map((rm) => ({ materialId: rm.materialId, name: rm.name, cost: parseCost(rm.unitCost), quantity: parseCost(rm.quantity), totalCost: parseCost(rm.totalCost) })),

@@ -161,9 +161,11 @@ export default function KitchenDisplayScreen({
   onCompleteItem,
   stations: stationsProp,
 }: KDSProps) {
-  // Use the real stations passed in if we got any; otherwise fall back to
-  // the built-in default list (mock/dev use, or if the fetch failed).
-  const stations = stationsProp && stationsProp.length > 0 ? stationsProp : [...DEFAULT_STATIONS];
+  // The restaurant's real stations. A restaurant WITHOUT stations shows none (only "ALL")
+  // — before, it showed the sample GRILL / FRYER / SALAD / ASSEMBLY list, which looked like
+  // another restaurant's stations (2026-10-26). The samples are only for the standalone demo
+  // (no `stations` prop at all).
+  const stations = stationsProp ?? [...DEFAULT_STATIONS];
 
   const [tickets, setTickets] = useState<KDSTicket[]>(initialTickets);
   const [stationFilter, setStationFilter] = useState<string>('ALL');

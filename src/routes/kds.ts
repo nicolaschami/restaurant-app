@@ -38,8 +38,13 @@ export async function kdsRoutes(fastify: FastifyInstance) {
             id: orders.id,
             ticketNo: orders.ticketNo,
             tableId: orders.tableId,
+            // the table's NAME (e.g. "T3"), not its internal id (2026-10-26)
+            tableLabel: sql<string | null>`(SELECT t.label FROM restaurant_tables t WHERE t.id = ${orders.tableId})`,
             orderType: orders.orderType,
-            createdAt: orders.createdAt,
+            // The order time as an exact moment (ms). created_at is stored WITHOUT a time
+            // zone (the database's local time); read as a JS Date it was taken as UTC, so in
+            // Lebanon (UTC+2) every new ticket looked 2 hours in the future ("-120m").
+            createdAtMs: sql<number>`(EXTRACT(EPOCH FROM (${orders.createdAt} AT TIME ZONE current_setting('TimeZone'))) * 1000)::float8`,
             kdsStatus: orders.kdsStatus,
         //    notes: orders.notes,
           })
@@ -82,12 +87,12 @@ export async function kdsRoutes(fastify: FastifyInstance) {
           return {
             id: String(order.id),
             orderNumber: String(order.ticketNo),
-            tableNumber: order.tableId ? `T-${order.tableId}` : undefined,
+            tableNumber: order.tableId ? order.tableLabel || `T-${order.tableId}` : undefined,
             orderType: (order.orderType?.toUpperCase() || "DINE_IN") as
               | "DINE_IN"
               | "TAKEAWAY"
               | "DELIVERY",
-            createdAt: order.createdAt ? new Date(order.createdAt).getTime() : Date.now(),
+            createdAt: Number(order.createdAtMs) || Date.now(),
             status: order.kdsStatus === "FIRE_SENT" ? "PENDING" : "IN_PROGRESS",
           //  notes: order.notes || undefined,
             items: orderItemsList
