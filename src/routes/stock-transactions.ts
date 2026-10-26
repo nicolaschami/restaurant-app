@@ -4,6 +4,7 @@ import { db } from "../db";
 import { stockTransactions, stockDetails, rawMaterials } from '../db/schema';
 import type { CreateStockTransactionPayload } from '../db/schema';
 import { getRestaurantId } from '../lib/tenant.js';
+import { JournalError, resolveSupplier, syncPurchaseEntry } from '../lib/journal.js';
 
 // ==========================================================================
 // STOCK MOVEMENTS
@@ -266,6 +267,10 @@ fastify.post('/api/stock-transactions', async (request, reply) => {
   // for each other, so they can never get the same number.
   const purchaseNumber = await nextPurchaseNumber(tx, restaurantId, type);
 
+  // The supplier must be a known supplier of this restaurant (its id goes in the
+  // purchase and in the journal: the supplier's account is built from it).
+  const supplier = await resolveSupplier(tx, restaurantId, body.supplierId ?? body.supplier_id, supplierName);
+
 const headerPayload: any = {
   // One number shown everywhere (list, detail, purchase screen).
   TransactionNumber: purchaseNumber,
@@ -279,6 +284,7 @@ const headerPayload: any = {
 
   SupplierName: String(supplierName || ''),
   supplierName: String(supplierName || ''),
+  supplierId: supplier.id,
 
   TransactionDate: receivedAt ? new Date(receivedAt) : new Date(),
   transactionDate: receivedAt ? new Date(receivedAt) : new Date(),
@@ -377,6 +383,9 @@ const insertedDetails = await tx
   .values(detailsPayload as any)
   .returning();
 
+  // The journal entry (JV) of this purchase / return, in the same transaction.
+  await syncPurchaseEntry(tx, restaurantId, headerId, request.user?.id);
+
   return { ...newTransaction, details: insertedDetails };
 });
 
@@ -384,6 +393,9 @@ const insertedDetails = await tx
   } catch (error: any) {
     if (error instanceof StockError) {
       return reply.code(400).send({ error: error.message });
+    }
+    if (error instanceof JournalError) {
+      return reply.code(error.statusCode).send({ error: error.message });
     }
     console.error('=== DB ERROR ===', error);
     return reply.code(500).send({ error: 'Failed to create transaction', details: error?.message || String(error) });
@@ -521,6 +533,8 @@ fastify.put<{ Params: { id: string }; Body: any }>(
         }
         const wasPosted = String(before.status || '').toUpperCase() === 'POSTED';
         const type: TxKind = txKind(before.type); // purchase stays purchase, return stays return
+        // A known supplier of this restaurant (see the POST).
+        const supplier = await resolveSupplier(tx, Number(restaurantId), body.supplierId ?? body.supplier_id, supplierName);
 
         // Build a clean, schema-shaped header payload (do NOT spread raw body)
         const headerPayload: Record<string, any> = {
@@ -532,6 +546,7 @@ fastify.put<{ Params: { id: string }; Body: any }>(
 
           SupplierName: String(supplierName),
           supplierName: String(supplierName),
+          supplierId: supplier.id,
 
           TransactionDate: receivedAt ? new Date(receivedAt) : new Date(),
           transactionDate: receivedAt ? new Date(receivedAt) : new Date(),
@@ -634,6 +649,10 @@ fastify.put<{ Params: { id: string }; Body: any }>(
           .values(detailsPayload as any)
           .returning();
 
+        // Rewrite the SAME journal entry with the new totals (the user's choice:
+        // an edited purchase keeps its JV number).
+        await syncPurchaseEntry(tx, Number(restaurantId), transactionId, request.user?.id);
+
         return { ...updatedTransaction, details: insertedDetails };
       });
 
@@ -644,6 +663,9 @@ fastify.put<{ Params: { id: string }; Body: any }>(
     } catch (error: any) {
       if (error instanceof StockError) {
         return reply.code(400).send({ error: error.message });
+      }
+      if (error instanceof JournalError) {
+        return reply.code(error.statusCode).send({ error: error.message });
       }
       if (error instanceof Error && error.message === 'NOT_FOUND') {
         return reply.code(404).send({

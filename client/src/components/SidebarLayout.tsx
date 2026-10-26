@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ROLE_LABEL, canOpen, me } from '../lib/session';
 import {
+  BookOpen,
+  Landmark,
   LayoutDashboard,
   ShoppingCart,
   UtensilsCrossed,
@@ -155,6 +157,8 @@ export default function SidebarLayout({
       items: [
         { id: 'report-z-report', label: 'Z Report / Closing', icon: Receipt },
         { id: 'report-closed-days', label: 'Closed Days', icon: Calendar },
+        { id: 'report-journal', label: 'Journal (JV)', icon: BookOpen },
+        { id: 'report-account-balances', label: 'Account Balances', icon: Landmark },
         { id: 'report-x-report', label: 'X Report / Shift Audit', icon: Receipt },
         { id: 'report-payment-methods', label: 'Payment Methods', icon: CreditCard },
         { id: 'report-tax', label: 'Tax Report', icon: Calculator },
@@ -273,7 +277,7 @@ export default function SidebarLayout({
   ];
 
   // Reports that really exist today. Groups left without any ready report are hidden.
-  const READY_REPORTS = new Set(['report-current-stock', 'report-stock-movement', 'report-purchases-supplier', 'report-daily-sales', 'report-z-report', 'report-closed-days', 'report-item-sales']);
+  const READY_REPORTS = new Set(['report-current-stock', 'report-stock-movement', 'report-purchases-supplier', 'report-daily-sales', 'report-z-report', 'report-closed-days', 'report-item-sales', 'report-journal', 'report-account-balances']);
   const reportCategories = allReportCategories
     .map((group) => ({ ...group, items: group.items.filter((item) => READY_REPORTS.has(item.id) && canOpen(item.id)) }))
     .filter((group) => group.items.length > 0);

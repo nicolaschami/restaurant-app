@@ -423,6 +423,8 @@ export const stockTransactions = pgTable('stocktransactions', {
   transactionNumber: varchar('TransactionNumber', { length: 50 }),
   grnNumber: varchar('GRNNumber', { length: 50 }),
   supplierName: varchar('SupplierName', { length: 255 }).notNull(),
+  // the supplier by id (2026-10-27): the journal and the supplier's account use it
+  supplierId: integer('supplier_id'),
   transactionDate: timestamp('TransactionDate').defaultNow(),
   reference: varchar('Reference', { length: 100 }),
   comment: text('Comment'),

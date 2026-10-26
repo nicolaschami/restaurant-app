@@ -12,14 +12,14 @@ import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const pad = (n: number) => String(n).padStart(2, '0');
-const toISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const fromISO = (s: string) => new Date(`${s}T00:00:00`);
-const show = (s: string) => {
+export const toISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export const fromISO = (s: string) => new Date(`${s}T00:00:00`);
+export const show = (s: string) => {
   const [y, m, d] = s.split('-');
   return `${d}/${m}/${y}`;
 };
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEK = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const WEEK = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
 // Quick periods. Each returns [from, to].
 export const RANGE_PRESETS: Array<{ label: string; range: () => [string, string] }> = [
@@ -87,7 +87,7 @@ const presetOf = (from: string, to: string) =>
   })?.label ?? null;
 
 // One month grid (Monday first). Empty cells before the 1st.
-function monthDays(year: number, month: number): Array<string | null> {
+export function monthDays(year: number, month: number): Array<string | null> {
   const first = new Date(year, month, 1);
   const lead = (first.getDay() + 6) % 7;
   const count = new Date(year, month + 1, 0).getDate();

@@ -963,16 +963,16 @@ const PurchaseReceiptForm: FC<PurchaseReceiptFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      const supplierId = selectedSupplierDetails?.supplierCode
-        ?? selectedSupplierDetails?.supplierCode
-        ?? 1;
+      // The supplier's real id: the server checks it and books the purchase on
+      // this supplier's account (journal).
+      const supplierId = (selectedSupplierDetails as any).supplierId ?? (selectedSupplierDetails as any).id;
 
       const payload = {
         type: kind, // PUR or RP (the server ignores it on edit: the type never changes)
 
-        supplierName: supplier.trim() || selectedSupplierDetails?.supplierName || "Prime Meats & Produce Co.",
+        supplierName: supplier.trim() || selectedSupplierDetails.supplierName,
 
-        supplierId: 1,
+        supplierId,
         grnNumber: grnNumber,
         receivedAt: date,
         reference: reference,

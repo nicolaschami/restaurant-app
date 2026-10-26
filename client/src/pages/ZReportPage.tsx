@@ -35,6 +35,7 @@ interface CurrentDay extends Totals {
   suggestedFloat: number;
   openingCash: { amount: number; source: 'set' | 'last-z' | 'none'; setAt: string | null; setBy: string | null };
   open: { count: number; amount: number };
+  paidToSuppliers?: number; // cash paid to suppliers from the drawer this day (2026-10-27)
 }
 export interface ZRow {
   id: number;
@@ -54,7 +55,7 @@ export interface ZRow {
 }
 export interface ZFull extends ZRow {
   notes: string | null;
-  totals: Totals & { openAtClose?: { count: number; amount: number } };
+  totals: Totals & { openAtClose?: { count: number; amount: number }; paidToSuppliers?: number };
 }
 
 export const zLabel = (n: number) => `Z-${String(n).padStart(4, '0')}`;
@@ -96,6 +97,7 @@ export function printZ(z: ZFull) {
     <h2>Cash check</h2><table>${rows([
       ['Opening cash', money(z.openingFloat)],
       ['+ Cash sales', money(z.cashSales)],
+      ...((t.paidToSuppliers ?? 0) > 0 ? ([['− Paid to suppliers', money(t.paidToSuppliers!)]] as Array<[string, string]>) : []),
       ['= Expected in drawer', money(z.expectedCash)],
       ['Counted', money(z.countedCash)],
     ])}<tr class="b"><td>Difference</td><td class="n">${esc(diffText(z.difference))}</td></tr>${rows([
@@ -288,7 +290,12 @@ export default function ZReportPage() {
             <Tile label="Net sales" value={money(s.totalPaid)} sub={`items ${money(s.itemsTotal)} · tax ${money(s.tax ?? s.taxAndFees)}${s.deliveryFees ? ` · delivery ${money(s.deliveryFees)}` : ''}`} tone="text-emerald-700" />
             <Tile label="Tickets" value={String(s.tickets)} sub={current.open.count ? `${current.open.count} still open (${money(current.open.amount)})` : 'no open order'} tone="text-slate-800" />
             <Tile label="Average ticket" value={money(s.tickets ? s.totalPaid / s.tickets : 0)} tone="text-slate-800" />
-            <Tile label="Expected in the drawer" value={money(current.openingCash.amount + s.cashTotal)} sub={`opening ${money(current.openingCash.amount)} + cash sales ${money(s.cashTotal)}`} tone="text-[#8a6d2c]" />
+            <Tile
+              label="Expected in the drawer"
+              value={money(current.openingCash.amount + s.cashTotal - (current.paidToSuppliers ?? 0))}
+              sub={`opening ${money(current.openingCash.amount)} + cash sales ${money(s.cashTotal)}${current.paidToSuppliers ? ` − suppliers ${money(current.paidToSuppliers)}` : ''}`}
+              tone="text-[#8a6d2c]"
+            />
           </div>
           <DayBlocks t={current} />
         </>
@@ -413,7 +420,12 @@ export function ZViewModal({ z, onClose }: { z: ZFull; onClose: () => void }) {
       </div>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
         <Tile label="Net sales" value={money(z.totals.summary.totalPaid)} sub={`${z.totals.summary.tickets} tickets`} tone="text-emerald-700" />
-        <Tile label="Expected cash" value={money(z.expectedCash)} sub={`opening ${money(z.openingFloat)} + cash ${money(z.cashSales)}`} tone="text-slate-800" />
+        <Tile
+          label="Expected cash"
+          value={money(z.expectedCash)}
+          sub={`opening ${money(z.openingFloat)} + cash ${money(z.cashSales)}${z.totals.paidToSuppliers ? ` − suppliers ${money(z.totals.paidToSuppliers)}` : ''}`}
+          tone="text-slate-800"
+        />
         <Tile label="Counted" value={money(z.countedCash)} tone="text-slate-800" />
         <Tile label="Difference" value={diffText(z.difference)} tone={diffTone(z.difference)} />
         <Tile label="Taken out (owner / bank)" value={money(z.cashTaken)} tone="text-slate-800" />
@@ -480,7 +492,9 @@ function CloseDayModal({ current, onClose, onClosed }: { current: CurrentDay; on
   // The opening cash of the day comes from the server (set at the start, or left at the last Z).
   const opening = current.openingCash.amount;
   const cash = current.summary.cashTotal;
-  const expected = opening + cash;
+  // cash paid to suppliers from the drawer left it: the server subtracts it too
+  const paidToSuppliers = current.paidToSuppliers ?? 0;
+  const expected = opening + cash - paidToSuppliers;
   const countedNum = counted === '' ? null : Number(counted);
   const countedOk = countedNum !== null && !isNaN(countedNum) && countedNum >= 0;
   const difference = countedOk ? countedNum! - expected : null;
@@ -549,6 +563,9 @@ function CloseDayModal({ current, onClose, onClosed }: { current: CurrentDay; on
           <span>{money(opening)}</span>
         </div>
         <div className="flex justify-between text-slate-600"><span>+ Cash sales</span><span>{money(cash)}</span></div>
+        {paidToSuppliers > 0 && (
+          <div className="flex justify-between text-slate-600"><span>− Paid to suppliers</span><span>{money(paidToSuppliers)}</span></div>
+        )}
         <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-800"><span>= Expected in the drawer</span><span>{money(expected)}</span></div>
       </div>
 

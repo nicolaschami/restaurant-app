@@ -5,7 +5,8 @@
 //     is every payment made after the previous Z was closed (a late night after
 //     midnight stays in the same day).
 //   - One cash drawer per restaurant.
-//   - Cash check: expected cash = opening cash + cash sales; the cashier types the
+//   - Cash check: expected cash = opening cash + cash sales − cash paid to suppliers
+//     from the drawer (2026-10-27); the cashier types the
 //     cash counted in the drawer; difference = counted − expected (+ over, − short).
 //   - Opening cash (2026-10-25): the cash put in the drawer before selling. Set on
 //     the Z page or confirmed in the POS at the start of the day (drawer_openings);
@@ -42,6 +43,25 @@ const fromCents = (c: number) => (c / 100).toFixed(2);
 const sinceLastZ = (openedAt: string | null, upTo?: string) =>
   sql`${openedAt ? sql`p.created_at > ${openedAt}::timestamptz` : sql`true`}
       ${upTo ? sql`AND p.created_at <= ${upTo}::timestamptz` : sql``}`;
+
+// Cash paid to suppliers FROM THE DRAWER during the current day (2026-10-27): it left
+// the drawer, so the expected cash goes down ("Paid to suppliers"). Only POSTED
+// payments count; a closed Z keeps its own frozen number.
+async function paidFromDrawerCents(
+  restaurantId: number,
+  openedAt: string | null,
+  upTo?: string,
+  exec: { execute: (q: any) => Promise<any> } = db
+): Promise<number> {
+  const [row] = (await exec.execute(sql`
+    SELECT COALESCE(SUM(amount), 0)::float AS paid
+    FROM supplier_payments
+    WHERE restaurant_id = ${restaurantId} AND from_cash_drawer AND status = 'POSTED'
+      ${openedAt ? sql`AND created_at > ${openedAt}::timestamptz` : sql``}
+      ${upTo ? sql`AND created_at <= ${upTo}::timestamptz` : sql``}
+  `)) as any[];
+  return toCents(row.paid);
+}
 
 // The last Z of a restaurant (null if none yet).
 async function lastZ(restaurantId: number, exec: { execute: (q: any) => Promise<any> } = db) {
@@ -94,6 +114,7 @@ export default async function zReportRoutes(fastify: FastifyInstance) {
       const snapshot = await salesSnapshot(restaurantId, tz, sinceLastZ(last?.closedAt ?? null));
       const open = await openOrders(restaurantId);
       const opening = await openingCash(restaurantId, last, tz);
+      const paidCents = await paidFromDrawerCents(restaurantId, last?.closedAt ?? null);
       const [{ first }] = (await db.execute(sql`
         SELECT ${localText(sql`MIN(p.created_at)`, tz)} AS first
         FROM order_payments p WHERE p.restaurant_id = ${restaurantId} AND ${sinceLastZ(last?.closedAt ?? null)}
@@ -108,6 +129,9 @@ export default async function zReportRoutes(fastify: FastifyInstance) {
         nextNumber: (last?.zNumber ?? 0) + 1,
         openingCash: opening,
         suggestedFloat: opening.amount,
+        // cash paid to suppliers from the drawer, and the cash expected after it
+        paidToSuppliers: paidCents / 100,
+        expectedCash: (toCents(opening.amount) + toCents(snapshot.summary.cashTotal) - paidCents) / 100,
         ...snapshot,
         open,
       });
@@ -193,7 +217,8 @@ export default async function zReportRoutes(fastify: FastifyInstance) {
         const floatCents = toCents((await openingCash(restaurantId, last, tz, tx)).amount);
 
         const cashSalesCents = toCents(snapshot.summary.cashTotal);
-        const expectedCents = floatCents + cashSalesCents;
+        const paidCents = await paidFromDrawerCents(restaurantId, last?.closedAt ?? null, now, tx);
+        const expectedCents = floatCents + cashSalesCents - paidCents;
         const differenceCents = countedCents - expectedCents;
 
         const [row] = (await tx.execute(sql`
@@ -209,7 +234,7 @@ export default async function zReportRoutes(fastify: FastifyInstance) {
              ${now}::timestamptz,
              ${fromCents(floatCents)}, ${fromCents(cashSalesCents)}, ${fromCents(expectedCents)},
              ${fromCents(countedCents)}, ${fromCents(differenceCents)}, ${snapshot.summary.totalPaid.toFixed(2)},
-             ${snapshot.summary.tickets}, ${JSON.stringify({ ...snapshot, openAtClose: open, timeZone: tz })}::jsonb,
+             ${snapshot.summary.tickets}, ${JSON.stringify({ ...snapshot, openAtClose: open, timeZone: tz, paidToSuppliers: paidCents / 100 })}::jsonb,
              ${notes}, (SELECT id FROM users WHERE id = ${request.user?.id ?? null}),
              ${fromCents(takenCents)}, ${fromCents(leftCents)})
           RETURNING id

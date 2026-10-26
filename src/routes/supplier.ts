@@ -1,8 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { db } from '../db';
 import { suppliers } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { getRestaurantId } from '../lib/tenant.js';
+import { JournalError, syncOpeningEntry } from '../lib/journal.js';
 
 interface SupplierBody {
   supplierCode?: string;
@@ -74,18 +75,31 @@ const tenantId = String(restaurantId);
           return reply.status(403).send({ error: 'User is not assigned to a restaurant.' });
         }
 
-        const [newSupplier] = await db
-          .insert(suppliers)
-          .values({
-            ...body,
-            restaurantId: tenantId,
-            creditLimit: body.creditLimit ? String(body.creditLimit) : '0.00',
-            openingBalance: body.openingBalance ? String(body.openingBalance) : '0.00',
-          })
-          .returning();
+        // The supplier and its opening-balance journal entry are saved together.
+        const newSupplier = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(suppliers)
+            .values({
+              ...body,
+              restaurantId: tenantId,
+              creditLimit: body.creditLimit ? String(body.creditLimit) : '0.00',
+              openingBalance: body.openingBalance ? String(body.openingBalance) : '0.00',
+            })
+            .returning();
+          await syncOpeningEntry(
+            tx,
+            Number(restaurantId),
+            { id: row.supplierId, name: row.supplierName, code: row.supplierCode, openingBalance: row.openingBalance },
+            request.user?.id
+          );
+          return row;
+        });
 
         return reply.status(201).send(newSupplier);
       } catch (error: any) {
+        if (error instanceof JournalError) {
+          return reply.status(error.statusCode).send({ error: error.message });
+        }
         fastify.log.error(error);
 
         if (error.code === '23505') {
@@ -133,16 +147,28 @@ const tenantId = String(restaurantId);
         if (body.creditLimit !== undefined) updateData.creditLimit = String(body.creditLimit);
         if (body.openingBalance !== undefined) updateData.openingBalance = String(body.openingBalance);
 
-        const [updatedSupplier] = await db
-          .update(suppliers)
-          .set(updateData)
-          .where(
-            and(
-              eq(suppliers.supplierId, id),
-              eq(suppliers.restaurantId, String(restaurantId))
+        // The supplier and its opening-balance entry change together. Once the supplier
+        // has purchases or payments, a different opening balance is refused (409).
+        const updatedSupplier = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .update(suppliers)
+            .set(updateData)
+            .where(
+              and(
+                eq(suppliers.supplierId, id),
+                eq(suppliers.restaurantId, String(restaurantId))
+              )
             )
-          )
-          .returning();
+            .returning();
+          if (!row) return null;
+          await syncOpeningEntry(
+            tx,
+            Number(restaurantId),
+            { id: row.supplierId, name: row.supplierName, code: row.supplierCode, openingBalance: row.openingBalance },
+            request.user?.id
+          );
+          return row;
+        });
 
         if (!updatedSupplier) {
           return reply.status(404).send({ error: 'Supplier not found.' });
@@ -150,6 +176,9 @@ const tenantId = String(restaurantId);
 
         return reply.status(200).send(updatedSupplier);
       } catch (error) {
+        if (error instanceof JournalError) {
+          return reply.status(error.statusCode).send({ error: error.message });
+        }
         fastify.log.error(error);
         return reply.status(500).send({ error: 'Failed to update supplier.' });
       }
@@ -175,10 +204,19 @@ const tenantId = String(restaurantId);
 
     try {
       // Only a supplier of the user's own restaurant can be deleted.
-      const [deletedItem] = await db
-        .delete(suppliers)
-        .where(and(eq(suppliers.supplierId, itemId), eq(suppliers.restaurantId, String(restaurantId))))
-        .returning();
+      // Its opening-balance entry goes with it; any other journal line (purchase,
+      // payment) blocks the delete below (23503).
+      const deletedItem = await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          DELETE FROM journal_entries
+          WHERE restaurant_id = ${restaurantId} AND source_type = 'OPENING' AND source_id = ${itemId}
+        `);
+        const [row] = await tx
+          .delete(suppliers)
+          .where(and(eq(suppliers.supplierId, itemId), eq(suppliers.restaurantId, String(restaurantId))))
+          .returning();
+        return row;
+      });
 
       if (!deletedItem) {
         return reply.status(404).send({ error: 'Supplier not found.' });

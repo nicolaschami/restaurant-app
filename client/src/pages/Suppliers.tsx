@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {api} from '../api';
 import { toast } from '../components/Toaster';
 import ConfirmModal from '../components/ConfirmModal';
+import SupplierAccount from '../components/SupplierAccount';
+import { money } from '../lib/restaurantSettings';
 import {
   Truck,
   Plus,
@@ -16,7 +18,8 @@ import {
   XCircle,
   X,
   CreditCard,
-  Loader2,Trash2
+  Loader2,Trash2,
+  Wallet
 } from 'lucide-react';
 
 export interface Supplier {
@@ -56,6 +59,10 @@ const [itemToDelete, setItemToDelete] = useState<Supplier | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  // The supplier whose account (statement, payments…) is open; null = the list.
+  const [accountOf, setAccountOf] = useState<number | null>(null);
+  // Real balance of each supplier (from the journal): supplierId → amount we owe.
+  const [balances, setBalances] = useState<Record<number, number>>({});
 
   const [formData, setFormData] = useState<Partial<Supplier>>({
     supplierName: '',
@@ -129,6 +136,11 @@ const confirmDelete = async () => {
       }));
 
       setSuppliers(normalizedData);
+
+      // Balances from the journal (opening + purchases − returns − payments).
+      // (If they cannot load, the list still shows, with 0.)
+      const bal = await api.get('/supplier-balances').catch(() => ({ data: [] }));
+      setBalances(Object.fromEntries((bal.data as Array<{ id: number; balance: number }>).map((b) => [b.id, b.balance])));
     } catch (err: any) {
       if (err.response?.status === 401 && onLogout) {
         onLogout();
@@ -252,7 +264,8 @@ const confirmDelete = async () => {
 //const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const totalSuppliers = suppliers.length;
   const activeSuppliers = suppliers.filter((s) => s.isActive).length;
-  const totalOutstanding = suppliers.reduce((acc, s) => acc + parseNumericValue(s.openingBalance), 0);
+  const balanceOf = (s: Supplier) => balances[s.supplierId ?? -1] ?? 0;
+  const totalOutstanding = suppliers.reduce((acc, s) => acc + balanceOf(s), 0);
 
   const filteredSuppliers = suppliers.filter((supplier) => {
     const name = supplier.supplierName || '';
@@ -273,6 +286,19 @@ const confirmDelete = async () => {
 
     return matchesSearch && matchesStatus;
   });
+
+  // An account is open: show it instead of the list (Back returns here, reloaded).
+  if (accountOf !== null) {
+    return (
+      <SupplierAccount
+        supplierId={accountOf}
+        onBack={() => {
+          setAccountOf(null);
+          fetchSuppliers();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-full bg-slate-50/60 p-4 sm:p-6 lg:p-8">
@@ -336,7 +362,7 @@ const confirmDelete = async () => {
               <DollarSign className="h-4 w-4 text-[#b5541f]" />
             </div>
             <p className="mt-2 text-2xl price-font font-bold text-[#1c1917]">
-              ${totalOutstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              {money(totalOutstanding)}
             </p>
             <span className="mt-1 inline-block text-[11px] font-medium text-[#b5541f]">
               Accounts Payable Balance
@@ -447,9 +473,14 @@ const confirmDelete = async () => {
                       </td>
 
                       <td className="px-5 py-4">
-                        <p className={`price-font font-bold ${parseNumericValue(supplier.openingBalance) > 0 ? 'text-[#b5541f]' : 'text-slate-900'}`}>
-                          ${parseNumericValue(supplier.openingBalance).toFixed(2)}
-                        </p>
+                        <button
+                          onClick={() => setAccountOf(supplier.supplierId ?? null)}
+                          title="Open the account"
+                          className={`price-font font-bold hover:underline ${balanceOf(supplier) > 0 ? 'text-[#b5541f]' : balanceOf(supplier) < 0 ? 'text-emerald-700' : 'text-slate-900'}`}
+                        >
+                          {money(balanceOf(supplier))}
+                        </button>
+                        {balanceOf(supplier) < 0 && <p className="text-[10px] text-emerald-700">advance paid</p>}
                       </td>
 
                       <td className="px-5 py-4">
@@ -466,6 +497,13 @@ const confirmDelete = async () => {
 
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setAccountOf(supplier.supplierId ?? null)}
+                            title="Account: statement, payments, journal"
+                            className="inline-flex items-center gap-1 rounded-lg bg-[#131c18] px-2 py-1 text-[11px] font-semibold text-[#e6cf8f] hover:opacity-90 transition"
+                          >
+                            <Wallet className="h-3.5 w-3.5" /> Account
+                          </button>
                           <button
                             onClick={() => handleOpenModal(supplier)}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-[#fdece1] hover:text-[#b5541f] transition"
