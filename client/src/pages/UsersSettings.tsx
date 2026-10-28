@@ -1,8 +1,10 @@
 // client/src/pages/UsersSettings.tsx
 //
 // Settings → Users (owner only), users & roles 2026-10-26:
-//   - the restaurant's users: name, email, role, PIN set?, active / deactivated;
-//   - add a user (name, email, password, role, optional 4-digit PIN);
+//   - the restaurant's users: name, login, role, PIN set?, active / deactivated;
+//   - add a user (name, login, password, role, optional 4-digit PIN). With a login
+//     code (2026-10-28) the owner types only "sara" and sees "@capri" greyed next to
+//     it: the server adds it, so the login is sara@capri. Without a code: an email;
 //   - change a role, rename, reset the password, set / remove the PIN,
 //     deactivate / reactivate (a deactivated user cannot log in; history is kept).
 // The server enforces the rules (you cannot change your own role or deactivate
@@ -46,6 +48,7 @@ export default function UsersSettings() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null);
+  const [loginCode, setLoginCode] = useState<string | null>(null); // "capri" → logins "sara@capri"
   const [terminals, setTerminals] = useState<Array<{ id: number; name: string; createdAt: string; lastUsedAt: string | null; createdBy: string }>>([]);
 
   const loadTerminals = () =>
@@ -70,6 +73,7 @@ export default function UsersSettings() {
     try {
       const res = await api.get('/users');
       setRows(res.data.users || []);
+      setLoginCode(res.data.loginCode ?? null);
     } catch (err: any) {
       toast.error('Users not loaded', err?.response?.data?.error || 'Please try again.');
     } finally {
@@ -129,7 +133,7 @@ export default function UsersSettings() {
           <thead className="bg-[#131c18] text-xs text-white">
             <tr>
               <th className="px-3 py-2 text-left font-semibold">Name</th>
-              <th className="px-3 py-2 text-left font-semibold">Email</th>
+              <th className="px-3 py-2 text-left font-semibold">{loginCode ? 'Login' : 'Email'}</th>
               <th className="px-3 py-2 text-left font-semibold">Role</th>
               <th className="px-3 py-2 text-left font-semibold">PIN</th>
               <th className="px-3 py-2 text-left font-semibold">Status</th>
@@ -148,7 +152,7 @@ export default function UsersSettings() {
                   {u.name}
                   {u.id === me?.id && <span className="ml-1.5 text-[11px] font-normal text-[#8a6d2c]">(you)</span>}
                 </td>
-                <td className="px-3 py-2 text-slate-600">{u.email}</td>
+                <td className={`px-3 py-2 text-slate-600 ${loginCode ? 'font-mono text-xs' : ''}`}>{u.email}</td>
                 <td className="px-3 py-2">
                   <span className={`rounded px-1.5 py-0.5 text-[11px] font-bold ${ROLE_BADGE[u.role]}`}>{ROLE_LABEL[u.role]}</span>
                 </td>
@@ -231,18 +235,22 @@ export default function UsersSettings() {
         )}
       </div>
 
-      {editing && <UserModal user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {editing && <UserModal user={editing === 'new' ? null : editing} loginCode={loginCode} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- add / edit
 
-function UserModal({ user, onClose, onSaved }: { user: UserRow | null; onClose: () => void; onSaved: () => void }) {
+function UserModal({ user, loginCode, onClose, onSaved }: { user: UserRow | null; loginCode: string | null; onClose: () => void; onSaved: () => void }) {
   const isNew = !user;
   const isMe = user?.id === me?.id;
+  const suffix = loginCode ? `@${loginCode}` : '';
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  // with a login code: only the part before "@capri" is typed
+  const startUsername = user && suffix && user.email.endsWith(suffix) ? user.email.slice(0, -suffix.length) : '';
+  const [username, setUsername] = useState(startUsername);
   const [role, setRole] = useState<Role>(user?.role ?? 'cashier');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
@@ -262,10 +270,12 @@ function UserModal({ user, onClose, onSaved }: { user: UserRow | null; onClose: 
     setSaving(true);
     try {
       if (isNew) {
-        await api.post('/users', { name, email, password, role, pin: pin || undefined });
-        toast.success('User added', `${name} · ${ROLE_LABEL[role]}`);
+        const login = loginCode ? { username } : { email };
+        await api.post('/users', { name, ...login, password, role, pin: pin || undefined });
+        toast.success('User added', loginCode ? `${name} logs in as ${username.trim().toLowerCase()}${suffix}` : `${name} · ${ROLE_LABEL[role]}`);
       } else {
         const body: Record<string, unknown> = { name };
+        if (loginCode && username !== startUsername) body.username = username;
         if (!isMe) body.role = role;
         if (password) body.password = password;
         if (removePin) body.pin = '';
@@ -297,10 +307,29 @@ function UserModal({ user, onClose, onSaved }: { user: UserRow | null; onClose: 
             <label className={label}>Name</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className={input} autoFocus />
           </div>
-          <div>
-            <label className={label}>Email (login)</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!isNew} className={`${input} disabled:bg-slate-100 disabled:text-slate-500`} />
-          </div>
+          {loginCode && (isNew || startUsername) ? (
+            <div>
+              <label className={label}>Username (login)</label>
+              {/* the grey "@capri" is added by the server: it cannot be typed or changed */}
+              <div className="flex h-9 overflow-hidden rounded-md border border-slate-300 focus-within:border-[#c9a24b]">
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                  placeholder="e.g. sara"
+                  className="min-w-0 flex-1 bg-white px-2.5 font-mono text-sm outline-none"
+                />
+                <span className="flex items-center border-l border-slate-300 bg-slate-100 px-2.5 font-mono text-sm text-slate-500">{suffix}</span>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Logs in as <b className="font-mono text-slate-700">{(username || 'name') + suffix}</b>
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className={label}>Email (login)</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!isNew} className={`${input} disabled:bg-slate-100 disabled:text-slate-500`} />
+            </div>
+          )}
           <div>
             <label className={label}>Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value as Role)} disabled={isMe} className={`${input} disabled:bg-slate-100`}>

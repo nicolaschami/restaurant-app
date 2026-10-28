@@ -4,6 +4,8 @@
 // the restaurants on the platform, and "New restaurant": creates the restaurant AND
 // its owner account in one step (agreed with the user: no invite link). The new owner
 // then logs in, completes Restaurant Info and creates the restaurant's users.
+// Login codes (2026-10-28): each new restaurant gets a short code ("capri"), fixed
+// once saved; its owner logs in as admin@capri and its staff as sara@capri.
 // Data: /api/platform/restaurants
 
 import { useEffect, useState } from 'react';
@@ -15,6 +17,7 @@ import { COUNTRIES } from '../lib/countries';
 interface RestaurantRow {
   id: number;
   name: string;
+  loginCode: string | null; // null = older restaurant (email logins)
   phone: string;
   country: string | null;
   currency: string | null;
@@ -73,12 +76,12 @@ export default function PlatformScreen() {
           <div className="mb-1 font-bold">✓ {created.restaurant} is ready. Send these login details to the owner:</div>
           <div className="flex flex-wrap items-center gap-2">
             <code className="rounded bg-white px-2 py-1 font-mono text-xs text-slate-800">
-              Email: {created.email} · Password: {created.password}
+              Username: {created.email} · Password: {created.password}
             </code>
             <button
               onClick={() => {
                 navigator.clipboard
-                  .writeText(`Your RES POS account\nRestaurant: ${created.restaurant}\nEmail: ${created.email}\nPassword: ${created.password}\nPlease change your password after the first login.`)
+                  .writeText(`Your RES POS account\nRestaurant: ${created.restaurant}\nAddress: ${window.location.origin}\nUsername: ${created.email}\nPassword: ${created.password}\nPlease change your password after the first login.`)
                   .then(() => toast.success('Copied', 'Paste it in WhatsApp or an email.'))
                   .catch(() => toast.error('Not copied', 'Copy it by hand.'));
               }}
@@ -100,6 +103,7 @@ export default function PlatformScreen() {
             <tr>
               <th className="px-3 py-2 text-left font-semibold">#</th>
               <th className="px-3 py-2 text-left font-semibold">Restaurant</th>
+              <th className="px-3 py-2 text-left font-semibold">Login code</th>
               <th className="px-3 py-2 text-left font-semibold">Country</th>
               <th className="px-3 py-2 text-left font-semibold">Currency</th>
               <th className="px-3 py-2 text-left font-semibold">Owner</th>
@@ -115,6 +119,7 @@ export default function PlatformScreen() {
                   <Building2 className="mr-1.5 inline h-4 w-4 text-[#c9a24b]" />
                   {r.name}
                 </td>
+                <td className="px-3 py-2 font-mono text-xs text-slate-600">{r.loginCode ? `@${r.loginCode}` : <span className="text-slate-400">— (emails)</span>}</td>
                 <td className="px-3 py-2 text-slate-600">{countryName(r.country)}</td>
                 <td className="px-3 py-2 text-slate-600">{r.currency || 'USD'}</td>
                 <td className="px-3 py-2 text-slate-600">{r.ownerEmail || <span className="text-red-500">no owner</span>}</td>
@@ -142,10 +147,20 @@ export default function PlatformScreen() {
 
 function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCreated: (i: { restaurant: string; email: string; password: string }) => void }) {
   const [name, setName] = useState('');
+  const [loginCode, setLoginCode] = useState('');
+  const [codeTouched, setCodeTouched] = useState(false); // typed by hand: stop suggesting
   const [phone, setPhone] = useState('');
   const [country, setCountry] = useState('LB');
   const [ownerName, setOwnerName] = useState('');
-  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerUsername, setOwnerUsername] = useState('admin');
+
+  // only a–z and 0–9, like the database rule
+  const toCode = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+  // "Capri Restaurant" → "capri": the first word, until the code is typed by hand
+  const onName = (v: string) => {
+    setName(v);
+    if (!codeTouched) setLoginCode(toCode(v.trim().split(/\s+/)[0] || ''));
+  };
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,11 +180,11 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
     const c = COUNTRIES.find((x) => x.code === country);
     try {
       await api.post('/platform/restaurants', {
-        restaurant: { name, phone, country, currency: c?.currency, timezone: c?.timezone },
-        owner: { name: ownerName, email: ownerEmail, password },
+        restaurant: { name, loginCode, phone, country, currency: c?.currency, timezone: c?.timezone },
+        owner: { name: ownerName, username: ownerUsername, password },
       });
       toast.success('Restaurant created', name);
-      onCreated({ restaurant: name, email: ownerEmail.trim().toLowerCase(), password });
+      onCreated({ restaurant: name, email: `${ownerUsername}@${loginCode}`, password });
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Not created. Please try again.');
       setSaving(false);
@@ -187,9 +202,22 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
         </div>
         <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#8a6d2c]">The restaurant</div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+          <div>
             <label className={label}>Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={input} autoFocus />
+            <input value={name} onChange={(e) => onName(e.target.value)} className={input} autoFocus />
+          </div>
+          <div>
+            <label className={label}>Login code</label>
+            <input
+              value={loginCode}
+              onChange={(e) => {
+                setCodeTouched(true);
+                setLoginCode(toCode(e.target.value));
+              }}
+              placeholder="e.g. capri"
+              className={`${input} font-mono`}
+            />
+            <p className="mt-1 text-[11px] text-slate-500">Short, a–z and 0–9. Fixed once saved.</p>
           </div>
           <div>
             <label className={label}>Phone</label>
@@ -213,8 +241,15 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
             <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} className={input} />
           </div>
           <div>
-            <label className={label}>Email (login)</label>
-            <input value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} className={input} />
+            <label className={label}>Username (login)</label>
+            <div className="flex h-9 overflow-hidden rounded-md border border-slate-300 focus-within:border-[#c9a24b]">
+              <input
+                value={ownerUsername}
+                onChange={(e) => setOwnerUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                className="min-w-0 flex-1 bg-white px-2.5 font-mono text-sm outline-none"
+              />
+              <span className="flex items-center border-l border-slate-300 bg-slate-100 px-2.5 font-mono text-sm text-slate-500">@{loginCode || 'code'}</span>
+            </div>
           </div>
           <div className="col-span-2">
             <label className={label}>Starting password (the owner changes it)</label>
@@ -226,6 +261,11 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
             </div>
           </div>
         </div>
+        {ownerUsername && loginCode && (
+          <div className="mt-3 rounded-md border border-[#c9a24b]/40 bg-[#c9a24b]/10 px-3 py-2 text-xs text-[#5c4214]">
+            The owner logs in with <b className="font-mono">{ownerUsername}@{loginCode}</b>
+          </div>
+        )}
         {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</div>}
         <div className="mt-4 flex justify-end gap-2">
           <button onClick={onClose} className="h-9 rounded-md border border-slate-300 px-4 text-sm text-slate-700 hover:bg-slate-100">Cancel</button>

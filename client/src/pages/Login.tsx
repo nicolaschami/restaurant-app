@@ -11,8 +11,8 @@ import {
   EyeOff,
   Loader2,
   Lock,
-  Mail,
   Package,
+  User,
   ShoppingCart,
 } from 'lucide-react';
 
@@ -212,22 +212,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           )}
 
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            {/* Email */}
+            {/* Username: "sara@capri" (the part after @ = the restaurant, 2026-10-28)
+                or an email for older accounts — so a text box, not type="email" */}
             <div>
               <label htmlFor="login-email" className="mb-1.5 block text-xs font-semibold text-[#221F1C]">
-                Email
+                Username
               </label>
               <div className="relative">
-                <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a8377]" />
+                <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a8377]" />
                 <input
                   id="login-email"
-                  type="email"
+                  type="text"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   autoFocus={!email}
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@restaurant.com"
+                  placeholder="e.g. sara@capri"
                   className="w-full rounded-xl border border-[#E7E1D2] bg-white py-3 pl-10 pr-4 text-sm text-[#221F1C] placeholder:text-[#b9b2a4] shadow-sm transition focus:border-[#c2621f] focus:outline-none focus:ring-4 focus:ring-[#c2621f]/15"
                 />
               </div>
@@ -276,7 +279,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="h-4 w-4 rounded border-[#E7E1D2] accent-[#c2621f]"
               />
-              Remember my email on this device
+              Remember my username on this device
             </label>
 
             {/* POS terminal: cashiers will log in here with their PIN only */}

@@ -53,12 +53,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
     // Same format as stored, so "Admin@Restaurant.com " still matches.
     const email = rest.email?.trim().toLowerCase();
     if (!email || !password) {
-      return reply.status(400).send({ error: 'Email and password are required.' });
+      return reply.status(400).send({ error: 'Username and password are required.' });
     }
 
+    // The login is an email (older restaurants) or "username@code" (sara@capri):
+    // both are kept in users.email, so the same search finds them.
     const user = await db.query.users.findFirst({ where: eq(users.email, email) });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      return reply.status(401).send({ error: 'Invalid email or password.' });
+      return reply.status(401).send({ error: 'Invalid username or password.' });
     }
     if (user.isActive === false) {
       return reply.status(403).send({ error: 'This account is deactivated. Ask the restaurant owner.' });
