@@ -939,7 +939,10 @@ fastify.put('/api/orders/:id', async (request, reply) => {
           customerName: orders.customerName,
           customerPhone: orders.customerPhone,
           deliveryAddress: orders.deliveryAddress,
-          created_at: orders.createdAt,
+          // created_at is stored WITHOUT a time zone, in the database's local time: read as is it
+          // looked hours "in the future" (dashboard waiting time stuck at 0 min). Send the exact
+          // moment as UTC ISO text instead (same fix as the KDS, 2026-10-27).
+          created_at: sql<string>`to_char((${orders.createdAt} AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
           itemCount: sql<number>`COALESCE(SUM(${orderItems.quantity}), 0)::int`,
         })
         .from(orders)

@@ -219,6 +219,11 @@ const confirmDelete = async () => {
         setSuppliers((prev) => [normalizedCreated, ...prev]);
       }
       toast.success(editingSupplier ? 'Supplier updated' : 'Supplier added');
+      // the opening balance may have changed: reload the balances from the journal
+      api
+        .get('/supplier-balances')
+        .then((bal) => setBalances(Object.fromEntries((bal.data as Array<{ id: number; balance: number }>).map((x) => [x.id, x.balance]))))
+        .catch(() => {});
 
       setIsModalOpen(false);
     } catch (err: any) {
