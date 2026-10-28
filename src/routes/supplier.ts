@@ -102,7 +102,7 @@ const tenantId = String(restaurantId);
         }
         fastify.log.error(error);
 
-        if (error.code === '23505') {
+        if ((error?.code ?? error?.cause?.code) === '23505') {
           return reply.status(409).send({
             error: 'A supplier with this code already exists for your restaurant.',
           });
@@ -227,10 +227,11 @@ const tenantId = String(restaurantId);
         deletedItemId: itemId,
       });
     } catch (error: any) {
-      // Foreign key constraint violation (PostgreSQL code 23503)
-      if (error?.code === '23503') {
-        return reply.status(409).send({ 
-          error: 'Cannot delete supplier because it is linked to active inventory or purchase orders.' 
+      // Foreign key constraint violation (PostgreSQL code 23503). Drizzle wraps the
+      // database error, so its code is on error.cause.
+      if ((error?.code ?? error?.cause?.code) === '23503') {
+        return reply.status(409).send({
+          error: 'This supplier cannot be deleted: it has purchases or payments. You can make it inactive instead.'
         });
       }
 

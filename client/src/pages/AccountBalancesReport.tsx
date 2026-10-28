@@ -1,18 +1,22 @@
 // client/src/pages/AccountBalancesReport.tsx
 //
 // Reports → Financial → Account Balances (trial balance, asked 2026-10-27): for each
-// account of the chart (370 Stocks, 401 Suppliers, 4426 VAT, 512 Bank, 530 Cash drawer…):
+// account of the restaurant's chart (a TREE since 2026-10-28: 4 → 40 → 401 → 4011 →
+// 40110001 Fresh Farms):
 //   balance before the period · debits and credits of the period · balance at the end.
+// A group (bold) shows the total of everything under it; ▸ opens / closes it, and
+// "Show" chooses how deep to look (classes only … every account).
 // The end balance is shown on the debit side (assets: what we HAVE, e.g. stock, VAT to
 // recover, cash) or the credit side (what we OWE, e.g. suppliers). Σ debit = Σ credit.
 // Click an account → the Journal (JV) report of the same period, filtered on it.
 // Data: GET /api/reports/trial-balance?from=&to=
 
-import { useEffect, useState } from 'react';
-import { FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { PERIOD_PRESETS, PeriodPicker, niceDate } from '../components/ItemMovementView';
 import { money } from '../lib/restaurantSettings';
+import { treeOrder } from '../lib/accountTree';
 import { Tile } from './ZReportPage';
 import JournalReport from './JournalReport';
 
@@ -20,6 +24,8 @@ interface AccountRow {
   code: string;
   name: string;
   kind: string;
+  parentCode: string | null;
+  isGroup: boolean;
   opening: number; // Σ debit − Σ credit before the period
   debit: number;
   credit: number;
@@ -27,9 +33,18 @@ interface AccountRow {
   entries: number;
 }
 
+// How deep the list goes: a level (1 = classes) or every account.
+const DEPTHS = [
+  { id: '1', label: 'Classes' },
+  { id: '2', label: '2 levels' },
+  { id: '3', label: '3 levels' },
+  { id: 'all', label: 'Every account' },
+];
+
 // a balance on its side: debit (positive) or credit (negative)
 const side = (v: number) => ({ dr: v > 0.004 ? v : 0, cr: v < -0.004 ? -v : 0 });
 const cellMoney = (v: number) => (v ? money(v) : '');
+const moved = (r: AccountRow) => !!(r.opening || r.debit || r.credit || r.closing);
 
 export default function AccountBalancesReport() {
   const [[from, to], setRange] = useState<[string, string]>(PERIOD_PRESETS[0].range());
@@ -37,6 +52,8 @@ export default function AccountBalancesReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hideEmpty, setHideEmpty] = useState(true);
+  const [depth, setDepth] = useState('all');
+  const [closed, setClosed] = useState<Set<string>>(new Set()); // groups closed by hand
   const [drill, setDrill] = useState<string | null>(null); // account opened in the journal
 
   const load = async () => {
@@ -61,11 +78,29 @@ export default function AccountBalancesReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
 
-  // The journal of one account, same period; ← comes back here.
+  const tree = useMemo(() => treeOrder(rows), [rows]);
+
+  // The rows to show: deep enough, not under a closed group, with movement (if asked).
+  const shown = useMemo(() => {
+    const maxLevel = depth === 'all' ? Infinity : Number(depth);
+    const out: typeof tree = [];
+    let hideBelow = Infinity; // level under which the rows are inside a closed group
+    for (const r of tree) {
+      if (r.level > hideBelow) continue;
+      hideBelow = Infinity;
+      if (r.level > maxLevel) continue;
+      if (hideEmpty && !moved(r)) continue;
+      out.push(r);
+      if (r.isGroup && closed.has(r.code)) hideBelow = r.level;
+    }
+    return out;
+  }, [tree, depth, hideEmpty, closed]);
+
   if (drill) return <JournalReport initialAccount={drill} initialRange={[from, to]} onBack={() => setDrill(null)} />;
 
-  const shown = hideEmpty ? rows.filter((r) => r.opening || r.debit || r.credit || r.closing) : rows;
-  const sum = (f: (r: AccountRow) => number) => rows.reduce((s, r) => s + Math.round(f(r) * 100), 0) / 100;
+  // Totals: only the real accounts (a group is already the sum of its accounts).
+  const leaves = rows.filter((r) => !r.isGroup);
+  const sum = (f: (r: AccountRow) => number) => leaves.reduce((s, r) => s + Math.round(f(r) * 100), 0) / 100;
   const total = {
     openDr: sum((r) => side(r.opening).dr),
     openCr: sum((r) => side(r.opening).cr),
@@ -75,8 +110,18 @@ export default function AccountBalancesReport() {
     closeCr: sum((r) => side(r.closing).cr),
   };
   const balanced = Math.round(total.debit * 100) === Math.round(total.credit * 100) && Math.round(total.closeDr * 100) === Math.round(total.closeCr * 100);
-  const find = (code: string) => rows.find((r) => r.code === code)?.closing ?? 0;
+  const get = (code: string) => rows.find((r) => r.code === code);
+  const closingOf = (code: string) => get(code)?.closing ?? 0;
+  const salesOfPeriod = (get('70')?.credit ?? 0) - (get('70')?.debit ?? 0);
   const periodText = `${niceDate(from)} → ${niceDate(to)}`;
+
+  const toggle = (code: string) =>
+    setClosed((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
 
   // ---------------------------------------------------------------- export / print
 
@@ -84,9 +129,9 @@ export default function AccountBalancesReport() {
     const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
     const f = (v: number) => (v ? v.toFixed(2) : '');
     const out: Array<Array<string | number>> = [
-      ['Account', 'Name', 'Opening debit', 'Opening credit', 'Period debit', 'Period credit', 'Closing debit', 'Closing credit'],
-      ...shown.map((r) => [r.code, r.name, f(side(r.opening).dr), f(side(r.opening).cr), f(r.debit), f(r.credit), f(side(r.closing).dr), f(side(r.closing).cr)]),
-      ['TOTAL', '', f(total.openDr), f(total.openCr), f(total.debit), f(total.credit), f(total.closeDr), f(total.closeCr)],
+      ['Account', 'Name', 'Group', 'Level', 'Opening debit', 'Opening credit', 'Period debit', 'Period credit', 'Closing debit', 'Closing credit'],
+      ...shown.map((r) => [r.code, r.name, r.isGroup ? 'Y' : 'N', r.level, f(side(r.opening).dr), f(side(r.opening).cr), f(r.debit), f(r.credit), f(side(r.closing).dr), f(side(r.closing).cr)]),
+      ['TOTAL', '', '', '', f(total.openDr), f(total.openCr), f(total.debit), f(total.credit), f(total.closeDr), f(total.closeCr)],
     ];
     const csv = '﻿' + out.map((r) => r.map(cell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -103,7 +148,7 @@ export default function AccountBalancesReport() {
     const body = shown
       .map((r) => {
         const o = side(r.opening), c = side(r.closing);
-        return `<tr><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td class="n">${cellMoney(o.dr)}</td><td class="n">${cellMoney(o.cr)}</td>
+        return `<tr class="${r.isGroup ? 'g' : ''}"><td style="padding-left:${6 + (r.level - 1) * 12}px">${esc(r.code)}</td><td>${esc(r.name)}</td><td class="n">${cellMoney(o.dr)}</td><td class="n">${cellMoney(o.cr)}</td>
           <td class="n">${cellMoney(r.debit)}</td><td class="n">${cellMoney(r.credit)}</td><td class="n">${cellMoney(c.dr)}</td><td class="n">${cellMoney(c.cr)}</td></tr>`;
       })
       .join('');
@@ -113,7 +158,7 @@ export default function AccountBalancesReport() {
       body{font-family:Arial,sans-serif;font-size:11px;margin:16px;color:#111}
       h1{font-size:16px;margin:0} .sub{color:#555;margin:2px 0 10px}
       table{width:100%;border-collapse:collapse} th,td{border-bottom:1px solid #ddd;padding:4px 6px;text-align:left}
-      th{background:#131c18;color:#fff} .n{text-align:right} tfoot td{font-weight:bold;border-top:2px solid #111}
+      th{background:#131c18;color:#fff} .n{text-align:right} tr.g td{font-weight:bold;background:#f6f1e4} tfoot td{font-weight:bold;border-top:2px solid #111}
     </style></head><body>
       <h1>${esc(restaurant)} · Account Balances</h1>
       <div class="sub">${esc(periodText)} · printed ${new Date().toLocaleString()}</div>
@@ -162,6 +207,20 @@ export default function AccountBalancesReport() {
 
       <div className="flex flex-wrap items-center gap-3">
         <PeriodPicker from={from} to={to} onChange={setRange} />
+        <div className="flex overflow-hidden rounded-md border border-slate-300 bg-white text-xs" role="group" aria-label="Show">
+          {DEPTHS.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => {
+                setDepth(d.id);
+                setClosed(new Set());
+              }}
+              className={`px-2.5 py-1.5 ${depth === d.id ? 'bg-[#131c18] font-semibold text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
         <label className="flex items-center gap-1.5 text-xs text-slate-600">
           <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="accent-[#131c18]" />
           Hide accounts with no movement
@@ -169,10 +228,11 @@ export default function AccountBalancesReport() {
       </div>
 
       {/* the key balances at the end of the period */}
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Tile label="We owe suppliers (401)" value={money(-find('401'))} sub="credit balance" tone="text-[#9a3412]" />
-        <Tile label="Stock value (370)" value={money(find('370'))} sub="purchases − returns, before tax" tone="text-slate-800" />
-        <Tile label="VAT to recover (4426)" value={money(find('4426'))} tone="text-slate-800" />
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        <Tile label="We owe suppliers (401)" value={money(-closingOf('401'))} sub="credit balance" tone="text-[#9a3412]" />
+        <Tile label="Stock value (370)" value={money(closingOf('370'))} sub="purchases − returns, before tax" tone="text-slate-800" />
+        <Tile label="Cash & banks (5)" value={money(closingOf('5'))} sub="drawer, owner, bank, cards" tone="text-slate-800" />
+        <Tile label="Sales of the period (70)" value={money(salesOfPeriod)} sub="before tax, booked at each Z" tone="text-emerald-700" />
         <Tile label="Check" value={balanced ? 'Balanced ✓' : 'Not balanced'} sub="Σ debit = Σ credit" tone={balanced ? 'text-emerald-700' : 'text-red-600'} />
       </div>
 
@@ -202,17 +262,33 @@ export default function AccountBalancesReport() {
             <tbody>
               {shown.map((r) => {
                 const o = side(r.opening), c = side(r.closing);
+                const open = !closed.has(r.code);
+                const canOpen = r.isGroup && (depth === 'all' || r.level < Number(depth));
                 return (
                   <tr
                     key={r.code}
                     onClick={() => setDrill(r.code)}
                     title="See the journal entries of this account"
-                    className="cursor-pointer border-b border-slate-100 even:bg-slate-50/60 hover:bg-[#c9a24b]/10"
+                    className={`cursor-pointer border-b border-slate-100 hover:bg-[#c9a24b]/10 ${r.isGroup ? 'bg-[#f6f1e4]/70 font-semibold' : ''}`}
                   >
-                    <td className="px-3 py-1.5">
+                    <td className="py-1.5 pr-3" style={{ paddingLeft: 8 + (r.level - 1) * 14 }}>
+                      <span className="inline-flex w-4 justify-center align-middle">
+                        {canOpen && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggle(r.code);
+                            }}
+                            title={open ? 'Close this group' : 'Open this group'}
+                            className="rounded text-slate-500 hover:bg-slate-200"
+                          >
+                            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </span>
                       <span className="font-mono text-xs font-semibold text-[#8a6d2c] underline decoration-dotted underline-offset-2">{r.code}</span>{' '}
-                      <span className="text-slate-700">{r.name}</span>
-                      {r.entries > 0 && <span className="ml-1 text-[11px] text-slate-400">· {r.entries} entries</span>}
+                      <span className={r.isGroup ? 'text-slate-800' : 'text-slate-700'}>{r.name}</span>
+                      {r.entries > 0 && !r.isGroup && <span className="ml-1 text-[11px] font-normal text-slate-400">· {r.entries} entries</span>}
                     </td>
                     <td className={`${td} text-slate-500`}>{cellMoney(o.dr)}</td>
                     <td className={`${td} text-slate-500`}>{cellMoney(o.cr)}</td>
@@ -231,7 +307,7 @@ export default function AccountBalancesReport() {
             </tbody>
             <tfoot className="sticky bottom-0 bg-white">
               <tr className="border-t-2 border-slate-300 bg-[#c9a24b]/10 font-bold text-slate-800">
-                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2">Total (all accounts)</td>
                 <td className={td}>{money(total.openDr)}</td>
                 <td className={td}>{money(total.openCr)}</td>
                 <td className={td}>{money(total.debit)}</td>
@@ -245,7 +321,7 @@ export default function AccountBalancesReport() {
       </div>
 
       <p className="text-[11px] text-slate-500">
-        Debit balance = what the restaurant has (stock, VAT to recover, cash). Credit balance = what it owes (suppliers). Click an account to see its entries.
+        Bold = a group (the total of the accounts under it). Debit balance = what the restaurant has (stock, VAT to recover, cash). Credit balance = what it owes (suppliers) or earned (sales). Click an account to see its entries.
       </p>
     </div>
   );

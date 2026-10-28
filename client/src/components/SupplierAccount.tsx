@@ -2,7 +2,7 @@
 //
 // Suppliers › Account (mockup agreed 2026-10-26: https://claude.ai/artifact/VnRMtuuuhYzHemRom4ToBn).
 // One supplier's account, in 4 tabs:
-//   - Statement : every movement on account 401 with a running balance
+//   - Statement : every movement on the supplier's own account (40110001…, under 401) with a running balance
 //                 (purchase = credit, we owe more; return / payment = debit, we owe less)
 //   - Documents : the purchases (GRN) and returns (RP) — click one to open it
 //   - Payments  : PAY-0001… with «Void» (reason required; never deletes)
@@ -73,6 +73,7 @@ interface Account {
     phone: string | null;
     paymentTerms: string | null;
     creditLimit: number;
+    accountCode: string | null; // its own account under 4011 (40110001…)
   };
   balance: number; // today, positive = we owe
   openingBalance: number; // at the start of the period
@@ -110,11 +111,10 @@ const balanceLabel = (v: number) => (v < -0.004 ? 'Advance paid' : 'We owe');
 
 const ACCOUNT_NAMES: Record<string, string> = {
   '370': '370 Stocks',
-  '401': '401 Suppliers',
   '4426': '4426 VAT recoverable',
   '512': '512 Bank',
-  '530': '530 Cash drawer (POS)',
-  '531': '531 Cash (owner)',
+  '53100001': '53100001 Cash sales (POS drawer)',
+  '53100002': '53100002 Cash (owner)',
   '890': '890 Opening balances',
 };
 
@@ -185,6 +185,11 @@ export default function SupplierAccount({ supplierId, onBack }: { supplierId: nu
             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Suppliers › Account</div>
             <h1 className="truncate text-lg font-extrabold text-[#131c18]">
               {s?.name ?? '…'} <span className="font-mono text-sm font-semibold text-[#8a6420]">{s?.code}</span>
+              {s?.accountCode && (
+                <span className="ml-1.5 rounded bg-[#c9a24b]/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[#8a6420]" title="This supplier's account in the chart of accounts">
+                  Acc. {s.accountCode}
+                </span>
+              )}
               <span className="ml-2 text-xs font-normal text-slate-500">
                 {[s?.contactPerson, s?.phone, s?.paymentTerms && `Terms ${s.paymentTerms}`].filter(Boolean).join(' · ')}
               </span>
@@ -544,7 +549,7 @@ function NewPaymentModal({
   const valid = amount.trim() !== '' && Number.isFinite(value) && value > 0;
   const after = balance - (valid ? value : 0);
   const drawer = method === 'CASH' && fromDrawer;
-  const creditAccount = method === 'CASH' ? (drawer ? '530' : '531') : '512';
+  const creditAccount = method === 'CASH' ? (drawer ? '53100001' : '53100002') : '512';
 
   const save = async () => {
     if (!valid || saving) return;
@@ -675,7 +680,7 @@ function NewPaymentModal({
           <div className="overflow-hidden rounded-lg border border-dashed border-[#d7cfbd] text-xs">
             <div className="bg-[#faf7ef] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">Journal entry that will be created</div>
             <div className="grid grid-cols-[3fr_1fr_1fr] gap-2 border-t border-slate-100 px-3 py-1">
-              <span className="font-semibold">401 Suppliers · {supplier.name}</span>
+              <span className="font-semibold">{supplier.accountCode ?? '401'} {supplier.name}</span>
               <span className={`${mono} text-right`}>{valid ? money(value) : '—'}</span>
               <span />
             </div>

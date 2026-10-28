@@ -5,8 +5,8 @@
 // (roles.ts: every /api/supplier… path needs a manager).
 //   - A payment is ON ACCOUNT (not tied to an invoice); paying more than the balance
 //     is allowed and becomes an advance (negative balance).
-//   - Journal: Dr 401 Supplier / Cr 512 Bank (transfer, cheque, card),
-//     530 Cash drawer (cash taken from the POS drawer → the Z subtracts it) or 531 Owner's cash.
+//   - Journal: Dr the supplier's account (40110001…, under 401) / Cr 512 Bank (transfer, cheque, card),
+//     53100001 Cash sales (taken from the POS drawer → the Z subtracts it) or 53100002 Owner's cash.
 //   - Date: today or earlier. A payment is never deleted: VOID (reason required)
 //     adds a reversing entry and keeps both.
 //
@@ -218,15 +218,17 @@ export default async function supplierPaymentRoutes(fastify: FastifyInstance) {
       const [supplier] = (await db.execute(sql`
         SELECT supplier_id AS id, supplier_code AS code, supplier_name AS name, contact_person AS "contactPerson",
                phone, email, payment_terms AS "paymentTerms", currency_code AS currency,
-               opening_balance::float AS "openingBalance", credit_limit::float AS "creditLimit", is_active AS "isActive"
+               opening_balance::float AS "openingBalance", credit_limit::float AS "creditLimit", is_active AS "isActive",
+               ensure_supplier_account(supplier_id) AS "accountCode"
         FROM supplier WHERE supplier_id = ${supplierId} AND restaurant_id = ${String(restaurantId)}
       `)) as any[];
       if (!supplier) return reply.status(404).send({ error: 'Supplier not found.' });
 
-      // This supplier's lines on 401, with the entry they belong to.
+      // This supplier's lines on its own account (40110001…), with the entry they belong to.
       const onAccount = sql`
         journal_lines l JOIN journal_entries e ON e.id = l.entry_id
-        WHERE e.restaurant_id = ${restaurantId} AND l.supplier_id = ${supplierId} AND l.account_code = ${ACCOUNT.SUPPLIERS}`;
+        WHERE e.restaurant_id = ${restaurantId} AND l.supplier_id = ${supplierId}
+          AND l.account_code = ${supplier.accountCode}`;
 
       const [{ balance, before }] = (await db.execute(sql`
         SELECT COALESCE(SUM(l.credit - l.debit), 0)::float AS balance,
@@ -282,7 +284,7 @@ export default async function supplierPaymentRoutes(fastify: FastifyInstance) {
         ? ((await db.execute(sql`
             SELECT l.entry_id AS "entryId", l.line_no AS "lineNo", l.account_code AS account, a.name AS "accountName",
                    l.debit::float AS debit, l.credit::float AS credit
-            FROM journal_lines l JOIN accounts a ON a.code = l.account_code
+            FROM journal_lines l JOIN accounts a ON a.restaurant_id = l.restaurant_id AND a.code = l.account_code
             WHERE l.entry_id IN (${sql.join(entryIds.map((id) => sql`${id}`), sql`, `)})
             ORDER BY l.entry_id, l.line_no
           `)) as any[])
@@ -329,13 +331,15 @@ export default async function supplierPaymentRoutes(fastify: FastifyInstance) {
     try {
       const rows = (await db.execute(sql`
         SELECT s.supplier_id AS id, s.supplier_code AS code, s.supplier_name AS name, s.is_active AS "isActive",
+               a.code AS "accountCode",
                COALESCE(SUM(l.credit - l.debit), 0)::float AS balance,
                MAX(e.entry_date)::text AS "lastMovement"
         FROM supplier s
-        LEFT JOIN journal_lines l ON l.supplier_id = s.supplier_id AND l.account_code = ${ACCOUNT.SUPPLIERS}
+        LEFT JOIN accounts a ON a.supplier_id = s.supplier_id
+        LEFT JOIN journal_lines l ON l.supplier_id = s.supplier_id AND l.account_code = a.code AND l.restaurant_id = a.restaurant_id
         LEFT JOIN journal_entries e ON e.id = l.entry_id AND e.restaurant_id = ${restaurantId}
         WHERE s.restaurant_id = ${String(restaurantId)}
-        GROUP BY s.supplier_id
+        GROUP BY s.supplier_id, a.code
         ORDER BY s.supplier_name
       `)) as any[];
       return reply.send(rows);

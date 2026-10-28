@@ -70,6 +70,7 @@ import {
   UserPlus,
   ArrowRightLeft, // Added icon for Transaction header
   ListFilter,     // Added icon for Purchase List subitem
+  ListTree,       // Chart of Accounts
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -142,6 +143,7 @@ export default function SidebarLayout({
     { id: 'tables', label: 'Tables', icon: Table2 },
     { id: 'kitchenstations', label: 'Kitchen-Station', icon: TableOfContents },
     { id: 'RestaurantSettings', label: 'Restaurant Info', icon: Info },
+    { id: 'chart-of-accounts', label: 'Chart of Accounts', icon: ListTree },
     { id: 'printers', label: 'Printers', icon: Printer },
     { id: 'users', label: 'Users', icon: UserCheck },
     { id: 'platform', label: 'Platform', icon: Crown },

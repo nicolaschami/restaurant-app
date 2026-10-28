@@ -68,6 +68,7 @@ const SCREEN_ROLE: Record<string, Role | 'platform'> = {
   // settings
   tables: 'manager',
   kitchenstations: 'manager',
+  'chart-of-accounts': 'manager', // managers look, only the owner changes it
   RestaurantSettings: 'owner',
   printers: 'owner',
   users: 'owner',

@@ -28,6 +28,7 @@ import ZReportPage from './pages/ZReportPage';
 import ClosedDaysReport from './pages/ClosedDaysReport';
 import JournalReport from './pages/JournalReport';
 import AccountBalancesReport from './pages/AccountBalancesReport';
+import ChartOfAccounts from './pages/ChartOfAccounts';
 import SalesByItemReport from './pages/SalesByItemReport';
 
 const PosViewWrapper = PosView as React.ComponentType<{
@@ -132,6 +133,7 @@ export function App() {
     }
     if (activeTab === 'users') return <UsersSettings />;
     if (activeTab === 'platform') return <PlatformScreen />;
+    if (activeTab === 'chart-of-accounts') return <ChartOfAccounts />;
     // Reports that are built. Any other "report-…" tab shows the "under development" page.
     if (activeTab === 'report-current-stock') return <CurrentStockReport />;
     if (activeTab === 'report-stock-movement') return <StockMovementReport />;

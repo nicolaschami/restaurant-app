@@ -3,7 +3,8 @@
 // Reports → Financial → Journal (JV) (asked 2026-10-27, "classic journal" layout chosen):
 // every journal entry of a period as a block — its header (JV no., date, document,
 // description) and its lines (account, supplier, debit, credit) — like a journal book.
-//   - Filters: type, account, supplier, search (JV no., GRN / PAY no., text).
+//   - Filters: type, account (a group, e.g. 401, means every account under it), supplier,
+//     search (JV no., GRN / PAY no., text).
 //   - Totals: entries, Σ debit, Σ credit and the check that they are equal.
 //   - Click a GRN / RP → the purchase opens; click a PAY → the supplier's account.
 //   - Print and Export to Excel (CSV, one row per line).
@@ -14,11 +15,12 @@ import { ArrowLeft, FileSpreadsheet, Printer, RefreshCw, Search } from 'lucide-r
 import { api } from '../api';
 import { PERIOD_PRESETS, PeriodPicker, niceDate } from '../components/ItemMovementView';
 import { money } from '../lib/restaurantSettings';
+import { treeOrder } from '../lib/accountTree';
 import { Tile } from './ZReportPage';
 import PurchaseTransactionEditModal from './PurchaseTransactionEditModal';
 import SupplierAccount from '../components/SupplierAccount';
 
-type SourceType = 'PURCHASE' | 'RETURN' | 'SUPPLIER_PAYMENT' | 'VOID' | 'OPENING';
+type SourceType = 'PURCHASE' | 'RETURN' | 'SUPPLIER_PAYMENT' | 'VOID' | 'OPENING' | 'SALES';
 interface Line {
   lineNo: number;
   account: string;
@@ -42,7 +44,7 @@ interface Entry {
 interface Journal {
   entries: Entry[];
   totals: { entries: number; debit: number; credit: number };
-  accounts: Array<{ code: string; name: string }>;
+  accounts: Array<{ code: string; name: string; parentCode: string | null; isGroup: boolean }>;
   suppliers: Array<{ id: number; name: string }>;
 }
 
@@ -52,6 +54,7 @@ export const TYPE_LABEL: Record<SourceType, string> = {
   SUPPLIER_PAYMENT: 'Supplier payment',
   VOID: 'Void',
   OPENING: 'Opening balance',
+  SALES: 'Day closing (Z)',
 };
 
 // 0 → empty cell (a line is a debit OR a credit)
@@ -247,8 +250,13 @@ export default function JournalReport({
         </select>
         <select value={account} onChange={(e) => setAccount(e.target.value)} className={select} aria-label="Account">
           <option value="">All accounts</option>
-          {(data?.accounts ?? []).map((a) => (
-            <option key={a.code} value={a.code}>{a.code} {a.name}</option>
+          {/* the chart as a tree; a group (▸) shows every account under it */}
+          {treeOrder(data?.accounts ?? []).map((a) => (
+            <option key={a.code} value={a.code}>
+              {' '.repeat((a.level - 1) * 3)}
+              {a.isGroup ? '▸ ' : ''}
+              {a.code} {a.name}
+            </option>
           ))}
         </select>
         <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={select} aria-label="Supplier">
@@ -347,7 +355,7 @@ export default function JournalReport({
       </div>
 
       <p className="text-[11px] text-slate-500">
-        Every purchase, return and supplier payment writes one balanced entry. Filters keep whole entries. Click a document number to open it.
+        Every purchase, return, supplier payment and day closing (Z) writes one balanced entry. Filters keep whole entries. Click a document number to open it.
       </p>
 
       {openDoc && (

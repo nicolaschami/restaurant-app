@@ -43,6 +43,8 @@ export function requiredRole(method: string, path: string): Role | 'platform' {
   // the day (Z closing) — cashiers too (user's choice); reports — managers
   if (p.startsWith('/api/z-reports')) return 'cashier';
   if (p.startsWith('/api/reports')) return 'manager';
+  // the chart of accounts: managers read it, only the owner changes it
+  if (p.startsWith('/api/accounts')) return read ? 'manager' : 'owner';
 
   // stock and purchases — managers
   if (/^\/api\/(raw-materials|suppliers?|stock-transactions)/.test(p)) return 'manager';

@@ -15,6 +15,7 @@
 //     drawer = counted − taken out, and it becomes the next day's opening cash.
 //   - When a Z is closed, all its numbers are copied into it (totals) and never
 //     change again; the next payments belong to the next day.
+//   - The Z also books the day's sales in the journal (post_z_entry, 2026-10-28).
 //
 // GET  /api/z-reports/current  → the current day so far (= X report, changes nothing)
 // GET  /api/z-reports/opening-status → for the POS: is today's opening cash confirmed?
@@ -239,6 +240,9 @@ export default async function zReportRoutes(fastify: FastifyInstance) {
              ${fromCents(takenCents)}, ${fromCents(leftCents)})
           RETURNING id
         `)) as any[];
+        // The day's sales go to the journal with the Z (2026-10-28): cash / cards,
+        // sales per category, VAT, delivery fees, cash over/short, cash taken out.
+        await tx.execute(sql`SELECT post_z_entry(${row.id})`);
         return row;
       });
       return reply.status(201).send({ id: z.id });

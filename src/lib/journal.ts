@@ -7,9 +7,13 @@
 // checks it, and the database checks it again when the transaction commits.
 //   purchase (GRN)    Dr 370 Stocks (before tax) + Dr 4426 VAT / Cr 401 Supplier (total)
 //   purchase return   Dr 401 Supplier (total)    / Cr 370 Stocks + Cr 4426 VAT
-//   supplier payment  Dr 401 Supplier            / Cr 512 Bank, 530 Cash drawer or 531 Owner's cash
+//   supplier payment  Dr 401 Supplier            / Cr 512 Bank, 53100001 Cash sales (drawer) or 53100002 Owner's cash
 //   opening balance   Dr 890 Opening balances    / Cr 401 Supplier (opposite if negative)
-// A supplier's balance = Σ credit − Σ debit of its lines on 401 (positive: we owe).
+//   day closing (Z)   booked by the SQL function post_z_entry (sql/2026-10-28_chart_of_accounts.sql)
+// Chart of accounts (2026-10-28): one TREE per restaurant. 401 is a GROUP: each supplier
+// has its OWN account under 4011 (40110001, 40110002…), so a line given as
+// { account: ACCOUNT.SUPPLIERS, supplierId } is booked on that supplier's account.
+// A supplier's balance = Σ credit − Σ debit of its lines (positive: we owe).
 //
 // Nobody types in the journal: the routes call these helpers INSIDE the same database
 // transaction as the document, so the document and its entry are saved together or not at all.
@@ -21,12 +25,12 @@ export const ACCOUNT = {
   SUPPLIERS: '401',
   VAT: '4426',
   BANK: '512',
-  CASH_DRAWER: '530',
-  CASH_OWNER: '531',
+  CASH_DRAWER: '53100001',
+  CASH_OWNER: '53100002',
   OPENING: '890',
 } as const;
 
-export type SourceType = 'PURCHASE' | 'RETURN' | 'SUPPLIER_PAYMENT' | 'OPENING' | 'VOID';
+export type SourceType = 'PURCHASE' | 'RETURN' | 'SUPPLIER_PAYMENT' | 'OPENING' | 'VOID' | 'SALES';
 
 // One line of an entry. Amounts in money (12.50); give a debit OR a credit.
 export interface JournalLine {
@@ -94,9 +98,13 @@ async function insertLines(tx: any, entryId: number, lines: ReturnType<typeof cl
   let n = 0;
   for (const l of lines) {
     n += 1;
+    // a supplier line goes to the supplier's own account (created if missing);
+    // the database fills in the line's restaurant from its entry
+    const account =
+      l.supplierId && l.account === ACCOUNT.SUPPLIERS ? sql`ensure_supplier_account(${l.supplierId})` : sql`${l.account}`;
     await tx.execute(sql`
       INSERT INTO journal_lines (entry_id, line_no, account_code, supplier_id, debit, credit)
-      VALUES (${entryId}, ${n}, ${l.account}, ${l.supplierId}, ${fromCents(l.debit)}, ${fromCents(l.credit)})
+      VALUES (${entryId}, ${n}, ${account}, ${l.supplierId}, ${fromCents(l.debit)}, ${fromCents(l.credit)})
     `);
   }
 }
@@ -253,7 +261,7 @@ export async function syncOpeningEntry(
   if (existing) {
     const [row] = await tx.execute(sql`
       SELECT COALESCE(SUM(credit - debit), 0)::float AS bal
-      FROM journal_lines WHERE entry_id = ${existing.id} AND account_code = ${ACCOUNT.SUPPLIERS}
+      FROM journal_lines WHERE entry_id = ${existing.id} AND supplier_id IS NOT NULL
     `);
     current = toCents(row.bal);
   }
