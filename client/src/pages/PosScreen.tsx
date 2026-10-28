@@ -19,6 +19,7 @@ function warnKitchen(results: { station: string; kind: string; ok: boolean; erro
 import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 import SwitchUserModal from '../components/SwitchUserModal';
 import { ROLE_LABEL, me, setMe } from '../lib/session';
+import OnlineDot from '../components/OnlineDot';
 import {
   Coffee,
   Wine,
@@ -2701,6 +2702,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         )}
 
         <div className="header-right">
+          {/* green = online, red = offline (only when opened through RES Local) */}
+          <OnlineDot />
           <span className="hdr-clock mono">{clock}</span>
           <button
             className="hdr-icon-btn theme-toggle"

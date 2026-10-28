@@ -31,6 +31,7 @@ import supplierRoutes from './routes/supplier.js';
 import supplierPaymentRoutes from './routes/supplierPayments.js';
 import journalReportRoutes from './routes/journalReports.js';
 import accountRoutes from './routes/accounts.js';
+import localCopyRoutes from './routes/localCopy.js';
 import kitchenStationRoutes from './routes/kitchenStations.js';
 import authRoutes from './routes/aut.js';
 import drawerRoutes from './routes/open-drawer';
@@ -171,6 +172,8 @@ const PUBLIC_API_ROUTES = new Set<string>([
   // PIN pad of a registered POS terminal: the PC proves itself with its secret key
   '/api/auth/terminal-check',
   '/api/auth/terminal-login',
+  // offline POS: RES Local (the print helper) downloads its copy with its helper key
+  '/api/local/snapshot',
 ]);
 
 fastify.addHook('onRequest', async (request, reply) => {
@@ -933,6 +936,7 @@ fastify.register(supplierRoutes);
 fastify.register(supplierPaymentRoutes);
 fastify.register(journalReportRoutes);
 fastify.register(accountRoutes);
+fastify.register(localCopyRoutes);
 fastify.register(orderRoutes);
 fastify.register(kdsRoutes);
 fastify.register(drawerRoutes);

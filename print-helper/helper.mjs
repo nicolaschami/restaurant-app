@@ -12,15 +12,22 @@
 //
 // Run:            node helper.mjs
 // Run hidden:     start-hidden.vbs        (and install-startup.ps1 to start with Windows)
+//
+// RES Local (2026-10-28, offline POS): the helper also keeps a copy of the menu,
+// tables, users' PINs and open orders in SQLite (data/res-local.db) — see local-copy.mjs —
+// and is the GATEWAY the POS opens on this PC: http://localhost:3901 (gateway.mjs).
+// Optional in config.json: "localPort": 3901.
 
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startLocalCopy } from './local-copy.mjs';
+import { startGateway } from './gateway.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 function log(...parts) {
   const line = `${new Date().toISOString()}  ${parts.join(' ')}`;
@@ -200,3 +207,12 @@ setInterval(() => {}, 60_000);
 
 log(`RES Print Helper ${VERSION} starting`);
 connect();
+
+// RES Local: the offline copy + the gateway the POS opens (http://localhost:3901).
+// If it fails to start, printing still works.
+try {
+  const copy = startLocalCopy({ server: config.server, key: config.key, log, folder: join(HERE, 'data') });
+  startGateway({ server: config.server, port: Number(config.localPort) || 3901, log, copy });
+} catch (err) {
+  log('RES Local could not start (printing still works):', String(err?.stack || err));
+}

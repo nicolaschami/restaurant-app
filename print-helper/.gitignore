@@ -2,3 +2,5 @@
 config.json
 node-path.txt
 helper.log
+# RES Local's SQLite copy (offline POS) — it belongs to this PC only
+data/
