@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type FC } from 'react';
 import { money } from '../lib/restaurantSettings';
 import { toast } from '../components/Toaster';
 import { api, wsUrl } from '../api';
+import { ticketLabel } from '../lib/ticketLabel';
 import { ChefHat, Archive, Sun, Moon, Plus, Loader2 } from 'lucide-react';
 
 // ==========================================
@@ -479,7 +480,7 @@ export const DashboardView: FC<DashboardViewProps> = ({ restaurantName, onNaviga
                   title="Open in the POS"
                 >
                   <div className="d-ticket-row">
-                    <span className="d-ticket-no mono">#{t.ticketNo}</span>
+                    <span className="d-ticket-no mono">{ticketLabel(t.ticketNo)}</span>
                     <span className={`d-badge ${fresh}`}>
                       {fresh === 'late' ? 'LATE · ' : fresh === 'aging' ? 'WAITING · ' : ''}
                       {formatDuration(mins)}

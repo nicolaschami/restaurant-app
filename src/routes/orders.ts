@@ -9,6 +9,7 @@ import { getRestaurantId, assertOrderInRestaurant } from '../lib/tenant.js';
 import { computeOrderTotals } from '../lib/orderTotals.js';
 import { syncTables } from '../lib/tables.js';
 import { kitchenHeader, kitchenSnapshot, printKitchenTickets, KitchenResult, KitchenSnapshot } from '../lib/kitchenTickets.js';
+import { isOfflineReplay } from '../lib/offlineReplay.js';
 
 // Kitchen tickets after a save (2026-10-26). A printing problem never undoes the save:
 // it is only reported back to the POS (toast).
@@ -241,7 +242,10 @@ fastify.post('/api/orders', async (request, reply) => {
     }
 
     // Kitchen tickets: a new order — everything in it is new for the kitchen.
-    const kitchen = await sendKitchen(restaurantId, result.id, new Map(), await kitchenSnapshot(result.id), request.user?.id);
+    // (Not for an order taken offline and synced now: RES Local printed them already.)
+    const kitchen = isOfflineReplay(request)
+      ? []
+      : await sendKitchen(restaurantId, result.id, new Map(), await kitchenSnapshot(result.id), request.user?.id);
 
     return reply.status(201).send({ order: result, kitchen });
 
@@ -898,8 +902,11 @@ fastify.put('/api/orders/:id', async (request, reply) => {
       );
     }
 
-    // Kitchen tickets: only what changed (ADD-ON / CANCEL).
-    const kitchen = await sendKitchen(restaurantId, orderId, kitchenBefore, await kitchenSnapshot(orderId), request.user?.id);
+    // Kitchen tickets: only what changed (ADD-ON / CANCEL) — not for a synced offline
+    // change (RES Local printed it already).
+    const kitchen = isOfflineReplay(request)
+      ? []
+      : await sendKitchen(restaurantId, orderId, kitchenBefore, await kitchenSnapshot(orderId), request.user?.id);
 
     return reply.status(200).send({ order: result, kitchen });
   } catch (err: any) {

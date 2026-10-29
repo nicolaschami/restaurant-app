@@ -172,8 +172,10 @@ const PUBLIC_API_ROUTES = new Set<string>([
   // PIN pad of a registered POS terminal: the PC proves itself with its secret key
   '/api/auth/terminal-check',
   '/api/auth/terminal-login',
-  // offline POS: RES Local (the print helper) downloads its copy with its helper key
+  // offline POS: RES Local (the print helper) downloads its copy and sends the actions
+  // taken offline (sync) with its helper key — checked in routes/localCopy.ts
   '/api/local/snapshot',
+  '/api/local/replay',
 ]);
 
 fastify.addHook('onRequest', async (request, reply) => {

@@ -14,9 +14,28 @@
 //             clear message. Every 10 s it checks if the VPS is back.
 //
 // Only this PC for now (127.0.0.1). POS 2 over the LAN comes in a later step.
-// Selling offline (new orders, payment, printing) comes in steps 3b / 3c.
+// Offline ORDERS (steps 3b / 3c): offline-orders.mjs answers the order calls first (new
+// order OFF-0001, changes, open orders, tables, payment, printing, PIN login).
+//
+// SYNC (step 4): back ONLINE, sync.mjs sends the actions taken offline to the server.
+// Until an order's actions are all sent, that order stays on this PC even online:
+//   - a call on an OFF order already synced goes to its real order (OFF-0001 → #1042);
+//   - a call on an order with actions still waiting is answered here and queued after
+//     them (so the server receives the actions in the order they were done);
+//   - Z closing is refused while actions are waiting (the Z must count every sale).
+//
+// POS 2 (step 5, 2026-10-29): with "lan": true in config.json the gateway also listens
+// on the restaurant network, so POS 2 opens the POS at http://<this PC's address>:3901
+// and shares the same RES Local (same copy, same OFF counter, same orders, same printers).
+// Safety: guests on the restaurant Wi-Fi are on that network too. Online the server
+// checks every login; OFFLINE RES Local answers only logins the server ACCEPTED through
+// this gateway before (known_tokens: sha256 of the token) — anything else gets 401.
 
 import http from 'node:http';
+import os from 'node:os';
+import { createHash } from 'node:crypto';
+import { createOfflineOrders, LOCAL_BASE } from './offline-orders.mjs';
+import { startSync } from './sync.mjs';
 import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
@@ -61,19 +80,83 @@ function sendJson(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
-export function startGateway({ server, port = 3901, log, copy }) {
+// print(printer, base64) → { ok, error? }: the helper's own printing (used offline)
+export function startGateway({ server, key, port = 3901, lan = false, log, copy, print }) {
   const target = new URL(String(server || 'http://127.0.0.1:3000'));
   const secure = target.protocol === 'https:';
   const targetPort = Number(target.port) || (secure ? 443 : 80);
   const lib = secure ? https : http;
   const db = copy.db;
+  const offline = createOfflineOrders({ db, log, print });
 
   let vpsUp = true; // optimistic at start: the first request tells
+  const sync = startSync({ db, server, key, log, isOnline: () => vpsUp });
   const setVps = (up) => {
     if (up === vpsUp) return;
     vpsUp = up;
     log(up ? 'Gateway: the server answers again → ONLINE.' : 'Gateway: the server does not answer → OFFLINE, answering from the local copy.');
+    if (up) sync.syncNow(); // back online: send what was done offline
   };
+  setTimeout(() => sync.syncNow(), 3_000); // actions left from before a restart
+
+  // ---- known logins (offline: only these are answered)
+  const tokenOf = (req) => String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const hashToken = (t) => createHash('sha256').update(t).digest('hex');
+  const known = new Set(db.prepare('SELECT hash FROM known_tokens').all().map((r) => r.hash));
+  const getKnown = db.prepare('SELECT exp FROM known_tokens WHERE hash = ?');
+  const addKnown = db.prepare('INSERT INTO known_tokens (hash, user_id, exp, seen_at) VALUES (?, ?, ?, ?) ON CONFLICT (hash) DO NOTHING');
+  function tokenExp(t) {
+    try {
+      return Number(JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString('utf8')).exp || 0);
+    } catch {
+      return 0;
+    }
+  }
+  function rememberToken(t) {
+    if (!t || t.split('.').length !== 3) return;
+    const h = hashToken(t);
+    if (known.has(h)) return;
+    known.add(h);
+    let userId = '';
+    try {
+      userId = String(JSON.parse(Buffer.from(t.split('.')[1], 'base64url').toString('utf8')).id ?? '');
+    } catch {
+      /* not a login token */
+    }
+    addKnown.run(h, userId, tokenExp(t), new Date().toISOString());
+  }
+  function knownToken(t) {
+    if (!t) return false;
+    const h = hashToken(t);
+    if (!known.has(h)) return false;
+    const exp = Number(getKnown.get(h)?.exp || 0);
+    return !exp || exp * 1000 > Date.now();
+  }
+  // the PIN logins work WITHOUT a login (that is how you log in); everything else needs one
+  const NO_LOGIN_NEEDED = new Set(['/api/auth/pin-login', '/api/auth/terminal-login', '/api/auth/terminal-check']);
+
+  // Online, a call on an order taken / changed offline: where must it go?
+  //   'local' → answered here (actions of that order still waiting), else the path to send
+  const mapId = db.prepare('SELECT server_id FROM id_map WHERE local_id = ?');
+  function routeOrderCall(req, url, body) {
+    let id = Number(url.pathname.match(/^\/api\/orders\/(\d+)(?:\/pay)?$/)?.[1]);
+    if (!id && url.pathname === '/api/printing/receipt') {
+      try {
+        id = Number(JSON.parse(body.toString('utf8') || '{}').orderId);
+      } catch {
+        id = 0;
+      }
+    }
+    if (!id) return null;
+    if (offline.pending(id)) return 'local';
+    if (id >= LOCAL_BASE) {
+      const m = mapId.get(id);
+      if (!m) return 'local';
+      if (url.pathname === '/api/printing/receipt') return { body: Buffer.from(JSON.stringify({ ...JSON.parse(body.toString('utf8')), orderId: m.server_id })) };
+      return { url: req.url.replace(`/api/orders/${id}`, `/api/orders/${m.server_id}`) };
+    }
+    return null;
+  }
 
   const saveFile = db.prepare(
     'INSERT INTO files (path, content_type, body, saved_at) VALUES (?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET content_type = excluded.content_type, body = excluded.body, saved_at = excluded.saved_at'
@@ -135,9 +218,25 @@ export function startGateway({ server, port = 3901, log, copy }) {
   }
 
   // Answer from the local copies (the VPS can't be reached).
-  function answerOffline(req, res, url) {
+  async function answerOffline(req, res, url, body) {
     const path = url.pathname;
     if (path.startsWith('/api/')) {
+      // offline, only a login the server accepted before through this gateway
+      if (!NO_LOGIN_NEEDED.has(path) && !knownToken(tokenOf(req))) {
+        return sendJson(res, 401, { error: 'No internet: this login is not known on this PC. Log in once while online.', offline: true });
+      }
+      // the order calls first: offline orders (OFF-0001…), payment, printing, PIN login
+      let answer = null;
+      try {
+        answer = await offline.handle(req, url, body, tokenUserId(req));
+      } catch (err) {
+        log('Offline order error:', String(err?.stack || err));
+        return sendJson(res, 500, { error: 'RES Local could not save this offline. Please try again.' });
+      }
+      if (answer) {
+        res.writeHead(answer.status, { 'content-type': 'application/json; charset=utf-8', 'x-res-offline': '1', 'cache-control': 'no-store' });
+        return res.end(JSON.stringify(answer.body));
+      }
       const hit = req.method === 'GET' ? getApi.get(apiKey(req, path + url.search)) : null;
       if (hit) {
         res.writeHead(hit.status, { 'content-type': hit.content_type || 'application/json', 'x-res-offline': '1', 'cache-control': 'no-store' });
@@ -159,9 +258,25 @@ export function startGateway({ server, port = 3901, log, copy }) {
 
   // Keep a copy of what passed (only good answers).
   function keep(req, url, upRes, body) {
-    if (req.method !== 'GET' || upRes.statusCode !== 200) return;
+    // a login the server accepted (any good answer to a call that carried it)
+    if (upRes.statusCode >= 200 && upRes.statusCode < 300 && url.pathname.startsWith('/api/')) rememberToken(tokenOf(req));
+    const fresh = upRes.headers['x-new-token']; // the server renews logins once a day
+    if (fresh) rememberToken(String(fresh));
+    if (upRes.statusCode !== 200) return;
     const now = new Date().toISOString();
     const type = String(upRes.headers['content-type'] || '');
+    // A PIN login on this PC (switch user / PIN pad): keep that user's real login, so the
+    // same PIN works offline (offline-orders.mjs). And the PIN pad's restaurant name.
+    if (req.method === 'POST') {
+      if (url.pathname === '/api/auth/pin-login' || url.pathname === '/api/auth/terminal-login' || url.pathname === '/api/auth/login') {
+        const answer = JSON.parse(body.toString('utf8'));
+        rememberToken(String(answer?.token || '')); // the new login is known from now on
+        const userId = answer?.user?.id;
+        if (userId && url.pathname !== '/api/auth/login') saveApi.run(`login#user=${userId}`, 200, type, body, now);
+      } else if (url.pathname === '/api/auth/terminal-check') saveApi.run('terminal-check', 200, type, body, now);
+      return;
+    }
+    if (req.method !== 'GET') return;
     if (url.pathname.startsWith('/api/')) {
       if (OFFLINE_GETS.some((re) => re.test(url.pathname))) saveApi.run(apiKey(req, url.pathname + url.search), 200, type, body, now);
     } else if (!url.pathname.startsWith('/local/')) {
@@ -171,14 +286,23 @@ export function startGateway({ server, port = 3901, log, copy }) {
 
   const httpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', 'http://local');
-    if (url.pathname === '/local/status') return sendJson(res, 200, { online: vpsUp, ...copy.status() });
-    const body = await readBody(req);
+    if (url.pathname === '/local/status') return sendJson(res, 200, { online: vpsUp, ...copy.status(), ...sync.status() });
+    let body = await readBody(req);
     if (vpsUp) {
+      // the Z must count every sale: not while offline actions are still being sent
+      if (req.method === 'POST' && url.pathname === '/api/z-reports/close' && offline.waiting() > 0) {
+        sync.syncNow();
+        return sendJson(res, 409, { error: `${offline.waiting()} action(s) taken offline are still being sent to the server. Wait a moment, then close the day.` });
+      }
+      const route = routeOrderCall(req, url, body);
+      if (route === 'local') return answerOffline(req, res, url, body);
+      if (route?.url) req.url = route.url;
+      if (route?.body) body = route.body;
       const answered = await forward(req, res, body, (upRes, data) => keep(req, url, upRes, data));
       if (answered) return;
       setVps(false);
     }
-    answerOffline(req, res, url);
+    await answerOffline(req, res, url, body);
   });
 
   // The live connection (WebSocket /ws, used by the POS and dashboards): passed through
@@ -216,6 +340,13 @@ export function startGateway({ server, port = 3901, log, copy }) {
   }, PROBE_EVERY);
 
   httpServer.on('error', (err) => log('Gateway could not start:', String(err?.message || err)));
-  httpServer.listen(port, '127.0.0.1', () => log(`Gateway: open the POS at http://localhost:${port}  (status: /local/status)`));
+  // this PC only, or also the restaurant network (POS 2) with "lan": true
+  httpServer.listen(port, lan ? '0.0.0.0' : '127.0.0.1', () => {
+    log(`Gateway: open the POS at http://localhost:${port}  (status: /local/status)`);
+    if (lan) {
+      const addresses = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4' && !a.internal).map((a) => `http://${a.address}:${port}`);
+      log(`Gateway: POS 2 opens ${addresses.join('  or  ') || '(no network address found)'}`);
+    }
+  });
   return { isOnline: () => vpsUp };
 }

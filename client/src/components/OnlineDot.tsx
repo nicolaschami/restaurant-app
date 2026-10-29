@@ -9,7 +9,8 @@ import { useEffect, useState } from 'react';
 
 interface LocalStatus {
   online: boolean;
-  waiting?: number; // orders taken offline, not sent yet (step 3b)
+  waiting?: number; // actions taken offline, not sent yet (step 3b)
+  failed?: number; // actions the server refused at sync (step 4): a manager must look
 }
 
 export default function OnlineDot() {
@@ -32,10 +33,16 @@ export default function OnlineDot() {
 
   if (!status) return null;
   const waiting = status.waiting ?? 0;
-  const label = status.online ? (waiting ? `Online · sending ${waiting}` : 'Online') : `Offline${waiting ? ` · ${waiting} waiting` : ''}`;
+  const failed = status.failed ?? 0;
+  const label =
+    (status.online ? (waiting ? `Online · sending ${waiting}` : 'Online') : `Offline${waiting ? ` · ${waiting} waiting` : ''}`) +
+    (failed ? ` · ${failed} refused` : '');
   return (
     <span
-      title={status.online ? 'Connected to the server' : 'No internet: working on RES Local (this PC). Selling, payments and printing keep working.'}
+      title={
+        (status.online ? 'Connected to the server' : 'No internet: working on RES Local (this PC). Selling, payments and printing keep working.') +
+        (failed ? ` ${failed} offline action(s) were refused by the server: a manager must check them.` : '')
+      }
       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px', borderRadius: 12, fontSize: 12, background: 'rgba(127,127,127,0.12)' }}
     >
       <span

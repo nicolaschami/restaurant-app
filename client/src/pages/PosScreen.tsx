@@ -20,6 +20,7 @@ import ReceiptPreviewModal from '../components/ReceiptPreviewModal';
 import SwitchUserModal from '../components/SwitchUserModal';
 import { ROLE_LABEL, me, setMe } from '../lib/session';
 import OnlineDot from '../components/OnlineDot';
+import { ticketLabel } from '../lib/ticketLabel';
 import {
   Coffee,
   Wine,
@@ -928,7 +929,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
     setError(null);
     try {
       const saved = await persistOrder();
-      toast.success(`Order #${ticketNo} saved`, 'It stays open on the dashboard.');
+      toast.success(`Order ${ticketLabel(ticketNo)} saved`, 'It stays open on the dashboard.');
       finishTicket(saved.wasNew); // clears the screen and goes back to the dashboard
     } catch (err: any) {
       toast.error('Order not saved', err.response?.data?.error || err.response?.data?.message || 'Please try again.');
@@ -1029,7 +1030,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         const ticket = res.data?.order?.ticketNo ?? ticketNo;
         api
           .post('/printing/receipt', { orderId: saved.id })
-          .then(() => toast.success('Receipt sent to the printer', `Ticket #${ticket}`))
+          .then(() => toast.success('Receipt sent to the printer', `Ticket ${ticketLabel(ticket)}`))
           .catch((err) => toast.error('Receipt not printed', err.response?.data?.error || 'Check the print helper.'));
       } else if (method === 'CASH') {
         api
@@ -1105,6 +1106,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       } else {
         res = await api.post('/orders', orderPayload);
         savedOrderId = res.data?.order?.id ?? null;
+        // the number the order really got: the server's, or OFF-0007 from RES Local offline
+        if (res.data?.order?.ticketNo) setTicketNo(res.data.order.ticketNo);
       }
       if (!savedOrderId) throw new Error('The order could not be saved.');
       warnKitchen(res.data?.kitchen);
@@ -2753,7 +2756,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             >
               <Loader2 className="w-6 h-6" style={{ animation: 'kb-spin 0.8s linear infinite' }} />
               <span style={{ fontSize: 14, fontWeight: 600 }}>
-                Loading ticket #{activeOrder?.ticketNo ?? ''}…
+                Loading ticket {activeOrder?.ticketNo ? ticketLabel(activeOrder.ticketNo) : ''}…
               </span>
             </div>
           )}
@@ -2764,7 +2767,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div style={{ minWidth: 0 }}>
-              <h2 className="serif">Order #{ticketNo}</h2>
+              <h2 className="serif">Order {ticketLabel(ticketNo)}</h2>
               <p className="ticket-sub">
                 {orderType}
                 {orderType === 'Dine-In' && dineInTable ? ` · Table ${dineInTable.label}` : ''}
@@ -3064,7 +3067,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
 
       {showPayment && (
         <PaymentModal
-          orderLabel={`Order #${ticketNo} · ${orderType}${orderType === 'Dine-In' && dineInTable ? ` · Table ${dineInTable.label}` : ''}`}
+          orderLabel={`Order ${ticketLabel(ticketNo)} · ${orderType}${orderType === 'Dine-In' && dineInTable ? ` · Table ${dineInTable.label}` : ''}`}
           total={total}
           onCancel={() => setShowPayment(false)}
           onConfirm={handleConfirmPayment}
@@ -3304,7 +3307,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                 <div className="receipt-sub">Guest Copy · Not Final</div>
               </div>
               <div className="receipt-divider" />
-              <div className="receipt-line"><span>Ticket</span><span>#{ticketNo}</span></div>
+              <div className="receipt-line"><span>Ticket</span><span>{ticketLabel(ticketNo)}</span></div>
               <div className="receipt-line"><span>Type</span><span>{orderType}</span></div>
               <div className="receipt-divider" />
 
@@ -3403,7 +3406,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             </div>
 
             <div className="modal-body-content">
-              <h3>Delete Order #{ticketNo}?</h3>
+              <h3>Delete Order {ticketLabel(ticketNo)}?</h3>
               <p className="modal-sub">
                 This action will permanently cancel the ticket and release the assigned table. This step <strong>cannot be undone</strong>.
               </p>

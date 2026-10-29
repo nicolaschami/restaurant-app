@@ -16,10 +16,12 @@
 // RES Local (2026-10-28, offline POS): the helper also keeps a copy of the menu,
 // tables, users' PINs and open orders in SQLite (data/res-local.db) — see local-copy.mjs —
 // and is the GATEWAY the POS opens on this PC: http://localhost:3901 (gateway.mjs).
-// Optional in config.json: "localPort": 3901.
+// Optional in config.json: "localPort": 3901, and "lan": true so POS 2 can open the POS
+// through this PC (http://<this PC's address>:3901) — needs a Windows Firewall rule:
+//   netsh advfirewall firewall add rule name="RES Local (POS 2)" dir=in action=allow protocol=TCP localport=3901 profile=private
 
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -210,9 +212,20 @@ connect();
 
 // RES Local: the offline copy + the gateway the POS opens (http://localhost:3901).
 // If it fails to start, printing still works.
+// Offline printing uses the same printRaw as the server's jobs. FOR TESTS ONLY:
+// "testPrintFolder" in config.json saves each paper as a .bin file there instead of
+// printing (never set in a restaurant).
+const offlinePrint = config.testPrintFolder
+  ? async (printer, base64) => {
+      const dir = String(config.testPrintFolder);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `${Date.now()}-${String(printer).replace(/[^\w.-]+/g, '_')}.bin`), Buffer.from(base64, 'base64'));
+      return { ok: true };
+    }
+  : printRaw;
 try {
   const copy = startLocalCopy({ server: config.server, key: config.key, log, folder: join(HERE, 'data') });
-  startGateway({ server: config.server, port: Number(config.localPort) || 3901, log, copy });
+  startGateway({ server: config.server, key: config.key, port: Number(config.localPort) || 3901, lan: config.lan === true, log, copy, print: offlinePrint });
 } catch (err) {
   log('RES Local could not start (printing still works):', String(err?.stack || err));
 }

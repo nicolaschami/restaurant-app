@@ -20,6 +20,9 @@
 //                                modifierOptions, menuItemModifiers, tables, kitchenStations,
 //                                users, openOrders, openOrderItems
 // Tables (version 2, used by the gateway): files, api_cache — see UPGRADES below.
+// Tables (version 3, offline orders): local_orders, offline_ops — see UPGRADES below.
+// Tables (version 4, sync): id_map — see UPGRADES below.
+// Tables (version 5, POS 2 / safety): known_tokens — see UPGRADES below.
 // Upgrades: the file's PRAGMA user_version says which version it is; a newer helper
 // runs the missing upgrade steps by itself at start (nobody runs a script by hand).
 
@@ -56,6 +59,45 @@ const UPGRADES = [
      content_type TEXT,
      body         BLOB NOT NULL,
      saved_at     TEXT NOT NULL
+   );`,
+  // v3 (offline orders, offline-orders.mjs): the orders kept on this PC, and every POS
+  // action written down to be replayed to the VPS when the internet is back
+  `CREATE TABLE IF NOT EXISTS local_orders (
+     id         INTEGER PRIMARY KEY,  -- 1000000001… for OFF orders, or the VPS id of an order changed offline
+     off_no     INTEGER,              -- OFF-0001 → 1 (NULL for a VPS order)
+     data       TEXT NOT NULL,        -- the order as the POS reads it (GET /orders/:id), JSON
+     status     TEXT NOT NULL,        -- open | closed | deleted
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );
+   CREATE TABLE IF NOT EXISTS offline_ops (
+     seq        INTEGER PRIMARY KEY AUTOINCREMENT,  -- replay order
+     op_id      TEXT NOT NULL UNIQUE,               -- unique id: sent twice = saved once
+     created_at TEXT NOT NULL,
+     method     TEXT NOT NULL,
+     path       TEXT NOT NULL,
+     body       TEXT,                               -- exactly what the POS sent
+     order_id   INTEGER,
+     user_id    TEXT,
+     status     TEXT NOT NULL DEFAULT 'waiting',    -- waiting | sent | failed
+     result     TEXT,
+     error      TEXT
+   );`,
+  // v4 (sync, sync.mjs): OFF-0001 = the real order it became on the server
+  `CREATE TABLE IF NOT EXISTS id_map (
+     local_id   INTEGER PRIMARY KEY,  -- 1000000001
+     server_id  INTEGER NOT NULL,     -- the real order id on the server
+     ticket_no  INTEGER,              -- its real ticket number (#1042)
+     synced_at  TEXT NOT NULL
+   );`,
+  // v5 (POS 2 over the LAN, gateway.mjs): the logins the server ACCEPTED through this
+  // gateway (sha256 of the token, never the token itself). Offline, RES Local answers
+  // only these — not a guest on the restaurant Wi-Fi.
+  `CREATE TABLE IF NOT EXISTS known_tokens (
+     hash     TEXT PRIMARY KEY,
+     user_id  TEXT,
+     exp      INTEGER,               -- the login's expiry (seconds), 0 = none
+     seen_at  TEXT NOT NULL
    );`,
 ];
 
@@ -108,6 +150,8 @@ export function startLocalCopy({ server, key, log, folder }) {
       setMeta.run('saved_at', new Date().toISOString());
       setMeta.run('restaurant_id', String(snap.data.restaurant?.id ?? ''));
       setMeta.run('restaurant_name', String(snap.data.restaurant?.name ?? ''));
+      // the highest OFF number the server already has (the counter continues after it)
+      setMeta.run('server_last_off', String(Number(snap.data.lastOfflineNo) || 0));
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
@@ -138,6 +182,8 @@ export function startLocalCopy({ server, key, log, folder }) {
       if (serverReachable) log('Local copy: server not reachable, keeping the saved copy.');
       serverReachable = false;
       lastError = String(err?.message || err);
+      // no copy at all yet (first start): try again sooner, every 10 s
+      if (!meta('version')) setTimeout(refresh, 10_000);
     }
   }
 
