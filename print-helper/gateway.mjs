@@ -128,8 +128,12 @@ export function startGateway({ server, key, port = 3901, lan = false, log, copy,
   function knownToken(t) {
     if (!t) return false;
     const h = hashToken(t);
-    if (!known.has(h)) return false;
-    const exp = Number(getKnown.get(h)?.exp || 0);
+    // in the table: seen through this gateway, or a ready PIN login from the copy
+    // (local-copy.mjs adds those while the gateway runs)
+    const row = getKnown.get(h);
+    if (!row) return false;
+    known.add(h);
+    const exp = Number(row.exp || 0);
     return !exp || exp * 1000 > Date.now();
   }
   // the PIN logins work WITHOUT a login (that is how you log in); everything else needs one

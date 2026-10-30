@@ -4,3 +4,5 @@ node-path.txt
 helper.log
 # RES Local's SQLite copy (offline POS) — it belongs to this PC only
 data/
+# what build/build-exe.mjs and the installer make (RES-Local.exe ~87 MB, RES-Local-Setup.exe)
+build/out/

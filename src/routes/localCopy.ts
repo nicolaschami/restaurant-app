@@ -52,8 +52,22 @@ const REPLAYABLE: Array<[string, RegExp]> = [
 
 const hashKey = (key: string) => createHash('sha256').update(key).digest('hex');
 
+// The answers the POS asks for when it opens (2026-10-30, the user's real test showed
+// "Could not load menu" offline when the POS had not been opened online first): the
+// copy carries them, made by the server's OWN routes, so they are exactly what the POS
+// expects. The menu-items address is the one the POS uses (PosScreen.tsx).
+const POS_ANSWERS = [
+  '/api/categories',
+  '/api/menu-items?restaurant_id=1&limit=2000',
+  '/api/modifier-groups',
+  '/api/tables',
+  '/api/customers',
+  '/api/restaurant/settings',
+  '/api/orders/active',
+];
+
 // Everything RES Local keeps for one restaurant.
-async function buildSnapshot(restaurantId: number) {
+async function buildSnapshot(fastify: FastifyInstance, restaurantId: number) {
   const rows = async (q: ReturnType<typeof sql>) => (await db.execute(q)) as any[];
 
   const [restaurant] = await rows(sql`
@@ -117,9 +131,49 @@ async function buildSnapshot(restaurantId: number) {
   `);
   const lastOfflineNo = Number(off?.last ?? 0);
 
+  // ---- the POS answers, asked to the server's own routes as the restaurant's owner
+  const [owner] = await rows(sql`
+    SELECT id, email, role FROM users WHERE restaurant_id = ${restaurantId} AND is_active = true
+    ORDER BY (role = 'owner') DESC, id LIMIT 1
+  `);
+  const api: Record<string, unknown> = {};
+  if (owner) {
+    const ownerToken = fastify.jwt.sign({ id: owner.id, email: owner.email, role: owner.role, restaurantId } as any);
+    for (const path of POS_ANSWERS) {
+      const res = await fastify.inject({ method: 'GET', url: path, headers: { authorization: `Bearer ${ownerToken}` } });
+      if (res.statusCode === 200) api[path] = res.json();
+    }
+  }
+
+  // ---- PIN login offline FROM DAY ONE (2026-10-30): a ready login for each active user
+  // with a PIN — the same answer as a PIN login (routes/aut.ts loginAnswer), signed by the
+  // server, valid 7 days. Signed with TODAY's date, so it stays identical all day (the copy
+  // does not look "new" every minute) and is renewed each day. RES Local gives it back
+  // only after checking the PIN against the PIN hash (bcrypt). It stays on the cashier PC
+  // like the helper key itself.
+  const day = Math.floor(Date.now() / 86_400_000) * 86_400;
+  const restaurantName = restaurant?.name || 'My Restaurant';
+  const pinUsers = await rows(sql`
+    SELECT id, full_name AS name, email, role, is_platform_admin AS "isPlatformAdmin" FROM users
+    WHERE restaurant_id = ${restaurantId} AND is_active = true AND pin_hash IS NOT NULL ORDER BY id
+  `);
+  const logins = [];
+  for (const u of pinUsers) {
+    const token = fastify.jwt.sign({ id: u.id, email: u.email, role: u.role, restaurantId, restaurantName, iat: day } as any);
+    const me = await fastify.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
+    logins.push({
+      userId: u.id,
+      answer: {
+        token,
+        user: { id: u.id, name: u.name, email: u.email, role: u.role, isPlatformAdmin: Boolean(u.isPlatformAdmin), restaurantId, restaurantName },
+      },
+      me: me.statusCode === 200 ? me.json() : null,
+    });
+  }
+
   const data = {
     restaurant, categories, menuItems, modifierGroups, modifierOptions, menuItemModifiers,
-    tables, kitchenStations, users, openOrders, openOrderItems, lastOfflineNo,
+    tables, kitchenStations, users, openOrders, openOrderItems, lastOfflineNo, api, logins,
   };
   const version = createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 16);
   return { version, data };
@@ -141,7 +195,7 @@ export default async function localCopyRoutes(fastify: FastifyInstance) {
     if (!agent) return reply.status(401).send({ error: 'Unknown or missing helper key.' });
 
     try {
-      const snap = await buildSnapshot(Number(agent.restaurantId));
+      const snap = await buildSnapshot(fastify, Number(agent.restaurantId));
       // same version as RES Local already has → nothing to send
       if (request.headers['if-none-match'] === snap.version) return reply.status(304).send();
       return reply.header('etag', snap.version).send({ version: snap.version, generatedAt: new Date().toISOString(), data: snap.data });

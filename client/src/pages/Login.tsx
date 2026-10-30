@@ -3,18 +3,12 @@ import { api } from '../api';
 import TerminalPinPad from '../components/TerminalPinPad';
 import { saveTerminal, terminalKey } from '../lib/terminal';
 import { setMe } from '../lib/session';
-import {
-  AlertCircle,
-  ArrowRight,
-  ChefHat,
-  Eye,
-  EyeOff,
-  Loader2,
-  Lock,
-  Package,
-  User,
-  ShoppingCart,
-} from 'lucide-react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, User } from 'lucide-react';
+
+// Look (chosen by the user 2026-10-30, option B "Night service"): a dark green screen
+// with a soft gold glow and ONE centered card — the gold RES logo, a greeting that
+// follows the time of day, the form and a gold Sign in button. Same colours as the POS
+// (#131c18 green, #c9a24b gold), so login, PIN pad and POS look like one product.
 
 interface LoginProps {
   onLoginSuccess: (token: string, restaurantName: string) => void;
@@ -38,10 +32,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   // (owner or manager only — the server refuses it for a cashier).
   const [registerTerminal, setRegisterTerminal] = useState(false);
 
-  // Live clock for the "kitchen ticket" on the left panel.
+  // The greeting follows the time of day (checked every minute).
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -98,8 +92,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setCapsLockOn(e.getModifierState?.('CapsLock') ?? false);
   };
 
-  const timeText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const dateText = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  // the dark fields of the card (same look for username and password)
+  const field =
+    'w-full rounded-[10px] border border-[#2f3d36] bg-[#0f1713] py-3 pl-10 text-[15px] text-white placeholder:text-[#5f6c65] transition focus:border-[#c9a24b] focus:outline-none focus:ring-4 focus:ring-[#c9a24b]/15';
+  const fieldLabel = 'mb-1.5 block text-xs font-semibold uppercase tracking-[0.06em] text-[#c9a24b]';
 
   if (usePinPad && terminalKey()) {
     return (
@@ -116,227 +115,147 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   }
 
   return (
-    <div className="min-h-screen w-full flex bg-[#fbf5e8]">
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#0e1512] px-4 py-10 font-sans text-[#e9e4d6]">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-        .ticket-font { font-family: 'Bebas Neue', 'Arial Narrow', sans-serif; letter-spacing: 0.05em; }
-
-        /* Soft entrance animation for the panels */
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap');
+        .login-serif { font-family: 'Fraunces', Georgia, serif; }
+        /* soft entrance of the card */
         @keyframes login-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
         .login-rise { animation: login-rise 0.6s cubic-bezier(.2,.7,.2,1) both; }
-
-        /* Dotted "kitchen board" texture on the dark panel */
-        .login-dots { background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px); background-size: 18px 18px; }
-
-        /* Torn-paper bottom edge of the receipt */
-        .login-receipt-edge {
-          height: 10px;
-          background: linear-gradient(-45deg, transparent 5px, #fffdf8 0) 0 0 / 10px 10px repeat-x,
-                      linear-gradient(45deg, transparent 5px, #fffdf8 0) 0 0 / 10px 10px repeat-x;
-        }
       `}</style>
 
-      {/* ───────── Left: brand panel (hidden on small screens) ───────── */}
-      <aside className="hidden lg:flex relative w-[46%] max-w-[640px] flex-col justify-between overflow-hidden bg-[#1c1917] text-slate-300 p-12 login-dots">
-        {/* Warm glow behind the content */}
-        <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-[#c2621f]/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-40 -right-24 h-96 w-96 rounded-full bg-[#8a3f16]/25 blur-3xl" />
+      {/* soft gold glow at the top, green glow at the bottom (decoration only) */}
+      <div aria-hidden="true" className="pointer-events-none absolute -top-56 left-1/2 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-[#c9a24b]/10 blur-[60px]" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-52 -left-32 h-[460px] w-[460px] rounded-full bg-[#2e5e48]/35 blur-[70px]" />
 
-        {/* Brand */}
-        <div className="relative flex items-center gap-3 login-rise">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#8a3f16] to-[#c2621f] text-lg shadow-lg shadow-[#c2621f]/20">
-            🍽️
-          </span>
+      <div className="login-rise relative w-full max-w-[440px] rounded-[20px] border border-[#c9a24b]/25 bg-[#17211c] px-6 pb-8 pt-10 shadow-[0_24px_60px_rgba(0,0,0,0.45)] sm:px-10">
+        {/* logo + greeting */}
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="login-serif flex h-16 w-16 items-center justify-center rounded-[18px] bg-[#c9a24b] text-[22px] font-bold text-[#131c18]">RES</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#8f9a93]">RES POS</div>
+          <h1 className="login-serif text-3xl font-medium text-white">{greeting}</h1>
+          <p className="text-sm text-[#a9b3ad]">Sign in to start the service</p>
+        </div>
+
+        {authError && (
+          <div role="alert" className="mt-6 flex items-start gap-2 rounded-[10px] border border-red-500/40 bg-red-500/10 p-3 text-xs font-medium text-red-300">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{authError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="mt-6 space-y-5">
+          {/* Username: "sara@capri" (the part after @ = the restaurant, 2026-10-28)
+              or an email for older accounts — so a text box, not type="email" */}
           <div>
-            <p className="ticket-font text-2xl text-white leading-none">POS Center</p>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mt-1">Restaurant Suite</p>
-          </div>
-        </div>
-
-        {/* Headline + kitchen ticket */}
-        <div className="relative login-rise" style={{ animationDelay: '0.1s' }}>
-          <h2 className="ticket-font text-6xl xl:text-7xl text-white leading-[0.9]">
-            Every order.
-            <br />
-            <span className="text-[#c2621f]">On time.</span>
-          </h2>
-          <p className="mt-5 max-w-sm text-sm text-slate-400 leading-relaxed">
-            Take orders, fire them to the kitchen and keep your stock in check, all from one place.
-          </p>
-
-          {/* Decorative receipt with a live clock */}
-          <div className="mt-10 w-72 rotate-[-2deg] drop-shadow-2xl">
-            <div className="bg-[#fffdf8] rounded-t-md px-5 pt-4 pb-3 text-[#221F1C]">
-              <div className="flex items-center justify-between border-b border-dashed border-[#E7E1D2] pb-2">
-                <span className="ticket-font text-lg">Shift Open</span>
-                <span className="text-[10px] font-mono text-[#8a8377]">#0001</span>
-              </div>
-              <p className="ticket-font text-5xl mt-3 leading-none tabular-nums">{timeText}</p>
-              <p className="text-[11px] text-[#8a8377] mt-1 capitalize">{dateText}</p>
-              <div className="mt-3 space-y-1.5 border-t border-dashed border-[#E7E1D2] pt-3 text-xs">
-                <TicketLine icon={<ShoppingCart className="h-3.5 w-3.5" />} label="POS Terminal" />
-                <TicketLine icon={<ChefHat className="h-3.5 w-3.5" />} label="Kitchen Display" />
-                <TicketLine icon={<Package className="h-3.5 w-3.5" />} label="Stock & Purchases" />
-              </div>
+            <label htmlFor="login-email" className={fieldLabel}>
+              Username
+            </label>
+            <div className="relative">
+              <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f7b74]" />
+              <input
+                id="login-email"
+                type="text"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                autoFocus={!email}
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. sara@capri"
+                className={`${field} pr-4`}
+              />
             </div>
-            <div className="login-receipt-edge" />
           </div>
-        </div>
 
-        <p className="relative text-[11px] text-slate-600">© {now.getFullYear()} POS Center</p>
-      </aside>
+          {/* Password */}
+          <div>
+            <label htmlFor="login-password" className={fieldLabel}>
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f7b74]" />
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoFocus={!!email}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyUp={checkCapsLock}
+                onKeyDown={checkCapsLock}
+                placeholder="••••••••"
+                className={`${field} pr-11`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-[#8f9a93] transition hover:bg-white/5 hover:text-white"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {capsLockOn && <p className="mt-1.5 text-[11px] font-medium text-[#e2c27a]">Caps Lock is on</p>}
+          </div>
 
-      {/* ───────── Right: sign-in form ───────── */}
-      <main className="flex flex-1 items-center justify-center px-4 py-10 sm:px-8">
-        <div className="w-full max-w-sm login-rise" style={{ animationDelay: '0.15s' }}>
-          {/* Compact brand for small screens (the left panel is hidden there) */}
-          <div className="lg:hidden mb-8 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#8a3f16] to-[#c2621f] text-lg">
-              🍽️
+          {/* Remember me */}
+          <label className="flex cursor-pointer select-none items-center gap-2 text-[13px] text-[#c3ccc6]">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded accent-[#c9a24b]"
+            />
+            Remember my username on this device
+          </label>
+
+          {/* POS terminal: cashiers will log in here with their PIN only */}
+          <label className="flex cursor-pointer select-none items-start gap-2 text-[13px] text-[#c3ccc6]">
+            <input
+              type="checkbox"
+              checked={registerTerminal}
+              onChange={(e) => setRegisterTerminal(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded accent-[#c9a24b]"
+            />
+            <span>
+              This PC is a <b className="text-white">POS terminal</b>: cashiers log in here with their 4-digit PIN
+              <span className="block text-[11px] text-[#8f9a93]">Owner or manager login. Done once per PC.</span>
             </span>
-            <p className="ticket-font text-2xl text-[#1c1917] leading-none">POS Center</p>
-          </div>
-
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#c2621f]">Welcome back</p>
-          <h1 className="ticket-font text-4xl text-[#1c1917] mt-1">Sign in to your restaurant</h1>
-          <p className="text-sm text-[#8a8377] mt-1">Enter your staff account to continue.</p>
-
-          {authError && (
-            <div
-              role="alert"
-              className="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{authError}</span>
-            </div>
+          </label>
+          {terminalKey() && (
+            <button type="button" onClick={() => setUsePinPad(true)} className="text-xs font-semibold text-[#c9a24b] hover:underline">
+              ← Back to the PIN pad
+            </button>
           )}
 
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            {/* Username: "sara@capri" (the part after @ = the restaurant, 2026-10-28)
-                or an email for older accounts — so a text box, not type="email" */}
-            <div>
-              <label htmlFor="login-email" className="mb-1.5 block text-xs font-semibold text-[#221F1C]">
-                Username
-              </label>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a8377]" />
-                <input
-                  id="login-email"
-                  type="text"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  required
-                  autoFocus={!email}
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. sara@capri"
-                  className="w-full rounded-xl border border-[#E7E1D2] bg-white py-3 pl-10 pr-4 text-sm text-[#221F1C] placeholder:text-[#b9b2a4] shadow-sm transition focus:border-[#c2621f] focus:outline-none focus:ring-4 focus:ring-[#c2621f]/15"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold text-[#221F1C]">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a8377]" />
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  autoFocus={!!email}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyUp={checkCapsLock}
-                  onKeyDown={checkCapsLock}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-[#E7E1D2] bg-white py-3 pl-10 pr-11 text-sm text-[#221F1C] placeholder:text-[#b9b2a4] shadow-sm transition focus:border-[#c2621f] focus:outline-none focus:ring-4 focus:ring-[#c2621f]/15"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-[#8a8377] transition hover:bg-[#F1ECDC] hover:text-[#221F1C]"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {capsLockOn && (
-                <p className="mt-1.5 text-[11px] font-medium text-[#b5541f]">Caps Lock is on</p>
-              )}
-            </div>
-
-            {/* Remember me */}
-            <label className="flex cursor-pointer items-center gap-2 select-none text-xs text-[#5c564c]">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-[#E7E1D2] accent-[#c2621f]"
-              />
-              Remember my username on this device
-            </label>
-
-            {/* POS terminal: cashiers will log in here with their PIN only */}
-            <label className="flex cursor-pointer items-start gap-2 select-none text-xs text-[#5c564c]">
-              <input
-                type="checkbox"
-                checked={registerTerminal}
-                onChange={(e) => setRegisterTerminal(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-[#E7E1D2] accent-[#c2621f]"
-              />
-              <span>
-                This PC is a <b>POS terminal</b> — cashiers will log in here with their 4-digit PIN only
-                <span className="block text-[10px] text-[#8a8377]">Owner or manager login. Done once per PC.</span>
-              </span>
-            </label>
-            {terminalKey() && (
-              <button type="button" onClick={() => setUsePinPad(true)} className="text-xs font-semibold text-[#c2621f] hover:underline">
-                ← Back to the PIN pad
-              </button>
+          {/* Sign in — the gold button */}
+          <button
+            type="submit"
+            disabled={isLoggingIn}
+            className="group flex h-[52px] w-full items-center justify-center gap-2 rounded-[10px] bg-[#c9a24b] text-[15px] font-bold tracking-wide text-[#131c18] transition hover:bg-[#d8b465] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoggingIn ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Signing in…
+              </>
+            ) : (
+              <>
+                Sign in
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </>
             )}
+          </button>
+        </form>
 
-            {/* Submit — same orange gradient as the SAVE buttons in the app */}
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#8a3f16] to-[#c2621f] py-3 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-[#c2621f]/25 transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isLoggingIn ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Signing in…
-                </>
-              ) : (
-                <>
-                  Sign in
-                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                </>
-              )}
-            </button>
-          </form>
+        <p className="mt-6 text-center text-xs text-[#8f9a93]">Forgot your password? Ask your restaurant manager to reset it.</p>
+      </div>
 
-          <p className="mt-8 text-center text-[11px] text-[#8a8377]">
-            Forgot your password? Ask your restaurant manager to reset it.
-          </p>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// One line of the decorative receipt: icon, label, and a "ready" tick.
-function TicketLine({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-[#221F1C]">
-      <span className="text-[#c2621f]">{icon}</span>
-      <span className="flex-1">{label}</span>
-      <span className="text-[10px] font-semibold text-[#4C7A5E]">READY</span>
+      <p className="absolute bottom-5 left-0 right-0 text-center text-xs text-[#6f7b74]">RES POS · Restaurant suite</p>
     </div>
   );
 }

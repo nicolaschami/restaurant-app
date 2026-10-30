@@ -19,17 +19,24 @@
 // Optional in config.json: "localPort": 3901, and "lan": true so POS 2 can open the POS
 // through this PC (http://<this PC's address>:3901) — needs a Windows Firewall rule:
 //   netsh advfirewall firewall add rule name="RES Local (POS 2)" dir=in action=allow protocol=TCP localport=3901 profile=private
+//
+// As ONE PROGRAM (2026-10-30): build/build-exe.mjs packs Node + these files into
+// RES-Local.exe, and installer/RES-Local.iss makes RES-Local-Setup.exe around it. Then
+// config.json, helper.log, raw-print.ps1 and data/ are next to RES-Local.exe.
 
 import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSea } from 'node:sea';
 import { startLocalCopy } from './local-copy.mjs';
 import { startGateway } from './gateway.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const VERSION = '1.1.0';
+// The folder of this program: next to RES-Local.exe (one program), or next to this file
+// (node helper.mjs, during development).
+const HERE = isSea() ? dirname(process.execPath) : dirname(fileURLToPath(import.meta.url));
+const VERSION = '1.2.0';
 
 function log(...parts) {
   const line = `${new Date().toISOString()}  ${parts.join(' ')}`;

@@ -27,6 +27,7 @@
 // runs the missing upgrade steps by itself at start (nobody runs a script by hand).
 
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -127,6 +128,12 @@ export function startLocalCopy({ server, key, log, folder }) {
   const setMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value');
   const meta = (k) => getMeta.get(k)?.value ?? null;
   const insertRow = db.prepare('INSERT INTO copy (kind, id, data) VALUES (?, ?, ?)');
+  // the POS answers and the ready PIN logins of the copy go where the offline code reads
+  // them (gateway.mjs / offline-orders.mjs): api_cache, and known_tokens for the logins
+  const saveAnswer = db.prepare(
+    "INSERT INTO api_cache (key, status, content_type, body, saved_at) VALUES (?, 200, 'application/json; charset=utf-8', ?, ?) ON CONFLICT (key) DO UPDATE SET body = excluded.body, saved_at = excluded.saved_at"
+  );
+  const knowToken = db.prepare('INSERT INTO known_tokens (hash, user_id, exp, seen_at) VALUES (?, ?, ?, ?) ON CONFLICT (hash) DO NOTHING');
   const base = String(server || 'http://127.0.0.1:3000').replace(/\/$/, '');
 
   let serverReachable = false;
@@ -152,6 +159,24 @@ export function startLocalCopy({ server, key, log, folder }) {
       setMeta.run('restaurant_name', String(snap.data.restaurant?.name ?? ''));
       // the highest OFF number the server already has (the counter continues after it)
       setMeta.run('server_last_off', String(Number(snap.data.lastOfflineNo) || 0));
+      // the POS answers (menu, tables…): offline the POS opens even if it was never
+      // opened online on this PC (2026-10-30)
+      const now = new Date().toISOString();
+      for (const [path, answer] of Object.entries(snap.data.api || {})) saveAnswer.run(path, Buffer.from(JSON.stringify(answer)), now);
+      // the ready PIN logins: the PIN works offline from day one (2026-10-30)
+      for (const l of snap.data.logins || []) {
+        const token = String(l.answer?.token || '');
+        if (!token) continue;
+        saveAnswer.run(`login#user=${l.userId}`, Buffer.from(JSON.stringify(l.answer)), now);
+        if (l.me) saveAnswer.run(`/api/auth/me#user=${l.userId}`, Buffer.from(JSON.stringify(l.me)), now);
+        let exp = 0;
+        try {
+          exp = Number(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')).exp || 0);
+        } catch {
+          /* no expiry */
+        }
+        knowToken.run(createHash('sha256').update(token).digest('hex'), String(l.userId), exp, now);
+      }
       db.exec('COMMIT');
     } catch (err) {
       db.exec('ROLLBACK');
@@ -159,7 +184,40 @@ export function startLocalCopy({ server, key, log, folder }) {
     }
   }
 
+  // The SCREENS too (2026-10-30): the POS page and the files it loads (/assets/…) are
+  // downloaded by RES Local itself, so the POS opens offline even if it was never opened
+  // online on this PC. Only what is missing or changed is downloaded (a new RES version
+  // = a new page with new file names).
+  const getFile = db.prepare('SELECT body FROM files WHERE path = ?');
+  const saveFile = db.prepare(
+    'INSERT INTO files (path, content_type, body, saved_at) VALUES (?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET content_type = excluded.content_type, body = excluded.body, saved_at = excluded.saved_at'
+  );
+  async function warmScreens() {
+    try {
+      const res = await fetch(`${base}/`, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok || !String(res.headers.get('content-type') || '').includes('text/html')) return;
+      const html = Buffer.from(await res.arrayBuffer());
+      const now = new Date().toISOString();
+      const old = getFile.get('/');
+      if (!old || !Buffer.from(old.body).equals(html)) saveFile.run('/', res.headers.get('content-type'), html, now);
+      // the files the page loads: <script src="/assets/…"> and <link href="/assets/…">
+      const assets = [...new Set([...html.toString('utf8').matchAll(/(?:src|href)="(\/assets\/[^"?#]+)"/g)].map((m) => m[1]))];
+      let fetched = 0;
+      for (const path of assets) {
+        if (getFile.get(path)) continue; // names change with each version: already here = same file
+        const a = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(30_000) });
+        if (!a.ok) continue;
+        saveFile.run(path, a.headers.get('content-type'), Buffer.from(await a.arrayBuffer()), now);
+        fetched++;
+      }
+      if (fetched) log(`Screens kept for offline: ${fetched} file(s) downloaded.`);
+    } catch {
+      /* no internet: keep the screens we have */
+    }
+  }
+
   async function refresh() {
+    warmScreens();
     try {
       const res = await fetch(`${base}/api/local/snapshot`, {
         headers: { 'x-helper-key': key, ...(meta('version') ? { 'if-none-match': meta('version') } : {}) },
