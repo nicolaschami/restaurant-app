@@ -71,6 +71,7 @@ import {
   ArrowRightLeft, // Added icon for Transaction header
   ListFilter,     // Added icon for Purchase List subitem
   ListTree,       // Chart of Accounts
+  CalendarClock,  // Reservations
 } from 'lucide-react';
 
 interface SidebarLayoutProps {
@@ -396,6 +397,22 @@ export default function SidebarLayout({
           >
             <ShoppingCart className={`w-4 h-4 shrink-0 ${activeTab === 'pos' ? 'text-[#c9a24b]' : ''}`} />
             {!isCollapsed && <span className="truncate">POS Terminal</span>}
+          </button>
+
+          {/* Reservations (2026-10-31) */}
+          <button
+            onClick={() => handleTabChange('reservations')}
+            className={`w-full flex items-center ${
+              isCollapsed ? 'justify-center px-0' : 'gap-2 px-2.5'
+            } py-2 rounded-md text-xs font-medium transition ${
+              activeTab === 'reservations'
+                ? 'bg-white/10 text-white shadow-[inset_3px_0_0_0_#c9a24b]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+            title="Reservations"
+          >
+            <CalendarClock className={`w-4 h-4 shrink-0 ${activeTab === 'reservations' ? 'text-[#c9a24b]' : ''}`} />
+            {!isCollapsed && <span className="truncate">Reservations</span>}
           </button>
 
           {/* Products Group */}

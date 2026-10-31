@@ -51,6 +51,7 @@ import salesItemRoutes from './routes/salesItems.js';
 import printingRoutes from './routes/printing.js';
 import userRoutes from './routes/users.js';
 import terminalRoutes from './routes/terminals.js';
+import reservationRoutes from './routes/reservations.js';
 import {
   getRestaurantId,
   assertOrderInRestaurant,
@@ -952,6 +953,7 @@ fastify.register(salesItemRoutes);
 fastify.register(printingRoutes);
 fastify.register(userRoutes);
 fastify.register(terminalRoutes);
+fastify.register(reservationRoutes);
 
 // --- The screens (cloud-ready, 2026-10-26) ---
 // On the server, RES also delivers the app's screens (the built client/dist), so the

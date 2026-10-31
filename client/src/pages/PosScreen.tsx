@@ -6,6 +6,7 @@ import OpeningCashPrompt from '../components/OpeningCashPrompt';
 import { basketTotals, money, taxLabel } from '../lib/restaurantSettings';
 import { autoPrintEnabled } from '../lib/printReceipt';
 import { toast } from '../components/Toaster';
+import { askConfirm } from '../components/ConfirmHost';
 
 // Kitchen tickets (2026-10-26): the server prints them when an order is saved and
 // tells us how it went. The order is saved anyway — a failed ticket only shows a
@@ -63,6 +64,8 @@ interface PosScreenProps {
   onResetOrder?: () => void;
   onClose?: () => void; // 👈 Accept onClose
   onSwitchUser?: (token: string, user: any) => void; // "Switch user" with a PIN
+  // Reservations (2026-10-31): "Seat" → a new dine-in order on the guest's table
+  seatAt?: { reservationId: number; tableId: number; tableLabel: string; guestName: string; partySize: number } | null;
 }
 
 /* ---------- API SHAPES ---------- */
@@ -175,6 +178,8 @@ export interface RestaurantTable {
   occupiedOrderNo?: number;
   zone?: string;   // e.g., "Main Dining", "Patio", "Bar"
   notes?: string;  // e.g., "Near window", "VIP Table"
+  // the table's next booking (Reservations, 2026-10-31); reservedNow = from 15 min before
+  booking?: { id: number; guestName: string; partySize: number; time: string; reservedNow: boolean; lateMinutes: number } | null;
 }
 
 export interface Customer {
@@ -261,7 +266,7 @@ const parseModPrice = (val: any): number => {
 
 let ticketSeq = 214;
 
-export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder, onSwitchUser }: PosScreenProps) {
+export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder, onSwitchUser, seatAt }: PosScreenProps) {
   // Who works on the POS now, and the "Switch user" PIN pad.
   const [cashierName, setCashierName] = useState(me?.name || '');
   const [showSwitchUser, setShowSwitchUser] = useState(false);
@@ -349,6 +354,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       occupiedOrderNo: t.occupiedOrderNo ?? t.orderNo,
       zone: t.zone,
       notes: t.notes,
+      booking: t.booking ?? null,
     }));
 
   // Reload the real table status from the server (the server frees a table when its
@@ -456,6 +462,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             occupiedOrderNo: t.occupiedOrderNo ?? t.orderNo,
             zone: t.zone,
             notes: t.notes,
+            booking: t.booking ?? null,
           }))
         );
 
@@ -1072,6 +1079,9 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         customerName: orderType === 'Delivery' ? deliveryCustomer?.name : null,
         customerPhone: orderType === 'Delivery' ? deliveryCustomer?.phone : null,
         customerAddress: orderType === 'Delivery' ? deliveryCustomer?.address : null,
+        // a guest seated from Reservations (only on the first save, on that table)
+        reservationId:
+          !currentOrderId && orderType === 'Dine-In' && seatAt && dineInTable?.id === seatAt.tableId ? seatReservationRef.current : null,
         deliveryFee: deliveryFeeNum,
         subtotal,
         tax,
@@ -1106,6 +1116,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
       } else {
         res = await api.post('/orders', orderPayload);
         savedOrderId = res.data?.order?.id ?? null;
+        seatReservationRef.current = null; // the booking now knows its order
         // the number the order really got: the server's, or OFF-0007 from RES Local offline
         if (res.data?.order?.ticketNo) setTicketNo(res.data.order.ticketNo);
       }
@@ -1137,11 +1148,39 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
     if (type === 'Delivery') setShowCustomerPicker(true);
   };
 
-  const selectTable = (table: RestaurantTable) => {
+  const selectTable = async (table: RestaurantTable) => {
     if (table.status === 'occupied') return;
+    // Reservations: a table reserved for another guest (from 15 min before) — ask first
+    const b = table.booking;
+    if (b?.reservedNow && b.id !== seatReservationRef.current) {
+      const ok = await askConfirm({
+        title: 'Reserved table',
+        message: `${table.label} is reserved for ${b.guestName} ×${b.partySize} at ${b.time}. Use it for this order anyway?`,
+        confirmLabel: 'Use it',
+        isDanger: false,
+      });
+      if (!ok) return;
+    }
     setDineInTable(table);
     setShowTablePicker(false);
   };
+
+  // Reservations (2026-10-31): "Seat" on the Reservations screen opens the POS here with
+  // the guest's table already chosen (dine-in). The first save of the order tells the
+  // server which booking it belongs to (reservationId), so the booking remembers it.
+  const seatReservationRef = useRef<number | null>(null);
+  const seatHandledRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!seatAt || activeOrder?.orderId || isLoadingItems) return;
+    if (seatHandledRef.current === seatAt.reservationId) return;
+    seatHandledRef.current = seatAt.reservationId;
+    seatReservationRef.current = seatAt.reservationId;
+    setOrderType('Dine-In');
+    const t = tables.find((x) => x.id === seatAt.tableId);
+    setDineInTable(t ?? { id: seatAt.tableId, label: seatAt.tableLabel, status: 'free' });
+    toast.success(`${seatAt.guestName} ×${seatAt.partySize} · Table ${seatAt.tableLabel}`, 'Add the order.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seatAt, isLoadingItems, tables]);
 
   const filteredCustomers = customers.filter((c) => {
     const q = customerSearch.trim().toLowerCase();
@@ -3521,13 +3560,19 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
                     </div>
 
                     <div className="mt-4 flex justify-between items-end text-xs font-medium">
-                      <span className={isOccupied ? 'text-rose-300 font-bold' : 'text-emerald-400 font-bold'}>
-                        {isOccupied ? 'Occupied' : 'Available'}
+                      <span className={isOccupied ? 'text-rose-300 font-bold' : t.booking?.reservedNow ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                        {isOccupied ? 'Occupied' : t.booking?.reservedNow ? (t.booking.lateMinutes > 0 ? `Reserved · late ${t.booking.lateMinutes} min` : 'Reserved') : 'Available'}
                       </span>
                       {isOccupied && t.occupiedOrderNo && (
                         <span className="text-zinc-400 font-mono">#{t.occupiedOrderNo}</span>
                       )}
                     </div>
+                    {/* Reservations: the table's next booking; ⚠ when it is still busy close to it */}
+                    {t.booking && (
+                      <div className={`mt-2 truncate rounded-md border px-2 py-0.5 text-[11px] font-semibold ${t.booking.reservedNow ? 'border-amber-500/70 text-amber-300' : 'border-zinc-700 text-zinc-400'}`}>
+                        {isOccupied && t.booking.reservedNow ? '⚠ ' : '🕘 '}{t.booking.time} {t.booking.guestName} ×{t.booking.partySize}
+                      </div>
+                    )}
                   </div>
                 );
               })}

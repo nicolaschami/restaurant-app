@@ -3,6 +3,7 @@ import { db } from '../db';
 import { restaurantTables } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getRestaurantId } from '../lib/tenant.js';
+import { nextBookingPerTable } from '../lib/reservations.js';
 
 interface TableBody {
   label: string;
@@ -29,6 +30,10 @@ fastify.get('/api/tables', async (request, reply) => {
         .from(restaurantTables)
         .where(eq(restaurantTables.restaurantId, restaurantId));
 
+      // Reservations (2026-10-31): each table's next booking ("🕘 21:30 Nicolas ×4"),
+      // and a free table shows "reserved" from 15 min before its booking.
+      const bookings = await nextBookingPerTable(restaurantId);
+
       const formattedTables = rawTables.map((t) => ({
         id: t.id,
         number: t.label,       // Maps to frontend table UI
@@ -37,7 +42,8 @@ fastify.get('/api/tables', async (request, reply) => {
         zone: t.zone,
         capacity: t.capacity,
         notes: t.notes ?? '',  // <-- INCLUDED IN GET RESPONSE
-        status: t.status,
+        status: t.status !== 'occupied' && bookings.get(t.id)?.reservedNow ? 'reserved' : t.status,
+        booking: bookings.get(t.id) ?? null,
         restaurantId: t.restaurantId,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,

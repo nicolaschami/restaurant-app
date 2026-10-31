@@ -55,7 +55,10 @@ export function requiredRole(method: string, path: string): Role | 'platform' {
     return read ? 'cashier' : 'manager';
   }
 
-  // everything else (orders, payments, customers, kds, dashboard, drawer…) — any user
+  // reservations (2026-10-31): every user books and seats; the 2 settings — managers
+  if (p === '/api/reservations/settings') return read ? 'cashier' : 'manager';
+
+  // everything else (orders, payments, customers, kds, dashboard, drawer, reservations…) — any user
   return 'cashier';
 }
 

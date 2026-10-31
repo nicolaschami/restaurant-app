@@ -30,17 +30,21 @@ import JournalReport from './pages/JournalReport';
 import AccountBalancesReport from './pages/AccountBalancesReport';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import SalesByItemReport from './pages/SalesByItemReport';
+import Reservations, { type SeatRequest } from './pages/Reservations';
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
   onResetOrder?: () => void;
   onClose?: () => void;
   onSwitchUser?: (token: string, user: any) => void;
+  seatAt?: SeatRequest | null;
 }>;
 
 export function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'pos' | string>('dashboard');
   const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
+  // Reservations (2026-10-31): "Seat" opens the POS on the guest's table.
+  const [seatAt, setSeatAt] = useState<SeatRequest | null>(null);
 
   // Login "ticket" (JWT) saved by the Login page. The server needs it on protected
   // routes (categories, products...) — without it they answer 401 Unauthorized.
@@ -69,6 +73,7 @@ export function App() {
   };
 
   const handleSelectTicket = (ticket: ActiveOrder) => {
+    setSeatAt(null);
     setActiveOrder(ticket);
     setActiveTab('pos');
   };
@@ -79,6 +84,7 @@ export function App() {
 
   const handleClosePos = () => {
     setActiveOrder(null);
+    setSeatAt(null);
     setActiveTab('dashboard');
   };
 
@@ -116,6 +122,7 @@ export function App() {
         onResetOrder={handleResetOrder}
         onClose={handleClosePos}
         onSwitchUser={handleSwitchUser}
+        seatAt={seatAt}
       />
     );
   }
@@ -229,6 +236,16 @@ export function App() {
         return <Tables />;
       case 'customers':
         return <Customers />;
+      case 'reservations':
+        return (
+          <Reservations
+            onSeat={(s) => {
+              setActiveOrder(null);
+              setSeatAt(s);
+              setActiveTab('pos');
+            }}
+          />
+        );
       case 'suppliers':
         return <Suppliers />;
       case 'kitchenscreen':

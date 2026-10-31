@@ -58,6 +58,8 @@ interface CreateOrderBody {
   subtotal?: number | string;
   tax?: number | string;
   total?: number | string;
+  // Reservations (2026-10-31): the booking seated with "Seat" — it remembers this order
+  reservationId?: number | string | null;
   items: OrderItemInput[];
 }
 
@@ -214,6 +216,16 @@ fastify.post('/api/orders', async (request, reply) => {
       // 5. Update Table Status to 'occupied' (if tableId is provided)
       // Table status = the rule "occupied while it has an open order" (lib/tables.ts).
       await syncTables(tx, restaurantId, [tableId ? Number(tableId) : null]);
+
+      // 5b. A guest seated from Reservations: the booking remembers its order.
+      const reservationId = Number(body.reservationId);
+      if (Number.isInteger(reservationId) && reservationId > 0) {
+        await tx.execute(sql`
+          UPDATE reservations SET order_id = ${newOrder.id}, updated_at = now()
+          WHERE id = ${reservationId} AND restaurant_id = ${restaurantId}
+            AND status = 'arrived' AND order_id IS NULL
+        `);
+      }
 
       // 6. Insert Order Items (includes variantSize)
       const itemsToInsert = preparedItems.map((item) => ({
