@@ -8,10 +8,13 @@
 // once saved; its owner logs in as admin@capri and its staff as sara@capri.
 // Delete (2026-10-31): the red bin deletes a restaurant and ALL its data, after typing back
 // its login code (or name). Not offered for a restaurant holding a platform owner (yours).
+// Edit (2026-10-31): the pencil fixes a mistake — name, phone, country (currency + time
+// zone), login code (every login follows: sara@old → sara@new) — and can reset the
+// owner's password (shown once).
 // Data: /api/platform/restaurants
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Building2, Copy, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Building2, Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import { toast } from '../components/Toaster';
 import { COUNTRIES } from '../lib/countries';
@@ -23,6 +26,7 @@ interface RestaurantRow {
   phone: string;
   country: string | null;
   currency: string | null;
+  timezone: string | null;
   users: number;
   ownerEmail: string | null;
   createdAt: string;
@@ -39,6 +43,7 @@ export default function PlatformScreen() {
   const [adding, setAdding] = useState(false);
   const [created, setCreated] = useState<{ restaurant: string; email: string; password: string } | null>(null);
   const [deleting, setDeleting] = useState<RestaurantRow | null>(null);
+  const [editing, setEditing] = useState<RestaurantRow | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -133,9 +138,17 @@ export default function PlatformScreen() {
                 <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.users}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.orders}</td>
                 <td className="px-3 py-2 text-slate-500">{r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB') : '—'}</td>
-                <td className="px-3 py-2 text-right">
+                <td className="flex justify-end gap-1 px-3 py-2">
+                  <button
+                    onClick={() => setEditing(r)}
+                    title={`Edit ${r.name}`}
+                    aria-label={`Edit ${r.name}`}
+                    className="rounded-md border border-slate-300 p-1.5 text-slate-700 hover:bg-slate-100"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
                   {r.locked ? (
-                    <span className="text-[11px] text-slate-400" title="Your own restaurant (it holds your platform owner account)">yours</span>
+                    <span className="self-center px-1 text-[11px] text-slate-400" title="Your own restaurant (it holds your platform owner account)">yours</span>
                   ) : (
                     <button
                       onClick={() => setDeleting(r)}
@@ -163,6 +176,16 @@ export default function PlatformScreen() {
           }}
         />
       )}
+      {editing && (
+        <EditRestaurantModal
+          restaurant={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
       {deleting && (
         <DeleteRestaurantModal
           restaurant={deleting}
@@ -173,6 +196,139 @@ export default function PlatformScreen() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// Edit a restaurant (fix a mistake), and reset its owner's password.
+function EditRestaurantModal({ restaurant, onClose, onSaved }: { restaurant: RestaurantRow; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(restaurant.name);
+  const [phone, setPhone] = useState(restaurant.phone || '');
+  const [country, setCountry] = useState(restaurant.country || 'LB');
+  const [loginCode, setLoginCode] = useState(restaurant.loginCode || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState<{ username: string; password: string } | null>(null);
+  const toCode = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+  const codeChanged = loginCode !== (restaurant.loginCode || '');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !saving && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, saving]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    const c = COUNTRIES.find((x) => x.code === country);
+    try {
+      const res = await api.put(`/platform/restaurants/${restaurant.id}`, {
+        name,
+        phone,
+        country,
+        // the country sets the currency and time zone (only when the country changes)
+        ...(country !== restaurant.country ? { currency: c?.currency, timezone: c?.timezone } : {}),
+        ...(codeChanged ? { loginCode } : {}),
+      });
+      const n = res.data?.loginsRenamed ?? 0;
+      toast.success(`${name} saved`, n ? `${n} login(s) renamed to …@${res.data.loginCode}. Tell the staff their new username.` : 'The restaurant is updated.');
+      onSaved();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Not saved. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  const resetPassword = async () => {
+    setError(null);
+    try {
+      const res = await api.post(`/platform/restaurants/${restaurant.id}/reset-owner-password`, {});
+      setNewPassword(res.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'The password could not be reset.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 lg:pl-60" onMouseDown={() => !saving && onClose()}>
+      <div className="w-full max-w-lg rounded-xl border-t-[3px] border-t-[#c9a24b] bg-white p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-extrabold text-[#131c18]">Edit {restaurant.name}</h2>
+          <button onClick={onClose} className="rounded p-1 text-slate-500 hover:bg-slate-100" title="Close (Esc)">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={label}>Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} className={input} autoFocus />
+          </div>
+          <div>
+            <label className={label}>Login code</label>
+            <input value={loginCode} onChange={(e) => setLoginCode(toCode(e.target.value))} placeholder="e.g. capri" className={`${input} font-mono`} />
+          </div>
+          <div>
+            <label className={label}>Phone</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={input} />
+          </div>
+          <div>
+            <label className={label}>Country (sets currency & time zone)</label>
+            <select value={country} onChange={(e) => setCountry(e.target.value)} className={input}>
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name} · {c.currency}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {codeChanged && restaurant.loginCode && (
+          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+            Every login of this restaurant will change: <b className="font-mono">sara@{restaurant.loginCode}</b> → <b className="font-mono">sara@{loginCode || '…'}</b>. Tell the staff their new username.
+          </div>
+        )}
+        {codeChanged && !restaurant.loginCode && (
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+            The existing email logins stay as they are. New users will be <b className="font-mono">name@{loginCode || '…'}</b>.
+          </div>
+        )}
+
+        {/* the owner forgot the password */}
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs">
+          <button type="button" onClick={resetPassword} className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 px-3 font-semibold text-slate-700 hover:bg-slate-100">
+            <KeyRound className="h-3.5 w-3.5" /> Reset owner's password
+          </button>
+          {newPassword && (
+            <span className="rounded bg-emerald-50 px-2 py-1 font-mono text-emerald-900">
+              {newPassword.username} · {newPassword.password}
+              <button
+                type="button"
+                onClick={() =>
+                  navigator.clipboard
+                    .writeText(`Your RES POS account\nRestaurant: ${name}\nUsername: ${newPassword.username}\nNew password: ${newPassword.password}\nPlease change it after logging in.`)
+                    .then(() => toast.success('Copied', 'Paste it in WhatsApp or an email.'))
+                    .catch(() => toast.error('Not copied', 'Copy it by hand.'))
+                }
+                className="ml-2 inline-flex items-center gap-1 font-sans font-semibold text-emerald-800 underline"
+              >
+                <Copy className="h-3 w-3" /> copy
+              </button>
+            </span>
+          )}
+        </div>
+        {newPassword && <div className="mt-1 text-[11px] text-slate-500">Shown only now. The owner changes it after logging in.</div>}
+
+        {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</div>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving} className="h-9 rounded-md border border-slate-300 px-4 text-sm text-slate-700 hover:bg-slate-100">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving} className="h-9 rounded-md bg-[#131c18] px-4 text-sm font-semibold text-white hover:bg-[#1f2d26] disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

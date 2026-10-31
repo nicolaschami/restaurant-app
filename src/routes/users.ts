@@ -16,6 +16,8 @@
 //
 // Platform (platform owner only):
 //   GET    /api/platform/restaurants       (+ orders count, locked = holds a platform owner)
+//   PUT    /api/platform/restaurants/:id   { name?, phone?, country?, currency?, timezone?, loginCode? }
+//   POST   /api/platform/restaurants/:id/reset-owner-password  → a new password, shown once
 //   DELETE /api/platform/restaurants/:id   { confirm }  → the restaurant and all its data
 //   POST /api/platform/restaurants  { restaurant: { name, loginCode, phone, country?, currency?, timezone? },
 //                                     owner: { name, username?, password } }   (username default "admin")
@@ -24,6 +26,7 @@
 
 import { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { restaurants, users } from '../db/schema.js';
@@ -194,7 +197,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   // ---------------------------------------------------------------- Platform (platform owner)
   fastify.get('/api/platform/restaurants', async () => {
     const rows = await db.execute(sql`
-      SELECT r.id, r.name, r.login_code AS "loginCode", r.phone, r.country, r.currency, r.created_at AS "createdAt",
+      SELECT r.id, r.name, r.login_code AS "loginCode", r.phone, r.country, r.currency, r.timezone, r.created_at AS "createdAt",
              (SELECT COUNT(*) FROM users u WHERE u.restaurant_id = r.id)::int AS "users",
              (SELECT u.email FROM users u WHERE u.restaurant_id = r.id AND u.role = 'owner' ORDER BY u.id LIMIT 1) AS "ownerEmail",
              (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id)::int AS "orders",
@@ -204,6 +207,81 @@ export default async function userRoutes(fastify: FastifyInstance) {
       ORDER BY r.id
     `);
     return { restaurants: rows };
+  });
+
+  // EDIT a restaurant (2026-10-31, the user's request: fix a mistake without deleting it).
+  //   PUT /api/platform/restaurants/:id   { name?, phone?, country?, currency?, timezone?, loginCode? }
+  // Changing the login code renames EVERY login of the restaurant: sara@old → sara@new (the
+  // staff must be told). A restaurant without a code (older, email logins) can get one: its
+  // existing email logins stay as they are, new users get username@code.
+  fastify.put('/api/platform/restaurants/:id', async (request, reply) => {
+    const id = Number((request.params as any).id);
+    if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'Invalid restaurant.' });
+    const b = (request.body || {}) as any;
+    const [r] = (await db.execute(sql`SELECT id, name, phone, login_code AS "loginCode" FROM restaurants WHERE id = ${id}`)) as any[];
+    if (!r) return reply.status(404).send({ error: 'Restaurant not found.' });
+
+    const name = b.name === undefined ? r.name : String(b.name).trim().slice(0, 255);
+    const phone = b.phone === undefined ? r.phone : String(b.phone).trim().slice(0, 50);
+    if (!name) return reply.status(400).send({ error: 'Enter the restaurant name.' });
+    if (!phone) return reply.status(400).send({ error: 'Enter the restaurant phone.' });
+    const newCode = b.loginCode === undefined ? r.loginCode : cleanEmail(b.loginCode) || null;
+    if (newCode !== r.loginCode) {
+      if (!newCode) return reply.status(400).send({ error: 'A login code cannot be removed, only changed.' });
+      if (!isLoginCode(newCode)) return reply.status(400).send({ error: 'The login code: 2 to 20 letters or numbers, no spaces (e.g. capri).' });
+      const [used] = (await db.execute(sql`SELECT 1 FROM restaurants WHERE login_code = ${newCode} AND id <> ${id}`)) as any[];
+      if (used) return reply.status(409).send({ error: `The login code "${newCode}" is already used by another restaurant.` });
+    }
+    const currency = /^[A-Za-z]{3}$/.test(String(b.currency || '')) ? String(b.currency).toUpperCase() : null;
+    const timezone = b.timezone ? String(b.timezone).slice(0, 50) : null;
+
+    let renamed: any[] = [];
+    try {
+    renamed = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        UPDATE restaurants SET
+          name = ${name}, phone = ${phone},
+          country = ${b.country === undefined ? sql`country` : b.country ? String(b.country).slice(0, 100) : null},
+          currency = COALESCE(${currency}, currency),
+          timezone = COALESCE(${timezone}, timezone),
+          login_code = ${newCode},
+          updated_at = now()
+        WHERE id = ${id}
+      `);
+      if (!r.loginCode || newCode === r.loginCode) return [] as any[];
+      // every login of the restaurant follows the new code: sara@old → sara@new
+      // (a login with the new code already taken anywhere stops the whole change)
+      const rows = (await tx.execute(sql`
+        UPDATE users SET email = left(email, length(email) - length(${'@' + r.loginCode})) || ${'@' + newCode}
+        WHERE restaurant_id = ${id} AND right(email, length(${'@' + r.loginCode})) = ${'@' + r.loginCode}
+        RETURNING id
+      `)) as any[];
+      return rows;
+    });
+    } catch (err: any) {
+      if ((err?.code ?? err?.cause?.code) === '23505') {
+        return reply.status(409).send({ error: 'A login with the new code already exists: nothing was changed.' });
+      }
+      request.log.error(err);
+      return reply.status(500).send({ error: 'The restaurant could not be saved. Nothing was changed.' });
+    }
+    for (const u of renamed) forgetUser(Number(u.id));
+    return { ok: true, loginCode: newCode, loginsRenamed: renamed.length };
+  });
+
+  // The OWNER's password, reset by the platform owner (the owner forgot it): a new starting
+  // password, shown ONCE (like when the restaurant is created). The owner changes it.
+  //   POST /api/platform/restaurants/:id/reset-owner-password
+  fastify.post('/api/platform/restaurants/:id/reset-owner-password', async (request, reply) => {
+    const id = Number((request.params as any).id);
+    const [owner] = (await db.execute(sql`
+      SELECT id, email FROM users WHERE restaurant_id = ${id} AND role = 'owner' AND is_platform_admin = false ORDER BY id LIMIT 1
+    `)) as any[];
+    if (!owner) return reply.status(404).send({ error: 'This restaurant has no owner account.' });
+    const password = `Res-${randomBytes(4).toString('hex')}`;
+    await db.update(users).set({ passwordHash: await bcrypt.hash(password, 10), isActive: true }).where(eq(users.id, owner.id));
+    forgetUser(Number(owner.id));
+    return { username: owner.email, password };
   });
 
   // DELETE a restaurant and EVERYTHING in it (2026-10-31, the user's request; platform owner
