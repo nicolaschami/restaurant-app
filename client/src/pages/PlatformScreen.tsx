@@ -6,10 +6,12 @@
 // then logs in, completes Restaurant Info and creates the restaurant's users.
 // Login codes (2026-10-28): each new restaurant gets a short code ("capri"), fixed
 // once saved; its owner logs in as admin@capri and its staff as sara@capri.
+// Delete (2026-10-31): the red bin deletes a restaurant and ALL its data, after typing back
+// its login code (or name). Not offered for a restaurant holding a platform owner (yours).
 // Data: /api/platform/restaurants
 
 import { useEffect, useState } from 'react';
-import { Building2, Copy, Plus, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Building2, Copy, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import { toast } from '../components/Toaster';
 import { COUNTRIES } from '../lib/countries';
@@ -24,6 +26,8 @@ interface RestaurantRow {
   users: number;
   ownerEmail: string | null;
   createdAt: string;
+  orders: number;
+  locked: boolean; // holds a platform owner account: can never be deleted
 }
 
 const input = 'h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm outline-none focus:border-[#c9a24b]';
@@ -34,6 +38,7 @@ export default function PlatformScreen() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [created, setCreated] = useState<{ restaurant: string; email: string; password: string } | null>(null);
+  const [deleting, setDeleting] = useState<RestaurantRow | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -108,7 +113,9 @@ export default function PlatformScreen() {
               <th className="px-3 py-2 text-left font-semibold">Currency</th>
               <th className="px-3 py-2 text-left font-semibold">Owner</th>
               <th className="px-3 py-2 text-right font-semibold">Users</th>
+              <th className="px-3 py-2 text-right font-semibold">Orders</th>
               <th className="px-3 py-2 text-left font-semibold">Created</th>
+              <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -124,7 +131,22 @@ export default function PlatformScreen() {
                 <td className="px-3 py-2 text-slate-600">{r.currency || 'USD'}</td>
                 <td className="px-3 py-2 text-slate-600">{r.ownerEmail || <span className="text-red-500">no owner</span>}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.users}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.orders}</td>
                 <td className="px-3 py-2 text-slate-500">{r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB') : '—'}</td>
+                <td className="px-3 py-2 text-right">
+                  {r.locked ? (
+                    <span className="text-[11px] text-slate-400" title="Your own restaurant (it holds your platform owner account)">yours</span>
+                  ) : (
+                    <button
+                      onClick={() => setDeleting(r)}
+                      title={`Delete ${r.name} and all its data`}
+                      aria-label={`Delete ${r.name}`}
+                      className="rounded-md border border-red-200 p-1.5 text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -141,6 +163,78 @@ export default function PlatformScreen() {
           }}
         />
       )}
+      {deleting && (
+        <DeleteRestaurantModal
+          restaurant={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Delete a restaurant: type its login code (or name) back to unlock the red button.
+function DeleteRestaurantModal({ restaurant, onClose, onDeleted }: { restaurant: RestaurantRow; onClose: () => void; onDeleted: () => void }) {
+  const word = restaurant.loginCode || restaurant.name;
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ok = typed.trim().toLowerCase() === word.trim().toLowerCase();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, busy]);
+
+  const remove = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.delete(`/platform/restaurants/${restaurant.id}`, { data: { confirm: typed } });
+      const d = res.data?.deleted || {};
+      toast.success(`${restaurant.name} deleted`, `${d.orders ?? 0} orders, ${d.users ?? 0} users, ${d.menuItems ?? 0} dishes removed.`);
+      onDeleted();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Not deleted. Please try again.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 lg:pl-60" onMouseDown={() => !busy && onClose()}>
+      <div className="w-full max-w-md rounded-xl border-t-[3px] border-t-red-600 bg-white p-5 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-red-600" />
+          <h2 className="text-base font-extrabold text-[#131c18]">Delete {restaurant.name}?</h2>
+        </div>
+        <p className="text-sm text-slate-700">
+          This deletes the restaurant and <b>all its data</b>: {restaurant.orders} orders, {restaurant.users} users, the menu, tables, customers,
+          suppliers, stock, the journal and the Z reports. <b>It cannot be undone.</b>
+        </p>
+        <label className={`${label} mt-4`} htmlFor="delete-confirm">
+          To confirm, type <span className="font-mono normal-case text-red-600">{word}</span>
+        </label>
+        <input id="delete-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" className={`${input} font-mono`} />
+        {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</div>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} disabled={busy} className="h-9 rounded-md border border-slate-300 px-4 text-sm text-slate-700 hover:bg-slate-100">
+            Cancel
+          </button>
+          <button
+            onClick={remove}
+            disabled={!ok || busy}
+            className="flex h-9 items-center gap-1.5 rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-4 w-4" /> {busy ? 'Deleting…' : 'Delete for good'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

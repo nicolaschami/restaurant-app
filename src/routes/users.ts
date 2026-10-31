@@ -15,7 +15,8 @@
 //   - a PIN is 4 digits and unique in the restaurant (stored as a hash).
 //
 // Platform (platform owner only):
-//   GET  /api/platform/restaurants
+//   GET    /api/platform/restaurants       (+ orders count, locked = holds a platform owner)
+//   DELETE /api/platform/restaurants/:id   { confirm }  → the restaurant and all its data
 //   POST /api/platform/restaurants  { restaurant: { name, loginCode, phone, country?, currency?, timezone? },
 //                                     owner: { name, username?, password } }   (username default "admin")
 //   → creates the restaurant and its owner account in one step; the owner then creates
@@ -195,11 +196,43 @@ export default async function userRoutes(fastify: FastifyInstance) {
     const rows = await db.execute(sql`
       SELECT r.id, r.name, r.login_code AS "loginCode", r.phone, r.country, r.currency, r.created_at AS "createdAt",
              (SELECT COUNT(*) FROM users u WHERE u.restaurant_id = r.id)::int AS "users",
-             (SELECT u.email FROM users u WHERE u.restaurant_id = r.id AND u.role = 'owner' ORDER BY u.id LIMIT 1) AS "ownerEmail"
+             (SELECT u.email FROM users u WHERE u.restaurant_id = r.id AND u.role = 'owner' ORDER BY u.id LIMIT 1) AS "ownerEmail",
+             (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id)::int AS "orders",
+             -- a restaurant with a platform owner account (yours) can never be deleted
+             EXISTS (SELECT 1 FROM users u WHERE u.restaurant_id = r.id AND u.is_platform_admin) AS "locked"
       FROM restaurants r
       ORDER BY r.id
     `);
     return { restaurants: rows };
+  });
+
+  // DELETE a restaurant and EVERYTHING in it (2026-10-31, the user's request; platform owner
+  // only — lib/roles.ts). The database function delete_restaurant does it in one transaction
+  // and refuses a restaurant holding a platform owner (sql/2026-10-31_delete_restaurant.sql).
+  // Safety: the caller must type back the restaurant's login code (or its name when it has no
+  // code), so a wrong click can never delete the wrong restaurant.
+  //   DELETE /api/platform/restaurants/:id   { confirm: "capri" }
+  fastify.delete('/api/platform/restaurants/:id', async (request, reply) => {
+    const id = Number((request.params as any).id);
+    if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'Invalid restaurant.' });
+    const [r] = (await db.execute(sql`SELECT id, name, login_code AS "loginCode" FROM restaurants WHERE id = ${id}`)) as any[];
+    if (!r) return reply.status(404).send({ error: 'Restaurant not found.' });
+    if (id === Number(request.user?.restaurantId)) return reply.status(409).send({ error: 'This is your own restaurant: it cannot be deleted.' });
+    const expected = String(r.loginCode || r.name).trim().toLowerCase();
+    const typed = String((request.body as any)?.confirm ?? '').trim().toLowerCase();
+    if (typed !== expected) {
+      return reply.status(400).send({ error: `To confirm, type exactly: ${r.loginCode || r.name}` });
+    }
+    try {
+      const [res] = (await db.execute(sql`SELECT delete_restaurant(${id}) AS deleted`)) as any[];
+      request.log.warn({ restaurantId: id, by: request.user?.id, deleted: res?.deleted }, 'Restaurant deleted');
+      return { deleted: res?.deleted ?? { restaurant: r.name } };
+    } catch (err: any) {
+      const msg = String(err?.cause?.message || err?.message || '');
+      if (/platform owner/i.test(msg)) return reply.status(409).send({ error: 'This restaurant holds a platform owner account: it cannot be deleted.' });
+      request.log.error(err);
+      return reply.status(500).send({ error: 'The restaurant could not be deleted. Nothing was changed.' });
+    }
   });
 
   fastify.post('/api/platform/restaurants', async (request, reply) => {
