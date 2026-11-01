@@ -27,6 +27,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { getRestaurantId } from '../lib/tenant.js';
 import { reservationSettings } from '../lib/reservations.js';
+import { readOpeningHours } from '../lib/chatBooking.js';
 import { roomManager } from '../lib/roomManager.js';
 
 const STATUSES = ['booked', 'arrived', 'no_show', 'cancelled'] as const;
@@ -373,6 +374,29 @@ export default async function reservationRoutes(fastify: FastifyInstance) {
       return reply.send({ ok: true, holdMinutes: hold, reserveBeforeMinutes: before });
     } catch (err) {
       return sendError(reply, err, 'save the settings');
+    }
+  });
+
+  // ── opening hours (2026-11-01): the chat only offers booking times inside them ──
+  // {"mon": ["12:00", "23:00"], "tue": null (closed), …}; null = not set (any time).
+  fastify.get('/api/reservations/hours', async (request, reply) => {
+    const restaurantId = getRestaurantId(request);
+    const [r] = (await db.execute(sql`SELECT opening_hours FROM restaurants WHERE id = ${restaurantId}`)) as any[];
+    return reply.send({ openingHours: readOpeningHours(r?.opening_hours) });
+  });
+
+  fastify.put('/api/reservations/hours', async (request, reply) => {
+    const restaurantId = getRestaurantId(request);
+    const raw = (request.body as any)?.openingHours;
+    const hours = raw == null ? null : readOpeningHours(raw);
+    try {
+      await db.execute(sql`
+        UPDATE restaurants SET opening_hours = ${hours ? JSON.stringify(hours) : null}::jsonb, updated_at = now()
+        WHERE id = ${restaurantId}
+      `);
+      return reply.send({ ok: true, openingHours: hours });
+    } catch (err) {
+      return sendError(reply, err, 'save the opening hours');
     }
   });
 

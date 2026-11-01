@@ -57,6 +57,8 @@ export function requiredRole(method: string, path: string): Role | 'platform' {
 
   // reservations (2026-10-31): every user books and seats; the 2 settings — managers
   if (p === '/api/reservations/settings') return read ? 'cashier' : 'manager';
+  // opening hours (2026-11-01, used by the chat bookings): managers change them
+  if (p === '/api/reservations/hours') return read ? 'cashier' : 'manager';
 
   // everything else (orders, payments, customers, kds, dashboard, drawer, reservations…) — any user
   return 'cashier';

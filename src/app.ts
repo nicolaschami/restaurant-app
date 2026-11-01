@@ -52,6 +52,8 @@ import printingRoutes from './routes/printing.js';
 import userRoutes from './routes/users.js';
 import terminalRoutes from './routes/terminals.js';
 import reservationRoutes from './routes/reservations.js';
+import publicChatRoutes from './routes/publicChat.js';
+import chatOrderRoutes from './routes/chatOrders.js';
 import {
   getRestaurantId,
   assertOrderInRestaurant,
@@ -186,6 +188,9 @@ fastify.addHook('onRequest', async (request, reply) => {
 
   const path = request.url.split('?')[0]; // ignore the ?query=part
   if (!path.startsWith('/api/') || PUBLIC_API_ROUTES.has(path)) return;
+  // /api/public/* = pages for the restaurant's CUSTOMERS (chat orders, 2026-11-01):
+  // no login by design; each route checks its restaurant code and limits abuse itself.
+  if (path.startsWith('/api/public/')) return;
 
   try {
     await request.jwtVerify(); // checks the token and fills request.user
@@ -954,6 +959,8 @@ fastify.register(printingRoutes);
 fastify.register(userRoutes);
 fastify.register(terminalRoutes);
 fastify.register(reservationRoutes);
+fastify.register(publicChatRoutes); // chat orders: the customer's page, no login (v2)
+fastify.register(chatOrderRoutes); // chat orders: the cashier's Accept / Reject
 
 // --- The screens (cloud-ready, 2026-10-26) ---
 // On the server, RES also delivers the app's screens (the built client/dist), so the

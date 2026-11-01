@@ -31,6 +31,7 @@ import AccountBalancesReport from './pages/AccountBalancesReport';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import SalesByItemReport from './pages/SalesByItemReport';
 import Reservations, { type SeatRequest } from './pages/Reservations';
+import ChatOrdersInbox from './components/ChatOrdersInbox';
 
 const PosViewWrapper = PosView as React.ComponentType<{
   activeOrder?: ActiveOrder | null;
@@ -117,13 +118,17 @@ export function App() {
   // own header has a button back to the dashboard.
   if (activeTab === 'pos') {
     return (
-      <PosViewWrapper
-        activeOrder={activeOrder}
-        onResetOrder={handleResetOrder}
-        onClose={handleClosePos}
-        onSwitchUser={handleSwitchUser}
-        seatAt={seatAt}
-      />
+      <>
+        <PosViewWrapper
+          activeOrder={activeOrder}
+          onResetOrder={handleResetOrder}
+          onClose={handleClosePos}
+          onSwitchUser={handleSwitchUser}
+          seatAt={seatAt}
+        />
+        {/* chat orders ring on the POS too */}
+        <ChatOrdersInbox />
+      </>
     );
   }
 
@@ -275,6 +280,8 @@ export function App() {
       restaurantName={restaurantName}
     >
       {renderContent()}
+      {/* chat orders (v2): rings on every staff screen except the kitchen display */}
+      {activeTab !== 'kitchenscreen' && <ChatOrdersInbox />}
     </SidebarLayout>
   );
 }

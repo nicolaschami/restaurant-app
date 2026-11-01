@@ -1027,14 +1027,27 @@ function SeatPicker({ r, day, onClose, onPick }: { r: Reservation; day: DayData;
 }
 
 // ── the 2 settings (managers) ──────────────────────────────────────────────────
+type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+type OpeningHours = Partial<Record<Weekday, [string, string] | null>> | null;
+const WEEK: [Weekday, string][] = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
+const HALF_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
+
 function SettingsModal({ settings, onClose, onSaved }: { settings: DayData['settings']; onClose: () => void; onSaved: () => void }) {
   const [hold, setHold] = useState(settings.holdMinutes);
   const [before, setBefore] = useState(settings.reserveBeforeMinutes);
   const [saving, setSaving] = useState(false);
+  // Opening hours (2026-11-01): the chat only offers booking times inside them.
+  // null = not set (the chat accepts any time).
+  const [hours, setHours] = useState<OpeningHours>(null);
+  useEffect(() => {
+    api.get('/reservations/hours').then((r) => setHours(r.data.openingHours ?? null)).catch(() => {});
+  }, []);
+  const setDay = (d: Weekday, v: [string, string] | null) => setHours((h) => ({ ...(h ?? {}), [d]: v }));
   const save = async () => {
     setSaving(true);
     try {
       await api.put('/reservations/settings', { holdMinutes: hold, reserveBeforeMinutes: before });
+      await api.put('/reservations/hours', { openingHours: hours });
       toast.success('Reservation settings saved');
       onSaved();
     } catch (err) {
@@ -1057,6 +1070,52 @@ function SettingsModal({ settings, onClose, onSaved }: { settings: DayData['sett
         <select className={sel} value={before} onChange={(e) => setBefore(Number(e.target.value))}>
           {[0, 10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m === 0 ? 'at the booking time' : `${m} min before`}</option>)}
         </select>
+
+        <div className="mt-3 flex items-center justify-between">
+          <label className={C.label} style={{ margin: 0 }}>Opening hours (chat bookings)</label>
+          <label className="flex items-center gap-1 text-[11px] text-[#8fa39a]">
+            <input
+              type="checkbox"
+              checked={hours !== null}
+              onChange={(e) =>
+                setHours(e.target.checked ? Object.fromEntries(WEEK.map(([d]) => [d, ['12:00', '23:00']])) as OpeningHours : null)
+              }
+            />
+            set
+          </label>
+        </div>
+        {hours === null ? (
+          <p className="mt-1 text-[11px] text-[#8fa39a]">Not set: the chat accepts any time.</p>
+        ) : (
+          <div className="mt-1 space-y-1">
+            {WEEK.map(([d, label]) => {
+              const range = hours[d] ?? null;
+              return (
+                <div key={d} className="flex items-center gap-1.5 text-[12px]">
+                  <label className="flex w-[64px] items-center gap-1">
+                    <input type="checkbox" checked={!!range} onChange={(e) => setDay(d, e.target.checked ? ['12:00', '23:00'] : null)} />
+                    {label}
+                  </label>
+                  {range ? (
+                    <>
+                      <select className={`${sel} !w-auto !py-0.5`} value={range[0]} onChange={(e) => setDay(d, [e.target.value, range[1]])}>
+                        {HALF_HOURS.map((t) => <option key={t}>{t}</option>)}
+                      </select>
+                      <span className="text-[#8fa39a]">→</span>
+                      <select className={`${sel} !w-auto !py-0.5`} value={range[1]} onChange={(e) => setDay(d, [range[0], e.target.value])}>
+                        {HALF_HOURS.map((t) => <option key={t}>{t}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <span className="text-[#8fa39a]">closed</span>
+                  )}
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-[#8fa39a]">Closing before opening = after midnight (e.g. 18:00 → 02:00).</p>
+          </div>
+        )}
+
         <div className="mt-4 flex justify-end gap-1.5">
           <button className={C.btn} onClick={onClose}>Cancel</button>
           <button className={C.gold} disabled={saving} onClick={save}>Save</button>
