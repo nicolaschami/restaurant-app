@@ -13,6 +13,9 @@
 -- is left as it is — nothing is created twice. All or nothing (one transaction).
 
 \set ON_ERROR_STOP 1
+-- the file is UTF-8 (Arabic names): psql on a Windows server would otherwise read it
+-- as WIN1252 and stop ("byte sequence 0x81 … has no equivalent in UTF8")
+\encoding UTF8
 BEGIN;
 
 SELECT set_config('menu.code', :'code', true);
