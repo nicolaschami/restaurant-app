@@ -53,7 +53,7 @@ import {
   LayoutGrid,
   Armchair,
   User,
-  Pause, Eye, ChevronUp, ChevronLeft } from 'lucide-react';
+  Pause, Eye, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface PosScreenProps {
@@ -628,6 +628,27 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
   }, [displayItems]);
 
   const activeCategory = categories.find((c) => c.id === activeCat);
+
+  // Phone only: the categories are one row that scrolls sideways. A ‹ / › arrow
+  // appears on the side where more categories are hidden (tap it to slide).
+  const catRailRef = useRef<HTMLElement>(null);
+  const [catMore, setCatMore] = useState({ left: false, right: false });
+  const updateCatArrows = () => {
+    const el = catRailRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 4;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setCatMore((prev) => (prev.left === left && prev.right === right ? prev : { left, right }));
+  };
+  useEffect(() => {
+    updateCatArrows();
+    window.addEventListener('resize', updateCatArrows);
+    return () => window.removeEventListener('resize', updateCatArrows);
+  }, [categories.length]);
+  const slideCats = (dir: 1 | -1) => {
+    const el = catRailRef.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.7, behavior: 'smooth' });
+  };
 
   const handleItemClick = (item: Item) => {
     if (item.hasVariants) {
@@ -2616,6 +2637,8 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
            Phone (waiter at the table): categories = a swipeable row on top, dishes fill
            the screen, a bottom bar shows the order; tapping it slides the order up. */
         .m-only, .m-orderbar { display: none; }
+        .cat-rail-wrap { display: contents; }
+        .cat-arrow { display: none; }
 
         @media (max-width: 1100px) {
           .pos-body { grid-template-columns: 330px minmax(0, 1fr) 170px; }
@@ -2650,6 +2673,39 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             border-bottom: 1px solid var(--hairline);
             scrollbar-width: none;
           }
+          .cat-rail::-webkit-scrollbar { display: none; }
+          /* ‹ › arrows: a soft fade over the edge + a round gold button; they fade in
+             only on the side where more categories are hidden */
+          .cat-rail-wrap { display: block; position: relative; order: -1; flex-shrink: 0; }
+          .cat-arrow {
+            display: flex;
+            align-items: center;
+            position: absolute;
+            top: 0;
+            bottom: 1px;
+            z-index: 3;
+            width: 46px;
+            padding: 0 6px;
+            border: 0;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+          }
+          .cat-arrow.show { opacity: 1; pointer-events: auto; }
+          .cat-arrow.left { left: 0; justify-content: flex-start; background: linear-gradient(to right, var(--bg-deep) 45%, transparent); }
+          .cat-arrow.right { right: 0; justify-content: flex-end; background: linear-gradient(to left, var(--bg-deep) 45%, transparent); }
+          .cat-arrow svg {
+            width: 26px;
+            height: 26px;
+            padding: 5px;
+            border-radius: 999px;
+            background: var(--brass);
+            color: #131c18;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+          }
+          .cat-arrow.right.show svg { animation: cat-nudge 1.6s ease-in-out 2; }
+          @keyframes cat-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
           .cat-label { display: none; }
           .cat-btn { flex: 0 0 auto; min-height: 40px; background: var(--card); }
           .cat-btn .label { flex: none; max-width: 150px; }
@@ -3062,7 +3118,25 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
         </main>
 
         {/* ---------- CATEGORIES (right) ---------- */}
-        <nav className="cat-rail" aria-label="Categories">
+        {/* the wrapper only matters on the phone (on PC it is "display: contents") */}
+        <div className="cat-rail-wrap">
+        <button
+          className={`cat-arrow left ${catMore.left ? 'show' : ''}`}
+          onClick={() => slideCats(-1)}
+          aria-label="More categories on the left"
+          tabIndex={-1}
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <button
+          className={`cat-arrow right ${catMore.right ? 'show' : ''}`}
+          onClick={() => slideCats(1)}
+          aria-label="More categories on the right"
+          tabIndex={-1}
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+        <nav className="cat-rail" aria-label="Categories" ref={catRailRef} onScroll={updateCatArrows}>
           <span className="cat-label">Categories</span>
 
           {isLoadingCategories && <div className="cat-state-msg">Loading categories…</div>}
@@ -3086,6 +3160,7 @@ export default function PosScreen({ onClose, onLogout, activeOrder, onResetOrder
             );
           })}
         </nav>
+        </div>
       </div>
 
       {/* phone only: the order bar at the bottom — tap to open the order and pay */}
